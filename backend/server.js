@@ -161,6 +161,72 @@ app.post('/chat', async (req, res) => {
   }
 });
 
+// Session Summary Route
+app.post('/session/summary', async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+
+    // Validate sessionId
+    if (!sessionId) {
+      return res.status(400).json({ error: 'sessionId is required' });
+    }
+
+    // Load StudySession
+    const session = await StudySession.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    // Load ChatLogs for the session
+    const chatLogs = await ChatLog.find({ sessionId: session._id })
+      .sort({ timestamp: 1 });
+
+    if (chatLogs.length === 0) {
+      return res.status(400).json({ error: 'No messages found for session' });
+    }
+
+    // Build transcript
+    const transcript = chatLogs.map(log => {
+      const speaker = log.isUser ? 'User' : 'Assistant';
+      return `${speaker}: ${log.message}`;
+    }).join('\n');
+
+    // Call Groq for summary
+    const summaryResponse = await groq.chat.completions.create({
+      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a study summarizer. Produce ≤10 concise bullet points of key ideas, then a "Next steps" section with 2–3 targeted actions. Keep ≤300 words.'
+        },
+        {
+          role: 'user',
+          content: `Please summarize this study session:\n\n${transcript}`
+        }
+      ],
+      max_tokens: 400,
+      temperature: 0.3
+    });
+
+    const summary = summaryResponse.choices[0].message.content.trim();
+
+    // Save summary to session
+    session.sessionSummary = summary;
+    await session.save();
+
+    res.json({
+      sessionId: session._id.toString(),
+      summary: summary
+    });
+
+  } catch (error) {
+    console.error('Session summary error:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate session summary. Check logs for details.' 
+    });
+  }
+});
+
 // Load and mount Swagger UI
 try {
   const openapiSpec = yaml.load(fs.readFileSync(__dirname + '/openapi.yaml', 'utf8'));

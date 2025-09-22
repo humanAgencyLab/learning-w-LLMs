@@ -63,6 +63,54 @@ paths:
                     type: string
                     example: "OpenAI API request failed"
 
+  /session/summary:
+    post:
+      summary: Generate a summary of a study session
+      description: Generate a concise summary of a study session based on chat history
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionSummaryRequest'
+      responses:
+        '200':
+          description: Successful summary generation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionSummaryResponse'
+        '400':
+          description: Bad request - missing sessionId or no messages found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "sessionId is required"
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Session not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Failed to generate session summary"
+
 components:
   schemas:
     ChatRequest:
@@ -100,3 +148,28 @@ components:
           type: string
           description: The AI tutor's response
           example: "Gradients are a fundamental concept in calculus that measure how steep a function is at any point..."
+
+    SessionSummaryRequest:
+      type: object
+      required:
+        - sessionId
+      properties:
+        sessionId:
+          type: string
+          description: The session ID to summarize
+          example: "64f8a1b2c3d4e5f6a7b8c9d0"
+
+    SessionSummaryResponse:
+      type: object
+      required:
+        - sessionId
+        - summary
+      properties:
+        sessionId:
+          type: string
+          description: The session ID that was summarized
+          example: "64f8a1b2c3d4e5f6a7b8c9d0"
+        summary:
+          type: string
+          description: The generated summary of the study session
+          example: "• Key concept: Derivatives measure rate of change\n• Application: Used in optimization problems\n• Next steps: Practice with more complex functions"
