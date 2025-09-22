@@ -1,101 +1,139 @@
-require("dotenv").config({ path: __dirname + "/.env" });
-console.log("Loaded API Key:", process.env.OPENAI_API_KEY);
+require('dotenv').config();
 
-const express = require("express");
-const cors = require("cors");
-const { OpenAI } = require("openai");
-const swaggerUi = require("swagger-ui-express");
-const fs = require("fs");
-const yaml = require("js-yaml");
-const mongoose = require("mongoose");
+const express = require('express');
+const cors = require('cors');
+const mongoose = require('mongoose');
+const Groq = require('groq-sdk');
+const swaggerUi = require('swagger-ui-express');
+const fs = require('fs');
+const yaml = require('js-yaml');
 
-const systemPrompt = require("./prompts/systemPrompt");
-const StudySession = require("./models/StudySession");
-const ChatLog = require("./models/ChatLog");
-const sessionRoutes = require('./routes/sessionRoutes');
-
+const StudySession = require('./models/StudySession');
+const ChatLog = require('./models/ChatLog');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-app.use(cors());
+// Middleware
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000'
+}));
 app.use(express.json());
-app.use("/session", sessionRoutes);
 
-// Connect to MongoDB
-mongoose.connect("mongodb://localhost:27017/ai_edu_app", {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
-mongoose.connection.once("open", () => {
-  console.log("✅ Connected to MongoDB");
-});
+// MongoDB connection
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ai_edu_app')
+  .then(() => {
+    console.log('✅ Connected to MongoDB');
+  })
+  .catch((error) => {
+    console.error('❌ MongoDB connection error:', error);
+    process.exit(1);
+  });
 
-// Load OpenAPI spec
-const openapiSpec = yaml.load(fs.readFileSync(__dirname + "/openapi.yaml", "utf8"));
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiSpec));
-
-// Check for OpenAI API key
-if (!process.env.OPENAI_API_KEY) {
-  console.error("OpenAI API Key is missing. Check .env file.");
+// Check for Groq API key
+if (!process.env.GROQ_API_KEY) {
+  console.error('❌ Groq API Key is missing. Check .env file.');
   process.exit(1);
 }
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+// Initialize Groq client
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
 });
 
-// Chat Handling
-app.post("/chat", async (req, res) => {
-  try {
-    const { message, stage = 1, sessionId = "default" } = req.body;
+// Stage-aware system prompt helper
+function getSystemPrompt(stage = 1) {
+  const stagePrompts = {
+    1: `You are teaching someone in Stage 1: Unconscious Incompetence.
+    - The user is new to the topic and unaware of the fundamental concepts.
+    - Build intuition without overwhelming them with technical detail.
+    - Use simple language and real-world examples.`,
+    
+    2: `You are teaching someone in Stage 2: Conscious Incompetence.
+    - The user understands basics but struggles to apply them.
+    - Focus on practical applications and common patterns.
+    - Help them build confidence through guided practice.`,
+    
+    3: `You are teaching someone in Stage 3: Conscious Competence.
+    - The user can apply knowledge with effort and growing independence.
+    - Focus on advanced problem-solving and deeper understanding.
+    - Encourage them to explain their reasoning.`,
+    
+    4: `You are teaching someone in Stage 4: Unconscious Competence.
+    - The user has mastery and wants to practice and extend knowledge.
+    - Focus on creative applications and synthesis of concepts.
+    - Challenge them with complex, real-world scenarios.`
+  };
 
-    if (!message) {
-      return res.status(400).json({ error: "Message is required" });
+  return `You are a patient, encouraging tutor. ${stagePrompts[stage] || stagePrompts[1]}
+
+  Guidelines:
+  - Be kind and supportive
+  - Ask questions to check understanding
+  - Use examples to illustrate concepts
+  - Adapt explanations based on responses
+  - Keep responses concise but helpful`;
+}
+
+// Routes
+app.get('/health', (req, res) => {
+  res.json({ ok: true });
+});
+
+app.post('/chat', async (req, res) => {
+  try {
+    const { message, stage = 1, sessionId } = req.body;
+
+    // Validate message
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ error: 'Message is required' });
     }
 
-    // Log request
-    console.log("User sent:", message);
-    console.log("User stage:", stage);
-    console.log("Session ID:", sessionId);
-
-    // Find or create StudySession
-    let session = await StudySession.findOne({ _id: sessionId });
+    // Create or load session
+    let session;
+    if (sessionId) {
+      session = await StudySession.findById(sessionId);
+    }
+    
     if (!session) {
-      session = new StudySession({ _id: sessionId });
+      session = new StudySession({});
       await session.save();
     }
 
     // Save user message
- const userLog = new ChatLog({
-  sessionId: session._id,
-  message,
-  isUser: true,
-  type: "text",
-  topic: "Algebra",
-  stage,
-  aiModel: "gpt-4o-mini"
-});
-await userLog.save();
+    const userLog = new ChatLog({
+      sessionId: session._id,
+      message: message.trim(),
+      isUser: true,
+      stage: stage,
+      aiModel: 'llama-3.3-70b-versatile'
+    });
+    await userLog.save();
 
+    // Load chat history
+    const history = await ChatLog.find({ sessionId: session._id })
+      .sort({ timestamp: 1 })
+      .limit(20); // Limit to prevent token overflow
 
-    // Load previous chat history from database
-    const history = await ChatLog.find({ sessionId: session._id }).sort("timestamp");
+    // Build messages for OpenAI
+    const messages = [
+      { role: 'system', content: getSystemPrompt(stage) }
+    ];
 
-    // Format messages for OpenAI API
-    const messages = [{ role: "system", content: systemPrompt(message, stage).content }];
+    // Add recent history
     history.forEach(entry => {
       messages.push({
-        role: entry.isUser ? "user" : "assistant",
+        role: entry.isUser ? 'user' : 'assistant',
         content: entry.message
       });
     });
 
-    // Call OpenAI
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages,
+    // Call Groq
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: messages,
+      max_tokens: 500,
+      temperature: 0.7
     });
 
     const reply = response.choices[0].message.content.trim();
@@ -105,23 +143,35 @@ await userLog.save();
       sessionId: session._id,
       message: reply,
       isUser: false,
+      stage: stage,
+      aiModel: 'llama-3.3-70b-versatile'
     });
     await assistantLog.save();
 
-    res.json({ reply });
+    res.json({
+      sessionId: session._id.toString(),
+      reply: reply
+    });
 
   } catch (error) {
-    console.error("OpenAI API Error:", error.response?.data || error.message);
-    res.status(500).json({ error: "OpenAI API request failed. Check logs for details." });
+    console.error('Chat error:', error);
+    res.status(500).json({ 
+      error: 'Groq API request failed. Check logs for details.' 
+    });
   }
 });
 
-// Test route
-app.get("/", (req, res) => {
-  res.send("Server is running");
-});
+// Load and mount Swagger UI
+try {
+  const openapiSpec = yaml.load(fs.readFileSync(__dirname + '/openapi.yaml', 'utf8'));
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
+  console.log(`📚 API Documentation available at http://localhost:${PORT}/api-docs`);
+} catch (error) {
+  console.error('❌ Failed to load OpenAPI spec:', error);
+}
 
+// Start server
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-  console.log(`API Docs at http://localhost:${PORT}/api-docs`);
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
 });
