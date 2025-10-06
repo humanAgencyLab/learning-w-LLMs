@@ -33,6 +33,22 @@ const ChatLogSchema = new mongoose.Schema({
     required: false,
     default: 'gpt-4o-mini'
   },
+  // SRL Fields
+  phase: {
+    type: String,
+    enum: ['assessment', 'learning', 'quiz', 'feedback'],
+    required: false,
+    default: 'assessment'
+  },
+  moduleId: {
+    type: String,
+    required: false,
+    default: null
+  },
+  stateDelta: {
+    type: mongoose.Schema.Types.Mixed,
+    required: false
+  },
   timestamp: {
     type: Date,
     default: Date.now

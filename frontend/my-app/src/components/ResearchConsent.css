@@ -1,0 +1,164 @@
+.research-consent {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.consent-container {
+  background: white;
+  border-radius: 12px;
+  padding: 30px;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.consent-container h2 {
+  color: #2c3e50;
+  margin-bottom: 20px;
+  text-align: center;
+  border-bottom: 2px solid #3498db;
+  padding-bottom: 10px;
+}
+
+.consent-content {
+  margin-bottom: 25px;
+}
+
+.consent-section {
+  margin-bottom: 20px;
+}
+
+.consent-section h4 {
+  color: #34495e;
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+.consent-section p {
+  color: #555;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+
+.consent-section ul {
+  color: #555;
+  padding-left: 20px;
+}
+
+.consent-section li {
+  margin-bottom: 5px;
+  line-height: 1.5;
+}
+
+.consent-form {
+  border-top: 1px solid #ecf0f1;
+  padding-top: 20px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 600;
+  color: #34495e;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 10px;
+  border: 2px solid #bdc3c7;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.3s;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+.consent-checkbox {
+  margin-bottom: 20px;
+}
+
+.consent-checkbox label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  color: #555;
+  line-height: 1.5;
+}
+
+.consent-checkbox input[type="checkbox"] {
+  margin: 0;
+  transform: scale(1.2);
+}
+
+.consent-buttons {
+  display: flex;
+  gap: 15px;
+  justify-content: flex-end;
+}
+
+.consent-btn, .decline-btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.consent-btn {
+  background: #27ae60;
+  color: white;
+}
+
+.consent-btn:hover:not(:disabled) {
+  background: #229954;
+  transform: translateY(-1px);
+}
+
+.consent-btn:disabled {
+  background: #bdc3c7;
+  cursor: not-allowed;
+}
+
+.decline-btn {
+  background: #e74c3c;
+  color: white;
+}
+
+.decline-btn:hover {
+  background: #c0392b;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 768px) {
+  .consent-container {
+    margin: 20px;
+    padding: 20px;
+  }
+  
+  .consent-buttons {
+    flex-direction: column;
+  }
+  
+  .consent-btn, .decline-btn {
+    width: 100%;
+  }
+}

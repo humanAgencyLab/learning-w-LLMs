@@ -1,0 +1,625 @@
+.stage-tracker {
+  position: sticky;
+  top: 20px;
+  width: 100%;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Desktop: Always visible in right column */
+@media (min-width: 1200px) {
+  .stage-tracker {
+    position: sticky;
+    top: 20px;
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+.stage-tracker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.stage-tracker-header h3 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.stage-tracker-close {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.stage-tracker-close:hover {
+  opacity: 1;
+}
+
+/* Hide close button on desktop since panel is always visible */
+@media (min-width: 1200px) {
+  .stage-tracker-close {
+    display: none;
+  }
+}
+
+/* Stage Badge */
+.stage-badge {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border: 2px solid;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.stage-number {
+  font-size: 24px;
+  font-weight: bold;
+  margin-right: 12px;
+  color: inherit;
+}
+
+.stage-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: inherit;
+}
+
+/* Confidence Section */
+.confidence-section {
+  margin-bottom: 20px;
+}
+
+.confidence-label {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.confidence-bar {
+  width: 100%;
+  height: 8px;
+  background-color: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.confidence-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+/* Progress Section */
+.progress-section {
+  margin-bottom: 20px;
+}
+
+.progress-label {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background-color: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: #6b7280;
+  text-align: right;
+  margin-top: 4px;
+}
+
+/* Milestones Section */
+.milestones-section {
+  margin-bottom: 20px;
+}
+
+.milestones-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.milestones-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.milestone {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+}
+
+.milestone.done {
+  background-color: #f0fdf4;
+  border-color: #10b981;
+}
+
+.milestone.doing {
+  background-color: #eff6ff;
+  border-color: #3b82f6;
+}
+
+.milestone-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.milestone.done .milestone-icon {
+  color: #10b981;
+}
+
+.milestone.doing .milestone-icon {
+  color: #3b82f6;
+}
+
+.milestone-content {
+  flex: 1;
+}
+
+.milestone-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 2px;
+}
+
+.milestone-description {
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.3;
+}
+
+/* Action Buttons */
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.reassess-btn, .quiz-btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.reassess-btn {
+  background-color: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.reassess-btn:hover:not(:disabled) {
+  background-color: #e5e7eb;
+}
+
+.quiz-btn {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.quiz-btn:hover:not(:disabled) {
+  background-color: #2563eb;
+}
+
+.reassess-btn:disabled, .quiz-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Stage History */
+.stage-history h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.history-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 12px;
+  background-color: #f9fafb;
+  border-radius: 6px;
+  border-left: 3px solid #e5e7eb;
+  margin-bottom: 8px;
+}
+
+.history-item.history-assessment {
+  border-left-color: #3b82f6;
+  background-color: #eff6ff;
+}
+
+.history-item.history-quiz {
+  border-left-color: #10b981;
+  background-color: #f0fdf4;
+}
+
+.history-item.history-manual {
+  border-left-color: #f59e0b;
+  background-color: #fffbeb;
+}
+
+.history-icon {
+  font-size: 14px;
+  margin-right: 8px;
+  margin-top: 2px;
+}
+
+.history-content {
+  flex: 1;
+}
+
+.history-stage {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.history-reason {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.history-time {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+/* Tablet: Drawer toggle */
+@media (max-width: 1199px) and (min-width: 768px) {
+  .stage-tracker {
+    position: fixed;
+    top: 0;
+    right: -360px;
+    width: 360px;
+    height: 100vh;
+    z-index: 1000;
+    transition: right 0.3s ease;
+    margin-left: 0;
+    border-radius: 0;
+  }
+  
+  .stage-tracker.open {
+    right: 0;
+  }
+}
+
+/* Mobile: Bottom sheet */
+@media (max-width: 767px) {
+  .stage-tracker {
+    position: fixed;
+    bottom: -100%;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 70vh;
+    z-index: 1000;
+    transition: bottom 0.3s ease;
+    margin-left: 0;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  }
+  
+  .stage-tracker.open {
+    bottom: 0;
+  }
+}
+
+/* Structured Learning Styles */
+.learning-goal-section {
+  margin-bottom: 20px;
+  padding: 16px;
+  background-color: #f0f9ff;
+  border-radius: 8px;
+  border-left: 4px solid #3b82f6;
+}
+
+.learning-goal-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.learning-goal-text {
+  margin: 0;
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.current-module-section {
+  margin-bottom: 20px;
+}
+
+.current-module-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.module-card {
+  padding: 16px;
+  border-radius: 8px;
+  border: 2px solid #e5e7eb;
+  background-color: #f9fafb;
+  margin-bottom: 12px;
+  transition: all 0.2s;
+}
+
+.module-card.current {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+}
+
+.module-card.completed {
+  border-color: #10b981;
+  background-color: #f0fdf4;
+}
+
+.module-card.locked {
+  border-color: #d1d5db;
+  background-color: #f9fafb;
+  opacity: 0.6;
+}
+
+.module-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.module-number {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: #3b82f6;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  margin-right: 12px;
+}
+
+.module-card.completed .module-number {
+  background-color: #10b981;
+}
+
+.module-card.locked .module-number {
+  background-color: #9ca3af;
+}
+
+.module-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.module-status {
+  font-size: 16px;
+  margin-left: 8px;
+}
+
+.module-progress {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.module-progress-bar {
+  width: 100%;
+  height: 6px;
+  background-color: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.module-progress-fill {
+  height: 100%;
+  background-color: #3b82f6;
+  transition: width 0.3s ease;
+}
+
+.module-description {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.module-objectives {
+  font-size: 12px;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.module-objectives ul {
+  margin: 4px 0 0 16px;
+  padding: 0;
+}
+
+.module-objectives li {
+  margin-bottom: 2px;
+}
+
+.module-duration {
+  font-size: 11px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.module-completed {
+  font-size: 11px;
+  color: #10b981;
+  font-weight: 500;
+}
+
+.learning-plan-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.modules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* SRL System Styles */
+.srl-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.srl-header h4 {
+  margin: 0;
+  color: #1e293b;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.phase-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.phase-assessment {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+}
+
+.phase-learning {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #3b82f6;
+}
+
+.phase-quiz {
+  background: #fce7f3;
+  color: #be185d;
+  border: 1px solid #ec4899;
+}
+
+.phase-feedback {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #10b981;
+}
+
+.module-milestones {
+  margin-top: 10px;
+}
+
+.module-milestones strong {
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.module-milestones ul {
+  margin: 5px 0 0 0;
+  padding-left: 16px;
+}
+
+.module-milestones li {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.3;
+  margin-bottom: 2px;
+}
+
+.next-action-btn {
+  width: 100%;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.next-action-btn:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+}
+
+.next-action-btn:active {
+  transform: translateY(0);
+}

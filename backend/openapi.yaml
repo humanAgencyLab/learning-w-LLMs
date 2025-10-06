@@ -63,6 +63,45 @@ paths:
                     type: string
                     example: "OpenAI API request failed"
 
+  /chat/stream:
+    post:
+      summary: Send a message to the AI Study Assistant with streaming response
+      description: This endpoint allows users to send a message to the AI tutor and receive a streaming response using Server-Sent Events (SSE). The response is sent token by token as it's generated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Streaming response from the AI tutor
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Server-Sent Events stream with the following event types:
+                  - data: {"token":"..."} - Individual token chunks
+                  - data: {"done":true,"sessionId":"...","final":"..."} - Completion event
+                  - data: {"error":"..."} - Error event
+                  - data: {"ping":true} - Heartbeat event
+              example: |
+                data: {"token":"Hello"}
+                data: {"token":" there"}
+                data: {"token":"!"}
+                data: {"done":true,"sessionId":"64f8a1b2c3d4e5f6a7b8c9d0","final":"Hello there!"}
+        '400':
+          description: Bad request. Missing message field or invalid parameters.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Message is required"
+
   /session/summary:
     post:
       summary: Generate a summary of a study session
@@ -111,6 +150,219 @@ paths:
                     type: string
                     example: "Failed to generate session summary"
 
+  /sessions:
+    get:
+      summary: Get recent study sessions
+      description: Retrieve a list of recent study sessions with metadata
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of sessions to return
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: List of recent sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          example: "64f8a1b2c3d4e5f6a7b8c9d0"
+                        createdAt:
+                          type: string
+                          format: date-time
+                        updatedAt:
+                          type: string
+                          format: date-time
+                        topic:
+                          type: string
+                          example: "Machine Learning"
+                        stage:
+                          type: integer
+                          minimum: 1
+                          maximum: 4
+                          example: 2
+                        lastMessage:
+                          type: object
+                          properties:
+                            text:
+                              type: string
+                              example: "Can you explain neural networks?"
+                            isUser:
+                              type: boolean
+                              example: true
+                            timestamp:
+                              type: string
+                              format: date-time
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Failed to load sessions"
+
+  /session/{id}:
+    patch:
+      summary: Update session stage
+      description: Update the learning stage for a specific session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+            example: "64f8a1b2c3d4e5f6a7b8c9d0"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - stage
+              properties:
+                stage:
+                  type: integer
+                  minimum: 1
+                  maximum: 4
+                  example: 3
+      responses:
+        '200':
+          description: Session updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    example: "64f8a1b2c3d4e5f6a7b8c9d0"
+                  stage:
+                    type: integer
+                    example: 3
+                  updatedAt:
+                    type: string
+                    format: date-time
+        '400':
+          description: Bad request - invalid stage value
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Stage must be between 1 and 4"
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Session not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Failed to update session"
+
+  /session/{id}/notes:
+    patch:
+      summary: Update session notes
+      description: Update or create notes for a specific session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+            example: "64f8a1b2c3d4e5f6a7b8c9d0"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - notes
+              properties:
+                notes:
+                  type: string
+                  example: "Key concepts: neural networks, backpropagation, gradient descent"
+      responses:
+        '200':
+          description: Notes updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    example: "64f8a1b2c3d4e5f6a7b8c9d0"
+                  notes:
+                    type: string
+                    example: "Key concepts: neural networks, backpropagation, gradient descent"
+                  updatedAt:
+                    type: string
+                    format: date-time
+        '400':
+          description: Bad request - invalid notes format
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Notes must be a string"
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Session not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Failed to update notes"
+
 components:
   schemas:
     ChatRequest:
@@ -148,6 +400,15 @@ components:
           type: string
           description: The AI tutor's response
           example: "Gradients are a fundamental concept in calculus that measure how steep a function is at any point..."
+        messageCount:
+          type: integer
+          description: Total number of messages in this session
+          example: 6
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the session was last updated
+          example: "2024-01-15T10:30:00Z"
 
     SessionSummaryRequest:
       type: object
@@ -173,3 +434,183 @@ components:
           type: string
           description: The generated summary of the study session
           example: "• Key concept: Derivatives measure rate of change\n• Application: Used in optimization problems\n• Next steps: Practice with more complex functions"
+
+  /session/state:
+    get:
+      summary: Get SRL session state
+      description: Retrieve the current state of a Self-Regulated Learning session
+      parameters:
+        - name: sessionId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The session ID
+      responses:
+        '200':
+          description: Session state retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SRLState'
+        '404':
+          description: Session not found
+
+  /quiz/submit:
+    post:
+      summary: Submit quiz answers
+      description: Submit answers for a module quiz and get results
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuizSubmission'
+      responses:
+        '200':
+          description: Quiz submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizResult'
+
+    SRLState:
+      type: object
+      required:
+        - topic
+        - phase
+        - plan
+        - currentModuleId
+        - progress
+        - nextAction
+      properties:
+        topic:
+          type: string
+          description: The learning topic
+          example: "Python for ML"
+        phase:
+          type: string
+          enum: [assessment, planning, learning, quiz, feedback]
+          description: Current phase of the learning session
+          example: "learning"
+        plan:
+          type: array
+          items:
+            $ref: '#/components/schemas/Module'
+          description: The learning plan with modules and milestones
+        currentModuleId:
+          type: string
+          description: ID of the currently active module
+          example: "m1"
+        progress:
+          $ref: '#/components/schemas/Progress'
+        nextAction:
+          type: string
+          enum: [ask, teach, mini_exercise, start_quiz, submit_quiz, review]
+          description: The next action the user should take
+          example: "mini_exercise"
+
+    Module:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - status
+        - milestones
+      properties:
+        id:
+          type: string
+          description: Unique module identifier
+          example: "m1"
+        title:
+          type: string
+          description: Module title
+          example: "Python Basics"
+        description:
+          type: string
+          description: Module description
+          example: "Learn syntax, variables, data types"
+        status:
+          type: string
+          enum: [in_progress, locked, complete]
+          description: Module status
+          example: "in_progress"
+        milestones:
+          type: array
+          items:
+            type: string
+          description: List of module milestones
+          example: ["Install Python", "Write first program", "Understand data types"]
+
+    Progress:
+      type: object
+      required:
+        - overallPct
+        - modulePct
+      properties:
+        overallPct:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Overall progress percentage
+          example: 10
+        modulePct:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Current module progress percentage
+          example: 33.33
+
+    QuizSubmission:
+      type: object
+      required:
+        - sessionId
+        - answers
+      properties:
+        sessionId:
+          type: string
+          description: The session ID
+          example: "64f8a1b2c3d4e5f6a7b8c9d0"
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuizAnswer'
+          description: Array of quiz answers
+
+    QuizAnswer:
+      type: object
+      required:
+        - questionIndex
+        - selectedAnswer
+      properties:
+        questionIndex:
+          type: integer
+          description: Index of the question
+          example: 0
+        selectedAnswer:
+          type: string
+          description: The selected answer
+          example: "A"
+
+    QuizResult:
+      type: object
+      required:
+        - passed
+        - score
+        - feedback
+      properties:
+        passed:
+          type: boolean
+          description: Whether the quiz was passed
+          example: true
+        score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Quiz score percentage
+          example: 85
+        feedback:
+          type: string
+          description: Feedback on the quiz performance
+          example: "Great job! You've mastered the basics. Ready for the next module."
