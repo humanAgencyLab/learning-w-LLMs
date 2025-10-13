@@ -24,75 +24,97 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// STATE JSON Parser Helper with Plan Validation
+// Enhanced STATE JSON Parser with Robust Extraction
+const stripAndParseState = (modelText) => {
+  const re = /```state\s*([\s\S]*?)\s*```/g;
+  let m, last;
+  while ((m = re.exec(modelText)) !== null) last = m[1];
+  const visible = last ? modelText.replace(/```state[\s\S]*?```/g,'').trim() : modelText.trim();
+  const parsed = last ? parseState(last) : null;
+  return { visible, parsed };
+};
+
+const parseState = (s) => {
+  try { 
+    return JSON.parse(s); 
+  } catch { 
+    return null; 
+  }
+};
+
+// STATE JSON Parser Helper with Plan Validation (strict: prioritize ```state blocks)
 const parseStateFromResponse = (response) => {
   try {
-    // Look for JSON in fenced code blocks labeled "state" first
-    let stateMatch = response.match(/```state\s*([\s\S]*?)\s*```/);
+    // Use the enhanced extraction function
+    const { parsed: state } = stripAndParseState(response);
     
-    // If no "state" block found, look for any JSON block
-    if (!stateMatch) {
-      stateMatch = response.match(/```\s*([\s\S]*?)\s*```/);
+    if (!state) {
+      console.log('⚠️ No ```state block found (required format)');
+      return null;
     }
     
-    if (stateMatch) {
-      const jsonStr = stateMatch[1].trim();
-      if (jsonStr.length > 2048) {
-        console.log('⚠️ STATE JSON too large, ignoring');
-        return null;
-      }
-      const state = JSON.parse(jsonStr);
-      
-      // Validate required fields
-      if (state.topic && state.phase && state.plan && state.nextAction) {
-        // Check if plan is array of strings instead of objects
-        if (Array.isArray(state.plan) && state.plan.length > 0 && typeof state.plan[0] === 'string') {
-          console.log('⚠️ Plan is array of strings, converting to objects');
-          // Convert string array to proper object format
-          state.plan = state.plan.map((title, index) => ({
-            id: `m${index + 1}`,
-            title: title,
-            description: `Learn ${title.toLowerCase()}`,
-            status: index === 0 ? 'in_progress' : 'locked',
-            milestones: [`Understand ${title.toLowerCase()}`, `Practice ${title.toLowerCase()}`, `Apply ${title.toLowerCase()}`]
-          }));
-          // Set currentModuleId to first module
-          state.currentModuleId = 'm1';
-          // Set phase to learning if it was planning
-          if (state.phase === 'planning') {
-            state.phase = 'learning';
-          }
-        }
-        
-        // Validate plan completeness
-        if (state.plan.length < 3) {
-          console.log('⚠️ Plan has <3 modules, will need extension');
-          return { ...state, needsPlanExtension: true };
-        }
-        
-        // Check if all modules have milestones
-        const incompleteModules = state.plan.filter(module => 
-          !module.milestones || module.milestones.length < 3
-        );
-        
-        if (incompleteModules.length > 0) {
-          console.log('⚠️ Some modules missing milestones, will need extension');
-          return { ...state, needsPlanExtension: true };
-        }
-        
-        return state;
+    // Validate required fields
+    if (!state.topic || !state.phase || !Array.isArray(state.plan) || !state.nextAction) {
+      console.log('⚠️ State missing required fields:', { 
+        hasTopic: !!state.topic, 
+        hasPhase: !!state.phase, 
+        hasPlan: Array.isArray(state.plan), 
+        hasNextAction: !!state.nextAction 
+      });
+      return null;
+    }
+    
+    // Check if plan is array of strings instead of objects (auto-fix)
+    if (state.plan.length > 0 && typeof state.plan[0] === 'string') {
+      console.log('⚠️ Plan is array of strings, converting to objects');
+      state.plan = state.plan.map((title, index) => ({
+        id: `m${index + 1}`,
+        title: title,
+        description: `Learn ${title.toLowerCase()}`,
+        status: index === 0 ? 'in_progress' : 'locked',
+        milestones: [`Understand ${title.toLowerCase()}`, `Practice ${title.toLowerCase()}`, `Apply ${title.toLowerCase()}`],
+        completedMilestones: []
+      }));
+      state.currentModuleId = 'm1';
+      if (state.phase === 'planning') {
+        state.phase = 'learning';
       }
     }
-    return null;
+    
+    // Validate plan completeness
+    if (state.plan.length > 0 && state.plan.length < 3) {
+      console.log('⚠️ Plan has <3 modules, will need extension');
+      return { ...state, needsPlanExtension: true };
+    }
+    
+    // Check if all modules have milestones
+    const incompleteModules = state.plan.filter(module => 
+      !module.milestones || module.milestones.length < 3
+    );
+    
+    if (incompleteModules.length > 0) {
+      console.log('⚠️ Some modules missing milestones, will need extension');
+      return { ...state, needsPlanExtension: true };
+    }
+    
+    // Ensure completedMilestones array exists in all modules
+    state.plan = state.plan.map(module => ({
+      ...module,
+      completedMilestones: module.completedMilestones || []
+    }));
+    
+    return state;
   } catch (error) {
     console.log('⚠️ Failed to parse STATE JSON:', error.message);
     return null;
   }
 };
 
-// Strip state block from response text
+// Strip state block from response text (remove both ```state and ```json blocks)
 const stripStateFromResponse = (response) => {
-  return response.replace(/```state\s*[\s\S]*?\s*```/g, '').trim();
+  // Use the enhanced extraction function to get clean visible text
+  const { visible } = stripAndParseState(response);
+  return visible;
 };
 
 // SRL Helper Functions
@@ -152,18 +174,37 @@ const updateSessionWithState = async (sessionId, state) => {
       modulePct: state.progress?.modulePct || calculatedProgress.modulePct
     };
 
-    // Update module statuses based on plan
+    // Update module statuses and completedMilestones based on plan
     if (state.plan) {
       for (const module of state.plan) {
         const existingModule = session.plan.find(m => m.id === module.id);
+        
+        // Track status changes
         if (existingModule && existingModule.status !== module.status) {
-          // Add to stage history
           session.stageHistory.push({
             moduleId: module.id,
             fromStatus: existingModule.status,
             toStatus: module.status,
             at: new Date()
           });
+        }
+        
+        // Ensure completedMilestones array exists
+        if (!module.completedMilestones) {
+          module.completedMilestones = [];
+        }
+      }
+      
+      // Auto-complete module when all milestones done
+      const currentModule = state.plan.find(m => m.id === state.currentModuleId);
+      if (currentModule && currentModule.status === 'in_progress') {
+        const totalMilestones = currentModule.milestones?.length || 0;
+        const completed = currentModule.completedMilestones?.length || 0;
+        
+        // If all milestones complete, mark module as ready for quiz
+        if (totalMilestones > 0 && completed >= totalMilestones) {
+          console.log(`✅ Module ${currentModule.id} milestones complete (${completed}/${totalMilestones})`);
+          updates.progress.modulePct = 100;
         }
       }
     }
@@ -182,6 +223,88 @@ const updateSessionWithState = async (sessionId, state) => {
     console.error('Error updating session with state:', error);
     return null;
   }
+};
+
+// Token estimation helper (rough: 1 token ≈ 4 chars)
+const estimateTokens = (text) => {
+  return Math.ceil(text.length / 4);
+};
+
+// Generate conversation summary for token efficiency
+const generateConversationSummary = async (groq, history, session) => {
+  try {
+    const conversationText = history.slice(-10).map(msg => 
+      `${msg.isUser ? 'User' : 'Assistant'}: ${msg.message}`
+    ).join('\n');
+    
+    const summaryPrompt = `Summarize this learning conversation in ≤100 words. Include: topic, user's goal, prior knowledge, learning style, progress (modules/milestones completed), and any quiz results.
+
+${conversationText}
+
+Summary (≤100 words):`;
+
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.1-70b-versatile',
+      messages: [
+        { role: 'system', content: 'You are a concise conversation summarizer. Return only the summary, no preamble.' },
+        { role: 'user', content: summaryPrompt }
+      ],
+      max_tokens: 150,
+      temperature: 0.3
+    });
+
+    const summary = response.choices[0].message.content.trim();
+    console.log('✅ Generated conversation summary:', summary.substring(0, 80) + '...');
+    
+    // Update session with summary
+    await StudySession.findByIdAndUpdate(session._id, {
+      conversation_summary: summary,
+      lastSummaryUpdate: new Date()
+    });
+    
+    return summary;
+  } catch (error) {
+    console.error('❌ Summary generation failed:', error.message);
+    return session.conversation_summary || '';
+  }
+};
+
+// Adaptive max_tokens based on phase
+const getMaxTokensForPhase = (phase) => {
+  switch (phase) {
+    case 'assessment':
+      return 400; // Increased to allow plan generation with state block
+    case 'planning':
+      return 600; // Increased to ensure state block has space
+    case 'learning':
+      return 600; // Allow rich, structured teaching
+    case 'quiz':
+      return 180;
+    case 'feedback':
+      return 200;
+    default:
+      return 400;
+  }
+};
+
+// Exponential backoff retry for rate limits
+const retryWithBackoff = async (fn, maxRetries = 3) => {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (error.status === 429 && attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 250; // 250ms, 500ms, 1s
+        console.log(`⏳ Rate limited, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
 };
 
 
@@ -298,44 +421,72 @@ app.post('/chat', async (req, res) => {
       return res.status(500).json({ error: 'Database error. Please try again.' });
     }
 
-    // Load chat history
-    let history;
+    // Load chat history with windowing
+    let allHistory;
     try {
-      history = await ChatLog.find({ sessionId: session._id })
-        .sort({ timestamp: 1 })
-        .limit(20); // Limit to prevent token overflow
-      console.log('✅ Loaded chat history:', history.length, 'messages');
+      allHistory = await ChatLog.find({ sessionId: session._id })
+        .sort({ timestamp: 1 });
+      console.log('✅ Loaded chat history:', allHistory.length, 'total messages');
     } catch (dbError) {
       console.error('❌ Database error loading history:', dbError);
       clearTimeout(timeout);
       return res.status(500).json({ error: 'Database error. Please try again.' });
     }
 
-    // Build messages for Groq with SRL system
+    // Conversation windowing: keep last 6-8 turns (12-16 messages)
+    const WINDOW_SIZE = 8; // turns (user+assistant pairs)
+    const recentHistory = allHistory.slice(-WINDOW_SIZE * 2);
+    
+    // Check if we need to generate/update summary
+    const shouldGenerateSummary = allHistory.length > 8 && (
+      !session.conversation_summary || 
+      !session.lastSummaryUpdate ||
+      (Date.now() - session.lastSummaryUpdate.getTime()) > 4 * 60 * 1000 // Update every 4 turns (~8 messages)
+    );
+    
+    if (shouldGenerateSummary) {
+      console.log('📝 Generating conversation summary for token efficiency...');
+      try {
+        const newSummary = await generateConversationSummary(groq, allHistory, session);
+        session.conversation_summary = newSummary;
+      } catch (summaryError) {
+        console.error('⚠️ Summary generation failed, continuing without:', summaryError.message);
+      }
+    }
+
+    // Build messages for Groq with SRL system (now includes conversation_summary)
     const systemPrompt = srlSystemPrompt(session, message);
     const messages = [{
       role: 'system',
       content: systemPrompt
     }];
 
-    // Add recent history
-    history.forEach(entry => {
+    // Add ONLY recent history (windowed)
+    recentHistory.forEach(entry => {
       messages.push({
         role: entry.isUser ? 'user' : 'assistant',
         content: entry.message
       });
     });
 
-    console.log('🤖 Calling Groq API...');
+    // Estimate tokens for logging
+    const estimatedPromptTokens = estimateTokens(JSON.stringify(messages));
+    console.log(`📊 Token estimate: ~${estimatedPromptTokens} prompt tokens (phase: ${currentPhase})`);
+
+    // Adaptive max_tokens based on phase
+    const maxTokens = getMaxTokensForPhase(currentPhase);
+    console.log(`🤖 Calling Groq API (max_tokens: ${maxTokens})...`);
     
-    // Call Groq with timeout handling
+    // Call Groq with timeout handling and retry logic
     let response;
     try {
-      response = await groq.chat.completions.create({
-        model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-        messages: messages,
-        max_tokens: 1000,
-        temperature: 0.7
+      response = await retryWithBackoff(async () => {
+        return await groq.chat.completions.create({
+          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          messages: messages,
+          max_tokens: maxTokens,
+          temperature: currentPhase === 'quiz' ? 0.5 : 0.7
+        });
       });
       console.log('✅ Groq API response received');
     } catch (groqError) {
@@ -357,16 +508,229 @@ app.post('/chat', async (req, res) => {
       }
     }
 
-    const fullResponse = response.choices[0].message.content.trim();
-    console.log('✅ Generated reply:', fullResponse.substring(0, 100) + '...');
+    let fullResponse = response.choices[0].message.content.trim();
+    const responseTokens = estimateTokens(fullResponse);
+    console.log(`✅ Generated reply (${responseTokens} tokens):`, fullResponse.substring(0, 100) + '...');
+
+    // Check for any incomplete code blocks (state, json, etc.)
+    const hasIncompleteCodeBlock = (fullResponse.includes('```state') || fullResponse.includes('```json')) && 
+                                  !fullResponse.match(/```(?:state|json)\s*[\s\S]*?\s*```/);
+    
+    if (hasIncompleteCodeBlock) {
+      console.log('⚠️ Code block incomplete, requesting completion...');
+      // Ask model to complete just the state block
+      try {
+        const incompleteStart = Math.max(
+          fullResponse.lastIndexOf('```state'),
+          fullResponse.lastIndexOf('```json')
+        );
+        
+        const completeStateResponse = await groq.chat.completions.create({
+          messages: [
+            { role: 'system', content: 'Complete the following JSON state block. Return ONLY the complete ```state block with valid JSON. Do not use ```json, use ```state.' },
+            { role: 'user', content: fullResponse.substring(incompleteStart) }
+          ],
+          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          max_tokens: 400,
+          temperature: 0.3
+        });
+        
+        const completedState = completeStateResponse.choices[0].message.content.trim();
+        // Replace incomplete block with completed one
+        fullResponse = fullResponse.substring(0, incompleteStart) + completedState;
+        console.log('✅ Code block completed');
+      } catch (completeError) {
+        console.error('❌ Failed to complete code block:', completeError.message);
+      }
+    }
+
+    // Streaming cutoff guard: if response exceeds 1000 tokens, truncate and set teach_continued
+    let wasTruncated = false;
+    if (responseTokens > 1000) {
+      console.log('⚠️ Response exceeds 1000 tokens, applying cutoff guard');
+      // Find a good breaking point (end of sentence or paragraph)
+      const words = fullResponse.split(' ');
+      const targetWords = Math.floor(words.length * 0.7); // Keep 70%
+      let truncated = words.slice(0, targetWords).join(' ');
+      
+      // Find last sentence end
+      const lastPeriod = truncated.lastIndexOf('.');
+      const lastQuestion = truncated.lastIndexOf('?');
+      const lastExclaim = truncated.lastIndexOf('!');
+      const lastSentence = Math.max(lastPeriod, lastQuestion, lastExclaim);
+      
+      if (lastSentence > truncated.length * 0.5) {
+        truncated = truncated.substring(0, lastSentence + 1);
+      }
+      
+      fullResponse = truncated + '\n\n_(More content available. Ask "continue" to see more.)_';
+      wasTruncated = true;
+    }
 
     // Parse and extract state from response
-    const state = parseStateFromResponse(fullResponse);
+    let state = parseStateFromResponse(fullResponse);
     const cleanResponse = stripStateFromResponse(fullResponse);
+    
+    // SAFEGUARD: If no state block found, reconstruct from session
+    if (!state) {
+      console.log('⚠️ No state block - reconstructing from session');
+      state = {
+        topic: session.topic || 'General Learning',
+        phase: session.phase || 'assessment',
+        plan: session.plan || [],
+        currentModuleId: session.currentModuleId || null,
+        progress: session.progress || { overallPct: 0, modulePct: 0 },
+        nextAction: 'ask'
+      };
+      
+      // FORCE PLAN GENERATION: If we have topic but no plan, generate one
+      if (state.topic && state.topic !== 'General Learning' && state.plan.length === 0 && state.phase === 'assessment') {
+        console.log('🚀 Forcing plan generation for topic:', state.topic);
+        
+        // Generate a basic plan based on topic
+        const topicPlans = {
+          'JavaScript': [
+            { id: 'm1', title: 'JavaScript Basics', description: 'Variables, data types, functions, and control structures', status: 'in_progress', milestones: ['Install Node.js', 'Write first program', 'Understand variables', 'Practice functions'] },
+            { id: 'm2', title: 'Front-end Development', description: 'DOM manipulation, events, and front-end frameworks', status: 'locked', milestones: ['DOM basics', 'Event handling', 'Build simple app'] },
+            { id: 'm3', title: 'Back-end Development', description: 'Node.js, Express, and server-side JavaScript', status: 'locked', milestones: ['Node.js basics', 'Express setup', 'Build API'] },
+            { id: 'm4', title: 'Advanced Topics', description: 'Async programming, error handling, and security', status: 'locked', milestones: ['Promises/async', 'Error handling', 'Security basics'] }
+          ],
+          'Java': [
+            { id: 'm1', title: 'Java Basics', description: 'Variables, data types, classes, and basic programming', status: 'in_progress', milestones: ['Install Java', 'Write Hello World', 'Understand classes', 'Practice OOP'] },
+            { id: 'm2', title: 'Object-Oriented Programming', description: 'Inheritance, polymorphism, and design patterns', status: 'locked', milestones: ['Inheritance', 'Polymorphism', 'Design patterns'] },
+            { id: 'm3', title: 'Web Development', description: 'Spring framework, REST APIs, and web applications', status: 'locked', milestones: ['Spring basics', 'REST APIs', 'Build web app'] }
+          ],
+          'Python': [
+            { id: 'm1', title: 'Python Basics', description: 'Variables, data types, functions, and control structures', status: 'in_progress', milestones: ['Install Python', 'Write first program', 'Understand data types', 'Practice functions'] },
+            { id: 'm2', title: 'Data Structures', description: 'Lists, dictionaries, sets, and algorithms', status: 'locked', milestones: ['Lists/dicts', 'Algorithms', 'Data analysis'] },
+            { id: 'm3', title: 'Libraries & Frameworks', description: 'NumPy, Pandas, Flask/Django', status: 'locked', milestones: ['NumPy/Pandas', 'Web frameworks', 'Build project'] }
+          ]
+        };
+        
+        const plan = topicPlans[state.topic] || topicPlans['JavaScript'];
+        state.plan = plan;
+        state.phase = 'planning';
+        state.nextAction = 'confirm_plan';
+        state.currentModuleId = 'm1';
+        
+        console.log('✅ Generated plan for', state.topic, ':', plan.length, 'modules');
+      } else {
+        // Infer nextAction from context
+        if (state.phase === 'assessment' && state.plan.length === 0) {
+          state.nextAction = 'ask';
+        } else if (state.phase === 'planning' || (state.plan.length > 0 && state.phase === 'assessment')) {
+          state.nextAction = 'confirm_plan';
+          state.phase = 'planning';
+        } else if (state.phase === 'learning') {
+          state.nextAction = 'teach';
+        } else if (state.phase === 'quiz') {
+          state.nextAction = 'submit_quiz';
+        }
+      }
+      
+      console.log('✅ Reconstructed state:', state);
+    }
+    
+    // Confirmation detection: collapse double-confirm flows
+    if (session.phase === 'plan_proposed' && message.match(/\b(start|ok|okay|sounds good|yes|go ahead|begin|move|proceed|confirm|sounds good)\b/i)) {
+      console.log('🔄 Detected confirmation - forcing transition to learning');
+      if (state && state.plan && state.plan.length > 0) {
+        state.phase = 'learning';
+        state.currentModuleId = 'm1';
+        state.plan[0].status = 'in_progress';
+        state.nextAction = 'teach';
+        // Bump progress slightly
+        if (state.progress) {
+          state.progress.modulePct = Math.max(state.progress.modulePct || 0, 5);
+        }
+      }
+    }
+    
+    // Milestone auto-tick heuristics
+    if (state && state.phase === 'learning' && state.currentModuleId && state.plan) {
+      const currentModule = state.plan.find(m => m.id === state.currentModuleId);
+      if (currentModule && currentModule.milestones) {
+        const completedMilestones = currentModule.completedMilestones || [];
+        const nextMilestoneIdx = completedMilestones.length;
+        const nextMilestone = currentModule.milestones[nextMilestoneIdx];
+        
+        if (nextMilestone && !completedMilestones.includes(nextMilestoneIdx)) {
+          // Check for milestone completion patterns
+          const userText = message.toLowerCase();
+          const assistantText = cleanResponse.toLowerCase();
+          
+          // Generic completion patterns
+          const completionPatterns = [
+            /(done|completed|finished|accomplished)/i,
+            /(installed|setup|configured)/i,
+            /(running|executed|ran)/i,
+            /(created|built|made)/i,
+            /(understood|learned|got it)/i
+          ];
+          
+          // Specific milestone patterns
+          if (nextMilestone.toLowerCase().includes('install') && 
+              (userText.match(/(installed|brew install|setup|pip|python --version|npm install|yarn install)/i))) {
+            completedMilestones.push(nextMilestoneIdx);
+            console.log('✅ Auto-ticked milestone:', nextMilestone);
+          } else if (nextMilestone.toLowerCase().includes('program') && 
+                     userText.match(/(print|console|output|result)/i)) {
+            completedMilestones.push(nextMilestoneIdx);
+            console.log('✅ Auto-ticked milestone:', nextMilestone);
+          } else if (completionPatterns.some(pattern => userText.match(pattern))) {
+            completedMilestones.push(nextMilestoneIdx);
+            console.log('✅ Auto-ticked milestone:', nextMilestone);
+          }
+          
+          // Update progress
+          const modulePct = Math.round((completedMilestones.length / currentModule.milestones.length) * 100);
+          state.progress = state.progress || {};
+          state.progress.modulePct = modulePct;
+          
+          // Check if module is complete
+          if (completedMilestones.length === currentModule.milestones.length) {
+            currentModule.status = 'complete';
+            state.nextAction = 'start_quiz';
+            console.log('✅ Module complete, ready for quiz');
+          }
+        }
+      }
+    }
+    
+    // If truncated, update nextAction to teach_continued
+    if (wasTruncated && state) {
+      state.nextAction = 'teach_continued';
+      console.log('✅ Set nextAction to teach_continued due to truncation');
+    }
 
     // Update session with state if valid
     if (state) {
       console.log('✅ Parsed state:', state);
+      
+      // Check if plan is being locked (transitioning from planning to learning)
+      if (state.phase === 'learning' && session.phase === 'planning') {
+        console.log('🔒 Locking plan - transitioning to learning phase');
+        state.planLocked = true;
+      }
+      
+      // Prevent plan changes during learning if plan is locked
+      if (session.planLocked && state.phase === 'learning') {
+        console.log('🔒 Plan is locked - preserving original plan structure');
+        // Keep original plan structure but allow progress updates
+        const originalPlan = session.plan;
+        state.plan = originalPlan.map(origModule => {
+          const updatedModule = state.plan.find(m => m.id === origModule.id);
+          if (updatedModule) {
+            // Allow progress updates (completedMilestones, status) but not structure changes
+            return {
+              ...origModule, // Keep original structure
+              status: updatedModule.status,
+              completedMilestones: updatedModule.completedMilestones || origModule.completedMilestones
+            };
+          }
+          return origModule;
+        });
+      }
       
       // Check if plan needs extension
       if (state.needsPlanExtension) {
@@ -527,11 +891,12 @@ app.get('/session/state', async (req, res) => {
 
     const state = {
       topic: session.topic || 'General Learning',
-      phase: determinePhase(session),
+      phase: session.phase || 'assessment',
       plan: session.plan || [],
       currentModuleId: session.currentModuleId || null,
       progress: session.progress || { overallPct: 0, modulePct: 0 },
-      nextAction: 'ask' // Default action
+      nextAction: 'ask', // Default action
+      planLocked: session.planLocked || false
     };
 
     res.json(state);
@@ -624,11 +989,19 @@ app.post('/quiz/submit', async (req, res) => {
         nextModule.status = 'in_progress';
         session.currentModuleId = nextModule.id;
         session.progress.modulePct = 0;
+        session.phase = 'learning'; // Return to learning phase
+      } else {
+        // All modules complete
+        session.phase = 'complete';
+        session.progress.overallPct = 100;
       }
 
       // Update overall progress
       const completedModules = session.plan.filter(m => m.status === 'complete').length;
       session.progress.overallPct = Math.round((completedModules / session.plan.length) * 100);
+    } else {
+      // Quiz failed - go to feedback phase
+      session.phase = 'feedback';
     }
 
     await session.save();
@@ -1315,138 +1688,8 @@ app.post('/assessment/recheck', async (req, res) => {
   }
 });
 
-// POST /quiz/start - Start a quiz for current stage
-app.post('/quiz/start', async (req, res) => {
-  try {
-    const { sessionId, stage } = req.body;
-
-    if (!sessionId) {
-      return res.status(400).json({ error: 'Session ID is required' });
-    }
-
-    const session = await StudySession.findById(sessionId);
-    if (!session) {
-      return res.status(404).json({ error: 'Session not found' });
-    }
-
-    const currentStage = stage || session.currentStage;
-
-    // Generate quiz questions using existing quiz generator
-    const quizData = await generateQuiz('General Learning', currentStage, []);
-    
-    // Transform quiz data to match our schema
-    const transformedQuestions = quizData.questions.map((q, index) => ({
-      question: q.question,
-      type: 'mcq',
-      options: q.options,
-      correctAnswer: q.options[q.correctAnswer] || q.options[0], // Convert index to actual answer
-      points: 1
-    }));
-    
-    console.log('Transformed questions:', transformedQuestions);
-    
-    // Create quiz in database
-    const quiz = new Quiz({
-      sessionId: session._id,
-      stage: currentStage,
-      questions: transformedQuestions
-    });
-    console.log('Creating quiz:', quiz);
-    try {
-      await quiz.save();
-      console.log('Quiz saved with ID:', quiz._id);
-    } catch (saveError) {
-      console.error('Quiz save error:', saveError);
-      throw saveError;
-    }
-
-    // Update session with pending quiz
-    session.pendingQuizId = quiz._id;
-    await session.save();
-
-    res.json({
-      quizId: quiz._id.toString(),
-      questions: quiz.questions
-    });
-
-  } catch (error) {
-    console.error('Quiz start error:', error);
-    res.status(500).json({ error: 'Failed to start quiz' });
-  }
-});
 
 // POST /quiz/submit - Submit quiz answers
-app.post('/quiz/submit', async (req, res) => {
-  try {
-    const { sessionId, quizId, answers } = req.body;
-
-    if (!sessionId || !quizId || !answers) {
-      return res.status(400).json({ error: 'Session ID, quiz ID, and answers are required' });
-    }
-
-    console.log('Looking for quiz with ID:', quizId);
-    const quiz = await Quiz.findById(quizId);
-    console.log('Found quiz:', quiz);
-    if (!quiz) {
-      return res.status(404).json({ error: 'Quiz not found' });
-    }
-
-    // Grade answers
-    let totalPoints = 0;
-    let earnedPoints = 0;
-    const feedback = [];
-
-    quiz.questions.forEach((question, index) => {
-      totalPoints += question.points;
-      const userAnswer = answers[index]?.answer || answers[index] || '';
-      const isCorrect = userAnswer && userAnswer.toLowerCase().trim() === question.correctAnswer.toLowerCase().trim();
-      
-      if (isCorrect) {
-        earnedPoints += question.points;
-        feedback.push(`Question ${index + 1}: Correct!`);
-      } else {
-        feedback.push(`Question ${index + 1}: Incorrect. The correct answer is: ${question.correctAnswer}`);
-      }
-
-      quiz.answers.push({
-        questionIndex: index,
-        answer: userAnswer || '',
-        isCorrect,
-        points: isCorrect ? question.points : 0
-      });
-    });
-
-    const scorePct = totalPoints > 0 ? (earnedPoints / totalPoints) * 100 : 0;
-    const passed = scorePct >= 80; // 80% threshold
-
-    quiz.score = scorePct;
-    quiz.passed = passed;
-    quiz.completedAt = new Date();
-    await quiz.save();
-
-    // Update session
-    const session = await StudySession.findById(sessionId);
-    if (session) {
-      session.pendingQuizId = null;
-      if (passed) {
-        session.eligibleForQuiz = false; // Reset for next stage
-      }
-      await session.save();
-    }
-
-    res.json({
-      scorePct: Math.round(scorePct),
-      passed,
-      feedback
-    });
-
-  } catch (error) {
-    console.error('Quiz submit error:', error);
-    console.error('Error details:', error.message);
-    console.error('Stack trace:', error.stack);
-    res.status(500).json({ error: 'Failed to submit quiz', details: error.message });
-  }
-});
 
 // POST /stage/promote - Promote to next stage after passing quiz
 app.post('/stage/promote', async (req, res) => {

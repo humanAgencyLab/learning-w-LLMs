@@ -45,8 +45,29 @@ const StudySessionSchema = new mongoose.Schema({
     },
     milestones: [{
       type: String
+    }],
+    completedMilestones: [{
+      type: Number
     }]
   }],
+  
+  // Conversation Summary for Token Efficiency
+  conversation_summary: {
+    type: String,
+    required: false,
+    default: ''
+  },
+  lastSummaryUpdate: {
+    type: Date,
+    required: false
+  },
+  
+  // Plan Locking - Once confirmed, plan cannot be changed during learning
+  planLocked: {
+    type: Boolean,
+    required: false,
+    default: false
+  },
   
   // Current State
   currentModuleId: {
