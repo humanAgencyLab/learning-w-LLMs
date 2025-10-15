@@ -50,7 +50,8 @@ function ChatInterface() {
     plan: [],
     currentModuleId: null,
     progress: { overallPct: 0, modulePct: 0 },
-    nextAction: 'ask'
+    nextAction: 'ask',
+    planLocked: false
   });
 
   // Fetch SRL state from backend
@@ -79,6 +80,12 @@ function ChatInterface() {
           inputElement.focus();
         }
         break;
+      case 'confirm_plan':
+        // Send confirmation message
+        if (sessionId) {
+          handleNonStreamingSubmit('Sounds good, let\'s start!');
+        }
+        break;
       case 'start_quiz':
         setQuizModalOpen(true);
         break;
@@ -93,9 +100,9 @@ function ChatInterface() {
     }
   };
 
-  // Strip state blocks from assistant messages
+  // Strip state blocks from assistant messages (handle both ```state and ```json)
   const stripStateFromMessage = (message) => {
-    return message.replace(/```state\s*[\s\S]*?\s*```/g, '').trim();
+    return message.replace(/```(?:state|json)\s*[\s\S]*?\s*```/g, '').trim();
   };
   
   // Stage assessment system
@@ -824,6 +831,7 @@ function ChatInterface() {
         progress={srlState.progress}
         nextAction={srlState.nextAction}
         onNextAction={handleNextAction}
+        planLocked={srlState.planLocked}
       />
     </MainLayout>
   );

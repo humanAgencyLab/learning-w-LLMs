@@ -71,7 +71,14 @@ MINIMAL REQUIRED STATE SCHEMA (EXACTLY these fields, NO EXTRAS):
   ],
   "currentModuleId": "mX|null",
   "progress": { "overallPct": 0, "modulePct": 0 },
-  "nextAction": "ask|teach|mini_exercise|start_quiz|submit_quiz|review"
+  "nextAction": "ask|teach|mini_exercise|start_quiz|submit_quiz|review",
+  "gamificationData": {
+    "xpAwarded": 0,
+    "gemsAwarded": 0,
+    "pointsAwarded": 0,
+    "reason": "string",
+    "trophyUnlocked": "string|null"
+  }
 }
 
 DO NOT ADD: objectives, resources, assessment, quizzes, or ANY other fields.

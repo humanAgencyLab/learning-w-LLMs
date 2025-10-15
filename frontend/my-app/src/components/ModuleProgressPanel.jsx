@@ -8,13 +8,16 @@ const ModuleProgressPanel = ({
   currentModuleId, 
   progress, 
   nextAction, 
-  onNextAction 
+  onNextAction,
+  planLocked = false
 }) => {
   const currentModule = plan.find(m => m.id === currentModuleId);
   
   const getPhaseBadgeClass = (phase) => {
     switch (phase) {
       case 'assessment': return 'phase-badge assessment';
+      case 'plan_proposed': return 'phase-badge planning';
+      case 'planning': return 'phase-badge planning';
       case 'learning': return 'phase-badge learning';
       case 'quiz': return 'phase-badge quiz';
       case 'feedback': return 'phase-badge feedback';
@@ -34,7 +37,9 @@ const ModuleProgressPanel = ({
   const getNextActionText = (nextAction) => {
     switch (nextAction) {
       case 'ask': return 'Ask Question';
+      case 'confirm_plan': return 'Confirm Plan';
       case 'teach': return 'Continue Learning';
+      case 'teach_continued': return 'Continue Reading';
       case 'mini_exercise': return 'Try Exercise';
       case 'start_quiz': return 'Start Quiz';
       case 'submit_quiz': return 'Submit Quiz';
@@ -48,8 +53,15 @@ const ModuleProgressPanel = ({
       {/* Header */}
       <div className="panel-header">
         <h3 className="topic-title">{topic || 'Learning Session'}</h3>
-        <div className={getPhaseBadgeClass(phase)}>
-          {phase?.toUpperCase() || 'ASSESSMENT'}
+        <div className="header-right">
+          <div className={getPhaseBadgeClass(phase)}>
+            {phase?.toUpperCase() || 'ASSESSMENT'}
+          </div>
+          {planLocked && (
+            <div className="plan-locked-badge" title="Plan is locked - cannot be modified during learning">
+              🔒
+            </div>
+          )}
         </div>
       </div>
 
