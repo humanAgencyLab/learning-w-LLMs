@@ -1,16 +1,19 @@
-/* ChatInterface Grid Layout - Exact Figma Match */
-
-.chat-interface-grid {
-  display: grid;
-  grid-template-columns: 252px 1fr 360px; /* Figma: 252px sidebar + flexible center + 360px right panel */
-  grid-template-areas: 
-    "left-sidebar center-area right-panel";
-  height: calc(100vh - 60px); /* Account for header */
-  background: #f7f8f8; /* Figma: neutral/50 background */
+/* Two-Column Layout (Sidebar + Center) */
+.chat-interface-two-column {
+  display: flex;
+  min-height: 100vh;
+  background: #F7F8F8;
   position: relative;
-  gap: 0;
-  max-width: 1440px; /* Figma: max width */
-  margin: 0 auto;
+}
+
+/* Center takes full width (minus sidebar) */
+.chat-center-full-width {
+  flex: 1;
+  margin-left: 252px; /* Sidebar width */
+  padding: 24px 64px;
+  max-width: 1200px;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Left Gamification Panel */
@@ -32,15 +35,15 @@
   max-width: 1188px; /* Figma: center area width */
 }
 
-/* Messages Area - Exact Figma Spacing */
+/* Messages Area */
 .messages-area {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 14px 64px 0 64px; /* Figma: pt-[14px] px-[64px] */
+  gap: 24px;
   overflow-y: auto;
-  gap: 32px; /* Figma: gap-[32px] */
-  height: 877px; /* Figma: h-[877px] */
+  padding: 20px 0;
+  max-height: calc(100vh - 250px);
 }
 
 /* Custom Scrollbar for Messages */
@@ -99,32 +102,24 @@
   }
 }
 
-/* Chat Input Container - Exact Figma Dimensions */
+/* Input Container (when messages exist) */
 .chat-input-container {
   display: flex;
+  gap: 12px;
+  padding: 16px 20px;
+  background: white;
+  border: 2px solid #E5E7EB;
+  border-radius: 16px;
   align-items: center;
-  gap: 8px; /* Figma: gap-[8px] */
-  padding: 16px 64px 24px 64px; /* Figma: pb-[24px] */
-  background: transparent;
-  width: 100%;
-  max-width: 700px; /* Figma: w-[700px] */
-  margin: 0 auto;
+  margin-top: 16px;
 }
 
 .chat-input {
   flex: 1;
-  padding: 12px 16px; /* Figma: px-[16px] py-[12px] */
-  border: 2px solid #4e81ee; /* Figma: border-[#4e81ee] - blue border when active */
-  border-radius: 24px; /* Figma: rounded-[24px] */
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 18px; /* Figma: text-[18px] */
-  font-weight: 400;
-  line-height: 28px; /* Figma: leading-[28px] */
-  color: #aeb1b6; /* Figma: text-[#aeb1b6] - placeholder color */
-  background: #ffffff;
+  border: none;
   outline: none;
-  transition: all 0.2s ease;
-  width: 100%;
+  font-size: 15px;
+  background: transparent;
 }
 
 .chat-input:focus {
@@ -142,21 +137,12 @@
 }
 
 .model-selector-inline {
-  padding: 0; /* Figma: no padding, just content */
-  border: none;
-  border-radius: 4px; /* Figma: rounded-[4px] */
-  background: transparent;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 16px; /* Figma: text-[16px] */
-  font-weight: 400;
-  line-height: 21px; /* Figma: leading-[21px] */
-  color: #424855; /* Figma: text-[#424855] */
+  padding: 8px 12px;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #F9FAFB;
   cursor: pointer;
-  outline: none;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 4px; /* Figma: gap-[4px] */
 }
 
 .model-selector-inline:hover {
@@ -169,19 +155,16 @@
 }
 
 .send-btn-inline {
-  width: 48px; /* Figma: size-[24px] * 2 for padding */
-  height: 48px; /* Figma: size-[24px] * 2 for padding */
-  background: #4e81ee; /* Figma: bg-[#4e81ee] */
+  width: 42px;
+  height: 42px;
+  background: #4F6FF4;
   border: none;
-  border-radius: 50%; /* Figma: rounded-[50px] */
-  color: #ffffff;
+  border-radius: 10px;
+  color: white;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-  padding: 12px; /* Figma: p-[12px] */
 }
 
 .send-btn-inline:hover:not(:disabled) {
@@ -239,106 +222,11 @@
   color: #1e40af;
 }
 
-/* Responsive Design - Exact Breakpoints */
-@media (max-width: 1200px) {
-  /* Desktop (>1200px): Full 3-column layout */
-  .chat-interface-grid {
-    max-width: 100%;
-  }
-}
-
-@media (max-width: 1199px) and (min-width: 768px) {
-  /* Tablet (768-1200px): Hide left card, 2 columns */
-  .chat-interface-grid {
-    grid-template-columns: 1fr 360px; /* Hide left sidebar */
-    grid-template-areas: 
-      "center-area right-panel";
-  }
-  
-  .messages-area {
-    padding: 14px 32px 0 32px;
-    height: auto;
-    min-height: 600px;
-  }
-  
-  .chat-input-container {
-    padding: 16px 32px 24px 32px;
-    max-width: 100%;
-  }
-}
-
-@media (max-width: 767px) {
-  /* Mobile (<768px): Single column, panels as drawers */
-  .chat-interface-grid {
-    grid-template-columns: 1fr;
-    grid-template-areas: 
-      "center-area";
-    height: calc(100vh - 60px);
-    max-width: 100%;
-  }
-  
-  .messages-area {
-    padding: 14px 20px 0 20px;
-    gap: 24px;
-    height: auto;
-    min-height: 500px;
-  }
-  
-  .chat-input-container {
-    padding: 16px 20px 20px 20px;
-    gap: 8px;
-    max-width: 100%;
-  }
-  
-  .chat-input {
-    padding: 12px 16px;
-    font-size: 16px;
-    line-height: 24px;
-  }
-  
-  .model-selector-inline {
-    font-size: 14px;
-    gap: 2px;
-  }
-  
-  .send-btn-inline {
-    width: 44px;
-    height: 44px;
-    padding: 10px;
-  }
-}
-
-@media (max-width: 480px) {
-  .messages-area {
-    padding: 12px 16px 0 16px;
-    gap: 20px;
-  }
-  
-  .chat-input-container {
-    padding: 12px 16px 16px 16px;
-    flex-direction: column;
-    gap: 12px;
-  }
-  
-  .chat-input {
-    padding: 12px 16px;
-    font-size: 16px;
-    line-height: 24px;
-  }
-  
-  .model-selector-inline {
-    width: 100%;
-    justify-content: center;
-    padding: 8px;
-    border: 1px solid #e6e7e8;
-    border-radius: 8px;
-    background: #ffffff;
-  }
-  
-  .send-btn-inline {
-    width: 100%;
-    height: 48px;
-    border-radius: 12px;
+/* Responsive */
+@media (max-width: 768px) {
+  .chat-center-full-width {
+    margin-left: 0;
+    padding: 16px;
   }
 }
 

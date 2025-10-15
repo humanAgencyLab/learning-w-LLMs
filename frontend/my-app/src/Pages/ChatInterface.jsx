@@ -12,8 +12,7 @@ import { summarizeSession } from '../lib/summaryApi';
 // import QuizPanel from '../components/QuizPanel';
 
 // New UI components
-import LeftGamificationCard from '../components/panels/LeftGamificationCard';
-import RightProgressPanel from '../components/panels/RightProgressPanel';
+import LeftProgressPanel from '../components/panels/LeftProgressPanel';
 import TopSessionBanner from '../components/chat/TopSessionBanner';
 import EmptyStateWithCategories from '../components/chat/EmptyStateWithCategories';
 import ModernChatMessage from '../components/chat/ModernChatMessage';
@@ -645,26 +644,28 @@ function ChatInterface() {
 
   return (
     <MainLayout>
-      <div className="chat-interface-grid">
-        {/* Left Gamification Card */}
-        {srlState.phase === 'learning' && srlState.progress && (
-          <LeftGamificationCard
-            progress={srlState.progress.overallPct}
-            courseName={srlState.topic}
-            level={{ current: 8, total: 10 }}
-            showTrophy={srlState.progress.overallPct >= 80}
-          />
-        )}
+      <div className="chat-interface-two-column">
+        {/* Left Progress Panel (Enhanced) - Replaces LeftGamificationCard */}
+        <LeftProgressPanel
+          srlState={srlState}
+          gamification={{
+            points: 450,
+            gems: 12,
+            trophy: (srlState.progress?.overallPct || 0) >= 80
+          }}
+        />
         
-        {/* Center Chat Area */}
-        <div className="chat-center-wrapper">
-          {/* Top Banner */}
-          <TopSessionBanner 
-            category={selectedCategory}
-            topic={srlState.topic}
-          />
+        {/* Center Chat Area - Full Width */}
+        <div className="chat-center-full-width">
+          {/* Top Session Banner */}
+          {srlState.topic && (
+            <TopSessionBanner 
+              category={selectedCategory}
+              topic={srlState.topic}
+            />
+          )}
           
-          {/* Messages or Empty State */}
+          {/* Messages Area */}
           <div className="messages-area">
             {messages.length === 0 ? (
               <EmptyStateWithCategories
@@ -695,7 +696,7 @@ function ChatInterface() {
             )}
           </div>
           
-          {/* Input Area (when messages exist) */}
+          {/* Input Area - Show when messages exist */}
           {messages.length > 0 && (
             <div className="chat-input-container">
               <input
@@ -723,12 +724,6 @@ function ChatInterface() {
             </div>
           )}
         </div>
-        
-        {/* Right Progress Panel */}
-        <RightProgressPanel
-          srlState={srlState}
-          onNextAction={handleNextAction}
-        />
         
         {/* Toast notifications */}
         {toast && (
