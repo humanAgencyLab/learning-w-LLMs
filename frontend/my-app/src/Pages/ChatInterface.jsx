@@ -1,22 +1,12 @@
 import React, {useState, useEffect} from 'react';
-import '../styles/ChatInterface.css';
 import MainLayout from '../layouts/MainLayout';
 import { sendMessage } from '../lib/api';
 import { summarizeSession } from '../lib/summaryApi';
-// sendMessageStream removed - not used in current implementation
-// Legacy components - keeping for future use
-// import SessionSidebar from '../components/SessionSidebar';
-// import NotesPanel from '../components/NotesPanel';
-// import QuizModal from '../components/QuizModal';
-// import ModuleProgressPanel from '../components/ModuleProgressPanel';
-// import QuizPanel from '../components/QuizPanel';
-
-// New UI components
-import LeftProgressPanel from '../components/panels/LeftProgressPanel';
-import TopSessionBanner from '../components/chat/TopSessionBanner';
-import EmptyStateWithCategories from '../components/chat/EmptyStateWithCategories';
-import ModernChatMessage from '../components/chat/ModernChatMessage';
-import '../styles/ChatInterface.css';
+import LeftProfilePanel from '../components/panels/LeftProfilePanel';
+import RightStudyPanel from '../components/panels/RightStudyPanel';
+import PlanProgressSheet from '../components/sheets/PlanProgressSheet';
+import ChatStream from '../components/chat/ChatStream';
+import Composer from '../components/chat/Composer';
 import { assessStage as newAssessStage, recheckAssessment, startQuiz as newStartQuiz, submitQuiz as newSubmitQuiz, promoteStage } from '../lib/stageApi';
 // Legacy structured learning API - keeping for future use
 // import { 
@@ -642,96 +632,94 @@ function ChatInterface() {
     }
   }, [sessionId]);
 
+  // Map existing state to the new component props
+  const modules = srlState?.plan?.modules ?? srlState?.plan ?? [];
+  const topic = srlState?.topic ?? '—';
+  const overallProgressPct = srlState?.progress?.overallPct ?? 0;
+
+  // Mock completeMilestone function (replace with actual API call)
+  const completeMilestone = (sessionId, moduleId, milestoneId) => {
+    console.log('Complete milestone:', { sessionId, moduleId, milestoneId });
+    // TODO: Implement actual API call to POST /milestone/complete
+  };
+
   return (
     <MainLayout>
-      <div className="chat-interface-two-column">
-        {/* Left Progress Panel (Enhanced) - Replaces LeftGamificationCard */}
-        <LeftProgressPanel
-          srlState={srlState}
-          gamification={{
-            points: 450,
-            gems: 12,
-            trophy: (srlState.progress?.overallPct || 0) >= 80
-          }}
-        />
-        
-        {/* Center Chat Area - Full Width */}
-        <div className="chat-center-full-width">
-          {/* Top Session Banner */}
-          {srlState.topic && (
-            <TopSessionBanner 
-              category={selectedCategory}
-              topic={srlState.topic}
-            />
-          )}
-          
-          {/* Messages Area */}
-          <div className="messages-area">
-            {messages.length === 0 ? (
-              <EmptyStateWithCategories
-                onSubmit={handleSubmit}
-                selectedCategory={selectedCategory}
-                onCategoryChange={setSelectedCategory}
-                inputValue={inputValue}
-                onInputChange={(e) => setInputValue(e.target.value)}
-              />
-            ) : (
-              <>
-                {messages.map((msg, idx) => (
-                  <ModernChatMessage
-                    key={idx}
-                    message={msg}
-                    isUser={msg.sender === 'user' || msg.isUser}
-                  />
-                ))}
-                
-                {isLoading && (
-                  <div className="loading-indicator">
-                    <div className="typing-dots">
-                      <span></span><span></span><span></span>
-                    </div>
+      <div className="min-h-screen bg-neutral-50">
+        <div className="mx-auto max-w-[1400px] px-4 md:px-6 py-4">
+          <div className="grid grid-cols-12 gap-6">
+            {/* LEFT: Sidebar/Nav + Study Panel UNDER it */}
+            <aside className="hidden md:block md:col-span-3">
+              <div className="sticky top-4 h-[calc(100vh-2rem)] flex flex-col">
+                {/* existing nav */}
+                <div className="shrink-0">
+                  <LeftProfilePanel />
+                </div>
+
+                <div className="h-4" />
+
+                {/* study panel scrolls independently */}
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <div className="h-full overflow-y-auto pr-1">
+                    <RightStudyPanel
+                      topic={topic}
+                      overallProgressPct={overallProgressPct}
+                      modules={modules}
+                      onCompleteMilestone={(mid, msid) =>
+                        completeMilestone(sessionId, mid, msid)
+                      }
+                    />
                   </div>
-                )}
-              </>
-            )}
+                </div>
+              </div>
+            </aside>
+
+            {/* CENTER: Chat area */}
+            <main className="col-span-12 md:col-span-9 flex flex-col">
+              {/* Mobile: open panel as bottom sheet */}
+              <div className="md:hidden mb-3">
+                <PlanProgressSheet
+                  topic={topic}
+                  overallProgressPct={overallProgressPct}
+                  modules={modules}
+                  onCompleteMilestone={(mid, msid) =>
+                    completeMilestone(sessionId, mid, msid)
+                  }
+                />
+              </div>
+
+              {/* Pre-chat or messages */}
+              <div className="flex-1 min-h-[60vh] rounded-2xl border bg-white">
+                <ChatStream 
+                  messages={messages} 
+                  selectedCategory={selectedCategory}
+                  onCategoryChange={setSelectedCategory}
+                  inputValue={inputValue}
+                  onInputChange={(e) => setInputValue(e.target.value)}
+                  onSend={handleSubmit}
+                  isLoading={isLoading}
+                />
+              </div>
+
+              <div className="mt-4">
+                <Composer 
+                  onSend={handleSubmit}
+                  inputValue={inputValue}
+                  onInputChange={(e) => setInputValue(e.target.value)}
+                  isLoading={isLoading}
+                />
+              </div>
+            </main>
           </div>
-          
-          {/* Input Area - Show when messages exist */}
-          {messages.length > 0 && (
-            <div className="chat-input-container">
-              <input
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSubmit(e)}
-                placeholder="Ask anything..."
-                className="chat-input"
-                disabled={isLoading}
-              />
-              <select className="model-selector-inline" value="Llama">
-                <option>Llama</option>
-                <option>ChatGPT</option>
-              </select>
-              <button 
-                onClick={handleSubmit}
-                disabled={isLoading || !inputValue.trim()}
-                className="send-btn-inline"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24">
-                  <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2" fill="none"/>
-                </svg>
-              </button>
-            </div>
-          )}
         </div>
-        
-        {/* Toast notifications */}
-        {toast && (
-          <div className={`toast toast-${toast.type}`}>
-            {toast.message}
-          </div>
-        )}
       </div>
+
+      {/* Toast notifications */}
+      {toast && (
+        <div className={`toast toast-${toast.type}`}>
+          {toast.message}
+        </div>
+      )}
     </MainLayout>
   );
 }

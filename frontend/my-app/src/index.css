@@ -15,3 +15,12 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Icon constraints to prevent giant SVGs */
+.icon-constraint svg, .icon-constraint img {
+  width: 1.25rem; 
+  height: 1.25rem; 
+  max-width: 1.25rem; 
+  max-height: 1.25rem; 
+  flex-shrink: 0;
+}
