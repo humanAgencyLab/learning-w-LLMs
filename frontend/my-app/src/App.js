@@ -2,7 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import LandingPage from './Pages/LandingPage';
 import  SignIn  from './Pages/SignIn';
 import  SignUp  from './Pages/SignUp';
-import ChatInterface from './Pages/ChatInterface';
+import ChatPage from './Pages/ChatPage';
 import ResetPassword from './Pages/ResetPassword';
 import Avatar from './components/User Avatar/Avatar';
 import Profile from './Pages/Profile';
@@ -20,7 +20,7 @@ function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/signin" element={<SignIn />} />
         <Route path="/signup" element={<SignUp />} />
-        <Route path="/chat" element={<ChatInterface />} />
+        <Route path="/chat" element={<ChatPage />} />
         <Route path="/resetpassword" element={<ResetPassword/>} />
         <Route path="/profile" element={<Profile/>} />
         <Route path="/performance" element={<Performance />} />
