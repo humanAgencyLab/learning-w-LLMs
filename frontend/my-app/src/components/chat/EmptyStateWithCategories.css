@@ -1,0 +1,188 @@
+/* Empty State Container */
+.empty-state-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  padding: 40px 20px;
+  animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Heading */
+.empty-state-heading {
+  font-size: 32px;
+  font-weight: 600;
+  color: #1F2937;
+  margin: 0 0 32px 0;
+  text-align: center;
+}
+
+/* Form */
+.empty-state-form {
+  width: 100%;
+  max-width: 700px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Large Textarea Input */
+.empty-state-input {
+  width: 100%;
+  min-height: 120px;
+  padding: 20px;
+  font-size: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  border: 2px solid #E5E7EB;
+  border-radius: 16px;
+  outline: none;
+  resize: vertical;
+  transition: all 0.2s;
+  background: white;
+  color: #1F2937;
+}
+
+.empty-state-input:focus {
+  border-color: #4F6FF4;
+  box-shadow: 0 0 0 4px rgba(79, 111, 244, 0.1);
+}
+
+.empty-state-input::placeholder {
+  color: #9CA3AF;
+}
+
+/* Input Footer (Model Selector + Submit Button) */
+.input-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: white;
+  border: 2px solid #E5E7EB;
+  border-radius: 16px;
+}
+
+/* Model Selector Dropdown */
+.model-selector {
+  flex: 1;
+  padding: 10px 16px;
+  font-size: 15px;
+  color: #4B5563;
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.model-selector:hover {
+  border-color: #D1D5DB;
+  background: white;
+}
+
+.model-selector:focus {
+  border-color: #4F6FF4;
+  background: white;
+}
+
+/* Submit Button */
+.submit-btn {
+  width: 48px;
+  height: 48px;
+  background: #4F6FF4;
+  border: none;
+  border-radius: 12px;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.submit-btn:hover:not(:disabled) {
+  background: #4338CA;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(79, 111, 244, 0.3);
+}
+
+.submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Category Selector */
+.category-selector {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+/* Category Buttons */
+.category-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: white;
+  border: 2px solid #E5E7EB;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #6B7280;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.category-btn:hover {
+  border-color: #D1D5DB;
+  background: #F9FAFB;
+}
+
+.category-btn.active {
+  background: #4F6FF4;
+  border-color: #4F6FF4;
+  color: white;
+}
+
+.category-icon {
+  font-size: 20px;
+}
+
+.category-label {
+  font-weight: 500;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .empty-state-heading {
+    font-size: 24px;
+  }
+  
+  .empty-state-form {
+    max-width: 100%;
+  }
+  
+  .category-selector {
+    flex-direction: column;
+  }
+  
+  .category-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

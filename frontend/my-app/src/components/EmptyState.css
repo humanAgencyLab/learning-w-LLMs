@@ -1,0 +1,74 @@
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 60px 40px;
+  animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.empty-state-icon {
+  margin-bottom: 24px;
+  color: #4F6FF4;
+  opacity: 0.8;
+}
+
+.empty-state h2 {
+  font-size: 28px;
+  font-weight: 600;
+  color: #1F2937;
+  margin: 0 0 16px 0;
+}
+
+.empty-state > p {
+  font-size: 16px;
+  color: #6B7280;
+  max-width: 500px;
+  line-height: 1.6;
+  margin: 0 0 32px 0;
+}
+
+.example-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.example-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #9CA3AF;
+  text-align: left;
+  margin: 0 0 8px 0;
+}
+
+.example-btn {
+  background: white;
+  border: 2px solid #E5E7EB;
+  padding: 14px 20px;
+  border-radius: 12px;
+  font-size: 15px;
+  color: #4B5563;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.example-btn:hover {
+  border-color: #4F6FF4;
+  background: #EEF2FF;
+  color: #4338CA;
+  transform: translateX(4px);
+}

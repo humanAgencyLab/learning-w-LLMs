@@ -1,0 +1,608 @@
+/* RightProgressPanel Styles - Pixel Perfect Figma Match */
+
+.right-progress-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 360px;
+  height: 100vh;
+  background: #ffffff;
+  border-left: 1px solid #e6e7e8;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  overflow-y: auto;
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.08);
+}
+
+/* Custom Scrollbar - Figma Style */
+.right-progress-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.right-progress-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.right-progress-panel::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.right-progress-panel::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Panel Header - Exact Figma Spacing */
+.panel-header {
+  padding: 24px 24px 16px 24px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.header-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.topic-title {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 28px;
+  color: #030712;
+  margin: 0;
+  letter-spacing: -0.4px;
+}
+
+/* Phase Badge - Exact Figma Colors */
+.phase-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  width: fit-content;
+  color: #ffffff;
+}
+
+/* Phase Badge Colors from Figma */
+.phase-badge.assessment {
+  background: #ffb36b; /* Yellow/gold for assessment */
+}
+
+.phase-badge.planning {
+  background: #4e81ee; /* Blue for planning */
+}
+
+.phase-badge.learning {
+  background: #10b981; /* Green for learning */
+}
+
+.phase-badge.quiz {
+  background: #8b5cf6; /* Purple for quiz */
+}
+
+.phase-badge.feedback {
+  background: #f59e0b; /* Orange for feedback */
+}
+
+/* Panel Content */
+.panel-content {
+  flex: 1;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* Progress Section - Exact Figma Specifications */
+.progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.progress-label {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: #374151;
+}
+
+.progress-percentage {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: #4e81ee;
+}
+
+/* Progress Bar - Exact Figma Dimensions and Colors */
+.progress-bar {
+  width: 100%;
+  height: 6px; /* Figma: 6px height */
+  background: #ecf2fd; /* Figma: primary/50 color */
+  border-radius: 100px; /* Figma: 100px border radius */
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #4e81ee; /* Figma: primary/500 solid color */
+  border-radius: 100px; /* Figma: 100px border radius */
+  transition: width 0.8s ease-out;
+  position: relative;
+}
+
+/* Remove shimmer effect - Figma uses solid color */
+
+/* Learning Path Section - Exact Figma Spacing */
+.learning-path-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-title {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  color: #030712;
+  margin: 0;
+  letter-spacing: -0.25px;
+}
+
+.modules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px; /* Figma: 12px gap between cards */
+}
+
+/* Module Cards - Exact Figma Specifications */
+.module-card {
+  background: #ffffff;
+  border: 1px solid #e6e7e8; /* Figma: neutral/100 border */
+  border-radius: 12px; /* Figma: 12px border radius */
+  padding: 16px; /* Figma: 16px padding */
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.module-card:hover {
+  border-color: #4e81ee; /* Figma: primary/500 on hover */
+  box-shadow: 0 4px 12px rgba(78, 129, 238, 0.1);
+  transform: translateY(-1px); /* Subtle lift animation */
+}
+
+.module-card.locked {
+  background: #f9fafb; /* Figma: neutral/50 background */
+  border-color: #e5e7eb;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.module-card.locked:hover {
+  border-color: #e5e7eb;
+  box-shadow: none;
+  transform: none;
+}
+
+.module-card.complete {
+  border-color: #10b981; /* Figma: green for complete */
+  background: #ffffff; /* Figma: clean white background */
+}
+
+.module-card.in_progress {
+  border-color: #4e81ee; /* Figma: primary/500 for in-progress */
+  background: #ffffff; /* Figma: clean white background */
+}
+
+/* Module Header - Exact Figma Spacing */
+.module-header {
+  display: flex;
+  gap: 12px; /* Figma: 12px gap */
+  align-items: flex-start;
+}
+
+/* Module Icons - Exact Figma Dimensions */
+.module-icon {
+  width: 32px; /* Figma: 32px width */
+  height: 32px; /* Figma: 32px height */
+  border-radius: 8px; /* Figma: 8px border radius */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.module-icon.complete {
+  background: #10b981; /* Figma: green for complete */
+  color: #ffffff;
+}
+
+.module-icon.in_progress {
+  background: #4e81ee; /* Figma: primary/500 for in-progress */
+  color: #ffffff;
+}
+
+.module-icon.locked {
+  background: #9ca3af; /* Figma: neutral/400 for locked */
+  color: #ffffff;
+}
+
+/* Module Info - Exact Figma Typography */
+.module-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px; /* Figma: 4px gap */
+}
+
+.module-title {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px; /* Figma: 14px font size */
+  font-weight: 600;
+  line-height: 20px;
+  color: #030712; /* Figma: base/black color */
+  margin: 0;
+}
+
+.module-meta {
+  display: flex;
+  gap: 8px; /* Figma: 8px gap */
+  align-items: center;
+}
+
+.module-duration,
+.module-lessons {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 12px; /* Figma: 12px font size */
+  font-weight: 400;
+  line-height: 16px;
+  color: #6b7280; /* Figma: neutral/500 color */
+}
+
+.module-progress {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mini-progress-bar {
+  width: 100%;
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.mini-progress-fill {
+  height: 100%;
+  background: #4e81ee;
+  border-radius: 2px;
+  transition: width 0.6s ease-out;
+}
+
+.progress-text {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  color: #6b7280;
+}
+
+/* Milestones Section - Exact Figma Spacing */
+.milestones-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px; /* Figma: 16px gap */
+}
+
+.milestones-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* Figma: 8px gap between items */
+}
+
+.milestone-item {
+  display: flex;
+  gap: 12px; /* Figma: 12px gap */
+  align-items: center;
+  padding: 8px 0; /* Figma: 8px vertical padding */
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 6px;
+}
+
+.milestone-item:hover {
+  background: #f9fafb; /* Figma: neutral/50 background on hover */
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* Milestone Checkbox - Exact Figma Dimensions */
+.milestone-checkbox {
+  width: 20px; /* Figma: 20px width */
+  height: 20px; /* Figma: 20px height */
+  border: 2px solid #d1d5db; /* Figma: neutral/300 border */
+  border-radius: 4px; /* Figma: 4px border radius */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.milestone-item.completed .milestone-checkbox {
+  background: #10b981; /* Figma: green for completed */
+  border-color: #10b981;
+  color: #ffffff;
+}
+
+.milestone-item:hover .milestone-checkbox {
+  border-color: #4e81ee; /* Figma: primary/500 on hover */
+}
+
+/* Milestone Text - Exact Figma Typography */
+.milestone-text {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px; /* Figma: 14px font size */
+  font-weight: 400;
+  line-height: 20px;
+  color: #374151; /* Figma: neutral/700 color */
+  flex: 1;
+}
+
+.milestone-item.completed .milestone-text {
+  color: #6b7280; /* Figma: neutral/500 for completed */
+  text-decoration: line-through;
+}
+
+/* Panel Footer - Exact Figma Spacing */
+.panel-footer {
+  padding: 24px; /* Figma: 24px padding */
+  border-top: 1px solid #f3f4f6;
+  background: #ffffff;
+  position: sticky;
+  bottom: 0;
+}
+
+/* Ask Question Button - Exact Figma Specifications */
+.ask-question-btn {
+  width: 100%;
+  background: #4e81ee; /* Figma: primary/500 background */
+  color: #ffffff;
+  border: none;
+  border-radius: 12px; /* Figma: 12px border radius */
+  padding: 12px 16px; /* Figma: 12px vertical, 16px horizontal */
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px; /* Figma: 14px font size */
+  font-weight: 600;
+  line-height: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px; /* Figma: 8px gap between icon and text */
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); /* Figma: subtle shadow */
+}
+
+.ask-question-btn:hover {
+  background: #3b82f6; /* Figma: slightly darker blue on hover */
+  transform: translateY(-1px); /* Subtle lift animation */
+  box-shadow: 0 4px 12px rgba(78, 129, 238, 0.3); /* Enhanced shadow */
+}
+
+.ask-question-btn:active {
+  transform: translateY(0); /* Reset transform on click */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); /* Reset shadow */
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .right-progress-panel {
+    width: 320px;
+  }
+  
+  .panel-content {
+    padding: 20px;
+    gap: 24px;
+  }
+  
+  .panel-header {
+    padding: 20px 20px 16px 20px;
+  }
+  
+  .panel-footer {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .right-progress-panel {
+    position: relative;
+    width: 100%;
+    height: auto;
+    max-height: 80vh;
+    border-left: none;
+    border-top: 1px solid #e6e7e8;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+  }
+  
+  .panel-content {
+    padding: 16px;
+    gap: 20px;
+  }
+  
+  .panel-header {
+    padding: 16px 16px 12px 16px;
+  }
+  
+  .panel-footer {
+    padding: 16px;
+  }
+  
+  .topic-title {
+    font-size: 18px;
+    line-height: 26px;
+  }
+  
+  .modules-list {
+    gap: 8px;
+  }
+  
+  .module-card {
+    padding: 12px;
+  }
+  
+  .module-title {
+    font-size: 13px;
+    line-height: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .right-progress-panel {
+    max-height: 70vh;
+  }
+  
+  .panel-content {
+    padding: 12px;
+    gap: 16px;
+  }
+  
+  .panel-header {
+    padding: 12px 12px 8px 12px;
+  }
+  
+  .panel-footer {
+    padding: 12px;
+  }
+  
+  .topic-title {
+    font-size: 16px;
+    line-height: 24px;
+  }
+  
+  .section-title {
+    font-size: 14px;
+    line-height: 20px;
+  }
+  
+  .module-card {
+    padding: 10px;
+  }
+  
+  .module-icon {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .module-title {
+    font-size: 12px;
+    line-height: 16px;
+  }
+}
+
+/* Accessibility Enhancements */
+@media (prefers-reduced-motion: reduce) {
+  .module-card,
+  .milestone-item,
+  .ask-question-btn {
+    transition: none;
+  }
+  
+  .progress-fill {
+    transition: none;
+  }
+  
+  .progress-fill::after {
+    animation: none;
+  }
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+  .right-progress-panel {
+    border-left: 2px solid #000000;
+  }
+  
+  .module-card {
+    border: 2px solid #000000;
+  }
+  
+  .milestone-checkbox {
+    border: 2px solid #000000;
+  }
+  
+  .ask-question-btn {
+    border: 2px solid #000000;
+  }
+}
+
+/* Focus States for Accessibility */
+.module-card:focus,
+.milestone-item:focus,
+.ask-question-btn:focus {
+  outline: 2px solid #4e81ee;
+  outline-offset: 2px;
+}
+
+/* Dark Mode Support (Future Enhancement) */
+@media (prefers-color-scheme: dark) {
+  .right-progress-panel {
+    background: #1f2937;
+    border-left-color: #374151;
+  }
+  
+  .panel-header,
+  .panel-footer {
+    background: #1f2937;
+    border-color: #374151;
+  }
+  
+  .topic-title,
+  .section-title,
+  .module-title,
+  .milestone-text {
+    color: #f9fafb;
+  }
+  
+  .progress-label,
+  .progress-text,
+  .module-duration,
+  .module-lessons {
+    color: #d1d5db;
+  }
+  
+  .module-card {
+    background: #374151;
+    border-color: #4b5563;
+  }
+  
+  .module-card.locked {
+    background: #2d3748;
+    border-color: #4a5568;
+  }
+}

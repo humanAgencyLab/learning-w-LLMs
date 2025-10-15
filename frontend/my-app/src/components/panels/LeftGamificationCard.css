@@ -1,0 +1,341 @@
+/* LeftGamificationCard Styles - Pixel Perfect Figma Match */
+
+.left-gamification-card {
+  position: fixed;
+  left: 20px;
+  bottom: 100px;
+  width: 212px;
+  height: 208px;
+  z-index: 100;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.4s ease;
+}
+
+.left-gamification-card.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.card-background {
+  background: #ffffff;
+  border: 1px solid #e6e7e8;
+  border-radius: 16px;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.card-background::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(236, 242, 253, 0.4) 0%, rgba(255, 179, 107, 0.15) 100%);
+  z-index: 0;
+}
+
+.card-content {
+  position: relative;
+  z-index: 1;
+  padding: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Progress Section - Exact Figma Layout */
+.progress-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.progress-header {
+  width: 100%;
+}
+
+.progress-percentage {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  color: #030712;
+  letter-spacing: 0;
+  text-align: left;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 4px;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.progress-bar-background {
+  width: 100%;
+  height: 4px;
+  background: #ecf2fd;
+  border-radius: 100px;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.progress-bar-fill {
+  height: 4px;
+  background: #ffb36b;
+  border-radius: 100px;
+  position: absolute;
+  top: 0;
+  left: -0.5px;
+  transition: width 0.8s ease-out;
+  min-width: 0;
+}
+
+/* Course Info - Exact Figma Typography */
+.course-info {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  text-align: center;
+}
+
+.course-title {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 24px;
+  color: #030712;
+  margin: 0;
+  letter-spacing: -0.25px;
+  width: 100%;
+  text-align: center;
+}
+
+.course-level {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  color: #030712;
+  margin: 0;
+  width: 100%;
+  text-align: center;
+}
+
+/* Trophy Container - Exact Figma Positioning */
+.trophy-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin-top: 8px;
+}
+
+.trophy-icon {
+  font-size: 48px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+  animation: trophyPulse 3s ease-in-out infinite;
+}
+
+@keyframes trophyPulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+  }
+  50% {
+    transform: scale(1.02);
+    filter: drop-shadow(0 2px 4px rgba(255, 179, 107, 0.2));
+  }
+}
+
+/* Responsive Design - Figma Breakpoints */
+@media (max-width: 1024px) {
+  .left-gamification-card {
+    width: 200px;
+    height: 196px;
+    left: 16px;
+    bottom: 80px;
+  }
+  
+  .card-content {
+    padding: 14px;
+    gap: 14px;
+  }
+  
+  .trophy-icon {
+    font-size: 44px;
+  }
+}
+
+@media (max-width: 768px) {
+  .left-gamification-card {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    width: 100%;
+    max-width: 280px;
+    height: auto;
+    min-height: 160px;
+    margin: 16px auto;
+  }
+  
+  .card-content {
+    padding: 16px;
+    gap: 16px;
+  }
+  
+  .progress-section {
+    gap: 10px;
+  }
+  
+  .progress-percentage {
+    font-size: 14px;
+    line-height: 22px;
+  }
+  
+  .course-title {
+    font-size: 17px;
+    line-height: 26px;
+  }
+  
+  .course-level {
+    font-size: 14px;
+    line-height: 22px;
+  }
+  
+  .trophy-container {
+    width: 56px;
+    height: 56px;
+  }
+  
+  .trophy-icon {
+    font-size: 40px;
+  }
+}
+
+@media (max-width: 480px) {
+  .left-gamification-card {
+    max-width: 260px;
+    margin: 12px auto;
+  }
+  
+  .card-content {
+    padding: 14px;
+    gap: 14px;
+  }
+  
+  .progress-section {
+    gap: 8px;
+  }
+  
+  .course-title {
+    font-size: 16px;
+    line-height: 24px;
+  }
+  
+  .course-level {
+    font-size: 13px;
+    line-height: 20px;
+  }
+  
+  .trophy-container {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .trophy-icon {
+    font-size: 36px;
+  }
+}
+
+/* Accessibility Enhancements */
+@media (prefers-reduced-motion: reduce) {
+  .left-gamification-card {
+    transition: opacity 0.2s ease;
+  }
+  
+  .progress-bar-fill {
+    transition: width 0.3s ease;
+  }
+  
+  .trophy-icon {
+    animation: none;
+  }
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+  .card-background {
+    border: 2px solid #000000;
+  }
+  
+  .progress-bar-background {
+    background: #e0e0e0;
+  }
+  
+  .progress-bar-fill {
+    background: #ff8c00;
+  }
+}
+
+/* Hover Effects - Desktop Only */
+@media (hover: hover) and (min-width: 769px) {
+  .left-gamification-card:hover .card-background {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    transform: translateY(-1px);
+    transition: all 0.3s ease;
+  }
+  
+  .left-gamification-card:hover .progress-bar-fill {
+    background: linear-gradient(90deg, #ffb36b 0%, #ff9f43 100%);
+  }
+  
+  .left-gamification-card:hover .trophy-icon {
+    animation-duration: 2s;
+    transform: scale(1.05);
+  }
+}
+
+/* Focus States for Accessibility */
+.left-gamification-card:focus-within {
+  outline: 2px solid #4e81ee;
+  outline-offset: 2px;
+}
+
+/* Dark Mode Support (Future Enhancement) */
+@media (prefers-color-scheme: dark) {
+  .card-background {
+    background: #1f2937;
+    border-color: #374151;
+  }
+  
+  .progress-percentage,
+  .course-title,
+  .course-level {
+    color: #f9fafb;
+  }
+  
+  .progress-bar-background {
+    background: #374151;
+  }
+  
+  .card-background::before {
+    background: linear-gradient(135deg, rgba(67, 56, 202, 0.2) 0%, rgba(255, 179, 107, 0.1) 100%);
+  }
+}

@@ -4,30 +4,40 @@ import MainLayout from '../layouts/MainLayout';
 import { sendMessage } from '../lib/api';
 import { summarizeSession } from '../lib/summaryApi';
 // sendMessageStream removed - not used in current implementation
-import SessionSidebar from '../components/SessionSidebar';
-import NotesPanel from '../components/NotesPanel';
-import QuizModal from '../components/QuizModal';
-import ModuleProgressPanel from '../components/ModuleProgressPanel';
-import QuizPanel from '../components/QuizPanel';
+// Legacy components - keeping for future use
+// import SessionSidebar from '../components/SessionSidebar';
+// import NotesPanel from '../components/NotesPanel';
+// import QuizModal from '../components/QuizModal';
+// import ModuleProgressPanel from '../components/ModuleProgressPanel';
+// import QuizPanel from '../components/QuizPanel';
+
+// New UI components
+import LeftGamificationCard from '../components/panels/LeftGamificationCard';
+import RightProgressPanel from '../components/panels/RightProgressPanel';
+import TopSessionBanner from '../components/chat/TopSessionBanner';
+import EmptyStateWithCategories from '../components/chat/EmptyStateWithCategories';
+import ModernChatMessage from '../components/chat/ModernChatMessage';
+import '../styles/ChatInterface.css';
 import { assessStage as newAssessStage, recheckAssessment, startQuiz as newStartQuiz, submitQuiz as newSubmitQuiz, promoteStage } from '../lib/stageApi';
-import { 
-  runPreAssessment, 
-  generateLearningPlan, 
-  updateModuleStatus, 
-  startModuleQuiz 
-} from '../lib/structuredLearningApi';
+// Legacy structured learning API - keeping for future use
+// import { 
+//   runPreAssessment, 
+//   generateLearningPlan, 
+//   updateModuleStatus, 
+//   startModuleQuiz 
+// } from '../lib/structuredLearningApi';
 
 function ChatInterface() {
   const [messages, setMessages]= useState([]);
   const [inputValue, setInputValue] = useState("");
   const [sessionId, setSessionId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [summary, setSummary] = useState('');
+  // const [error, setError] = useState(null); // Legacy - not used in new UI
+  // const [summary, setSummary] = useState(''); // Legacy - not used in new UI
   const [summarizing, setSummarizing] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingEnabled, setStreamingEnabled] = useState(false); // Default to non-streaming
-  const [abortController, setAbortController] = useState(null);
+  // const [isStreaming, setIsStreaming] = useState(false); // Legacy - not used
+  // const [streamingEnabled, setStreamingEnabled] = useState(false); // Legacy - not used
+  // const [abortController, setAbortController] = useState(null); // Legacy - not used
   
   // Core features
   const [currentStage, setCurrentStage] = useState(1);
@@ -53,6 +63,16 @@ function ChatInterface() {
     nextAction: 'ask',
     planLocked: false
   });
+
+  // Category selection for empty state
+  const [selectedCategory, setSelectedCategory] = useState('studying');
+
+  // Gamification rewards (from backend response)
+  const [sessionRewards, setSessionRewards] = useState(null);
+
+  // Show/hide panels (responsive design)
+  const [showLeftPanel, setShowLeftPanel] = useState(true);
+  const [showRightPanel, setShowRightPanel] = useState(true);
 
   // Fetch SRL state from backend
   const fetchSRLState = async (sessionId) => {
@@ -385,22 +405,23 @@ function ChatInterface() {
   //   }
   // };
 
-  const handleStartModuleQuiz = async (moduleId) => {
-    if (!sessionId) return;
+  // Legacy function - commented out due to unused import
+  // const handleStartModuleQuiz = async (moduleId) => {
+  //   if (!sessionId) return;
     
-    try {
-      const result = await startModuleQuiz(sessionId, moduleId);
+  //   try {
+  //     const result = await startModuleQuiz(sessionId, moduleId);
       
-      setCurrentQuizData({
-        ...result,
-        moduleId: moduleId
-      });
-      setQuizPanelOpen(true);
-    } catch (error) {
-      console.error('Module quiz start error:', error);
-      showToast('Failed to start module quiz', 'error');
-    }
-  };
+  //     setCurrentQuizData({
+  //       ...result,
+  //       moduleId: moduleId
+  //     });
+  //     setQuizPanelOpen(true);
+  //   } catch (error) {
+  //     console.error('Module quiz start error:', error);
+  //     showToast('Failed to start module quiz', 'error');
+  //   }
+  // };
 
   // Learning signals heuristic
   const analyzeLearningSignals = (userMessage, aiResponse) => {
@@ -436,11 +457,11 @@ function ChatInterface() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (inputValue.trim() === "" || isLoading || isStreaming || isAssessing) return;
+    if (inputValue.trim() === "" || isLoading || isAssessing) return;
     
     const userMessage = inputValue.trim();
     setInputValue("");
-    setError(null);
+    // setError(null); // Legacy - not used in new UI
     setLastUserMessage(userMessage); // Store for retry functionality
     
     // Add user message to chat
@@ -459,7 +480,7 @@ function ChatInterface() {
 
   const handleNonStreamingSubmit = async (userMessage) => {
     setIsLoading(true);
-    setError(null); // Clear any previous errors
+    // setError(null); // Legacy - not used in new UI
 
     try {
       console.log('📤 Sending message to /chat endpoint');
@@ -549,7 +570,7 @@ function ChatInterface() {
         errorMessage = error.message || 'An unexpected error occurred. Please try again.';
       }
       
-      setError(errorMessage);
+      // setError(errorMessage); // Legacy - not used in new UI
       showToast(errorMessage, toastType);
       
       // Add error message to chat
@@ -563,39 +584,57 @@ function ChatInterface() {
     }
   }
 
-  const onSummarize = async () => {
+  // Legacy function - commented out due to unused state
+  // const onSummarize = async () => {
+  //   if (!sessionId) return;
+  //   setSummarizing(true);
+  //   try {
+  //     const { summary } = await summarizeSession(sessionId);
+  //     setSummary(summary);
+  //   } catch (error) {
+  //     console.error('Summary error:', error);
+  //     setSummary('Summary failed.');
+  //   } finally {
+  //     setSummarizing(false);
+  //   }
+  // };
+
+  const handleSummarizeSession = async () => {
     if (!sessionId) return;
     setSummarizing(true);
     try {
       const { summary } = await summarizeSession(sessionId);
-      setSummary(summary);
+      // setSummary(summary); // Legacy - not used in new UI
+      showToast('Session summarized successfully!', 'success');
     } catch (error) {
       console.error('Summary error:', error);
-      setSummary('Summary failed.');
+      // setSummary('Summary failed.'); // Legacy - not used in new UI
+      showToast('Failed to summarize session', 'error');
     } finally {
       setSummarizing(false);
     }
   };
 
-  const stopStreaming = () => {
-    if (abortController) {
-      abortController.abort();
-      setAbortController(null);
-      setIsStreaming(false);
+  // Legacy function - commented out due to unused state
+  // const stopStreaming = () => {
+  //   if (abortController) {
+  //     abortController.abort();
+  //     setAbortController(null);
+  //     setIsStreaming(false);
       
-      // Mark the last message as stopped
-      setMessages(prevMessages => {
-        const newMessages = [...prevMessages];
-        const lastMessage = newMessages[newMessages.length - 1];
-        if (lastMessage && lastMessage.sender === 'ai' && lastMessage.isStreaming) {
-          lastMessage.text = lastMessage.text + ' (stopped)';
-          lastMessage.isStopped = true;
-          delete lastMessage.isStreaming;
-        }
-        return newMessages;
-      });
-    }
-  };
+  //     // Mark the last message as stopped
+  //     setMessages(prevMessages => {
+  //       const newMessages = [...prevMessages];
+  //       const lastMessage = newMessages[newMessages.length - 1];
+  //       if (lastMessage && lastMessage.sender === 'ai' && lastMessage.isStreaming) {
+  //         lastMessage.text = lastMessage.text + ' (stopped)';
+  //         lastMessage.isStopped = true;
+  //         delete lastMessage.isStreaming;
+  //       }
+  //       return newMessages;
+  //     });
+  //   }
+  // };
 
   // Fetch SRL state on component mount and session change
   useEffect(() => {
@@ -606,233 +645,98 @@ function ChatInterface() {
 
   return (
     <MainLayout>
-      {/* Session Sidebar */}
-      <SessionSidebar
-        currentSessionId={sessionId}
-        onSessionSelect={handleSessionSelect}
-        isOpen={sidebarOpen}
-        onToggle={() => setSidebarOpen(!sidebarOpen)}
-      />
-      
-      {/* Notes Panel */}
-      <NotesPanel
-        sessionId={sessionId}
-        isOpen={notesOpen}
-        onToggle={() => setNotesOpen(!notesOpen)}
-      />
-      
-      {/* Quiz Modal */}
-      <QuizModal
-        isOpen={quizModalOpen}
-        onClose={() => setQuizModalOpen(false)}
-        quizData={currentQuizData}
-        onSubmit={handleQuizSubmit}
-      />
-      
-      {/* New Quiz Panel */}
-      <QuizPanel
-        isOpen={quizPanelOpen}
-        onClose={() => setQuizPanelOpen(false)}
-        quizData={currentQuizData}
-        onSubmit={handleQuizSubmit}
-      />
-      
-      <div className="main-content">
-        <div className="chat-container">
-        {/* Header with controls */}
-        <div className="chat-header">
-          <div className="header-left">
-            <button 
-              className="sidebar-toggle"
-              onClick={() => setSidebarOpen(true)}
-              aria-label="Open sessions"
-            >
-              ☰
-            </button>
-            <h1>AI Study Assistant</h1>
-            {messageCount > 0 && (
-              <span className="message-count">{messageCount} messages</span>
+      <div className="chat-interface-grid">
+        {/* Left Gamification Card */}
+        {srlState.phase === 'learning' && srlState.progress && (
+          <LeftGamificationCard
+            progress={srlState.progress.overallPct}
+            courseName={srlState.topic}
+            level={{ current: 8, total: 10 }}
+            showTrophy={srlState.progress.overallPct >= 80}
+          />
+        )}
+        
+        {/* Center Chat Area */}
+        <div className="chat-center-wrapper">
+          {/* Top Banner */}
+          <TopSessionBanner 
+            category={selectedCategory}
+            topic={srlState.topic}
+          />
+          
+          {/* Messages or Empty State */}
+          <div className="messages-area">
+            {messages.length === 0 ? (
+              <EmptyStateWithCategories
+                onSubmit={handleSubmit}
+                selectedCategory={selectedCategory}
+                onCategoryChange={setSelectedCategory}
+                inputValue={inputValue}
+                onInputChange={(e) => setInputValue(e.target.value)}
+              />
+            ) : (
+              <>
+                {messages.map((msg, idx) => (
+                  <ModernChatMessage
+                    key={idx}
+                    message={msg}
+                    isUser={msg.sender === 'user' || msg.isUser}
+                  />
+                ))}
+                
+                {isLoading && (
+                  <div className="loading-indicator">
+                    <div className="typing-dots">
+                      <span></span><span></span><span></span>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
           
-          <div className="header-right">
-            <button 
-              className="stage-tracker-toggle"
-              onClick={() => setStageTrackerOpen(!stageTrackerOpen)}
-              aria-label="Toggle learning progress"
-            >
-              📊
-            </button>
-            <button 
-              className="notes-toggle"
-              onClick={() => setNotesOpen(true)}
-              aria-label="Open notes"
-            >
-              📝
-            </button>
-          </div>
-        </div>
-
-        {/* Re-assessment Pill */}
-        {shouldReassess && (
-          <div className="reassess-pill">
-            <span>Looks like you're ready — Reassess?</span>
-            <button 
-              className="reassess-pill-btn"
-              onClick={handleReassess}
-            >
-              Reassess
-            </button>
-            <button 
-              className="reassess-pill-close"
-              onClick={() => setShouldReassess(false)}
-            >
-              ×
-            </button>
-          </div>
-        )}
-
-        {/* Chat Messages */}
-        <div className="chat-box">
-          {messages.length === 0 && (
-            <div className="welcome-message">
-              <h3>Welcome to your AI Study Assistant!</h3>
-              <p>Start a conversation by typing a message below. I'll help you learn at your own pace.</p>
+          {/* Input Area (when messages exist) */}
+          {messages.length > 0 && (
+            <div className="chat-input-container">
+              <input
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSubmit(e)}
+                placeholder="Ask anything..."
+                className="chat-input"
+                disabled={isLoading}
+              />
+              <select className="model-selector-inline" value="Llama">
+                <option>Llama</option>
+                <option>ChatGPT</option>
+              </select>
+              <button 
+                onClick={handleSubmit}
+                disabled={isLoading || !inputValue.trim()}
+                className="send-btn-inline"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24">
+                  <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2" fill="none"/>
+                </svg>
+              </button>
             </div>
           )}
-
-          {messages.map((message, index) => (
-            <div 
-              key={index} 
-              className={`message ${message.sender}-message ${message.isError ? 'error-message' : ''} ${message.isStreaming ? 'isStreaming' : ''} ${message.isStopped ? 'isStopped' : ''}`}
-            >
-              <div className="message-content">
-                {message.text}
-              </div>
-              
-              {/* Message Actions */}
-              <div className="message-actions">
-                <button 
-                  className="action-btn copy-btn"
-                  onClick={() => handleCopyMessage(message.text)}
-                  title="Copy message"
-                >
-                  📋
-                </button>
-                <button 
-                  className="action-btn delete-btn"
-                  onClick={() => handleDeleteMessage(index)}
-                  title="Delete message"
-                >
-                  🗑️
-                </button>
-                {message.sender === 'ai' && index === messages.length - 1 && lastUserMessage && (
-                  <button 
-                    className="action-btn retry-btn"
-                    onClick={handleRetryLastMessage}
-                    title="Retry last message"
-                  >
-                    🔄
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
         </div>
-
-        {/* Error Display */}
-        {error && (
-          <div className="error-message">
-            {error}
+        
+        {/* Right Progress Panel */}
+        <RightProgressPanel
+          srlState={srlState}
+          onNextAction={handleNextAction}
+        />
+        
+        {/* Toast notifications */}
+        {toast && (
+          <div className={`toast toast-${toast.type}`}>
+            {toast.message}
           </div>
         )}
-
-        {/* Summary Section */}
-        {sessionId && (
-          <div className="summary-section">
-            <button 
-              onClick={onSummarize} 
-              disabled={!sessionId || summarizing}
-              className="summary-button"
-            >
-              {summarizing ? 'Summarizing…' : 'Summarize Session'}
-            </button>
-          </div>
-        )}
-
-        {summary && (
-          <div className="summary-panel">
-            <h3>Session Summary</h3>
-            <div className="summary-content">
-              {summary.split('\n').map((line, index) => (
-                <p key={index}>{line}</p>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Streaming Controls */}
-        <div className="streaming-controls">
-          <label className="streaming-toggle" title={streamingEnabled ? "Coming soon - still uses regular chat" : ""}>
-            <input
-              type="checkbox"
-              checked={streamingEnabled}
-              onChange={(e) => setStreamingEnabled(e.target.checked)}
-              disabled={isLoading || isStreaming}
-            />
-            <span>Use streaming (beta) {streamingEnabled && <span className="coming-soon">- Coming soon</span>}</span>
-          </label>
-          
-          {isStreaming && (
-            <button 
-              onClick={stopStreaming}
-              className="stop-button"
-            >
-              Stop generating
-            </button>
-          )}
-        </div>
-
-        {/* Message Input */}
-        <div className="message-input-wrapper">
-          <input 
-            type="text" 
-            placeholder={isLoading ? "AI is thinking..." : isStreaming ? "AI is typing..." : "Type your message..."} 
-            className="message-input"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            disabled={isLoading || isStreaming}
-          />
-          <button 
-            className="send-button" 
-            type="submit" 
-            onClick={handleSubmit}
-            disabled={isLoading || isStreaming || inputValue.trim() === ""}
-          >
-            {isLoading ? "..." : isStreaming ? "..." : "→"}
-          </button>
-        </div>
       </div>
-      
-      {/* Toast Notifications */}
-      {toast && (
-        <div className={`toast toast-${toast.type}`}>
-          {toast.message}
-        </div>
-      )}
-      </div>
-      
-      {/* Module Progress Panel - Right Side Panel */}
-      <ModuleProgressPanel
-        topic={srlState.topic}
-        phase={srlState.phase}
-        plan={srlState.plan}
-        currentModuleId={srlState.currentModuleId}
-        progress={srlState.progress}
-        nextAction={srlState.nextAction}
-        onNextAction={handleNextAction}
-        planLocked={srlState.planLocked}
-      />
     </MainLayout>
   );
 }
