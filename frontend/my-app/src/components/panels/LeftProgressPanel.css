@@ -1,16 +1,14 @@
 /* Left Progress Panel - Enhanced Version */
 .left-progress-panel-new {
-  position: fixed;
-  left: 16px;
-  top: 380px; /* Below navigation sidebar */
+  position: relative;
   width: 320px;
-  max-height: calc(100vh - 400px);
+  max-height: calc(100vh - 200px);
   background: white;
   border-radius: 16px;
   padding: 24px 20px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   overflow-y: auto;
-  z-index: 100;
+  margin: 20px 16px;
   animation: slideInPanel 0.4s ease-out;
 }
 

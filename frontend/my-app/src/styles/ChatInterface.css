@@ -6,6 +6,12 @@
   position: relative;
 }
 
+/* Left Progress Panel Container */
+.chat-interface-two-column > .left-progress-panel-new {
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
 /* Center takes full width (minus sidebar) */
 .chat-center-full-width {
   flex: 1;
