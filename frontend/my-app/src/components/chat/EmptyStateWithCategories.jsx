@@ -20,7 +20,7 @@ const EmptyStateWithCategories = ({
   
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (inputValue.trim()) {
+    if (inputValue && inputValue.trim && inputValue.trim()) {
       onSubmit(e);
     }
   };

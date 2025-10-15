@@ -150,7 +150,7 @@ export default function ChatPage() {
                   selectedCategory={selectedCategory}
                   onCategoryChange={setSelectedCategory}
                   inputValue={inputValue}
-                  onInputChange={setInputValue}
+                  onInputChange={(e) => setInputValue(e.target.value)}
                   onSend={send}
                   isLoading={isLoading}
                 />
@@ -161,7 +161,7 @@ export default function ChatPage() {
                 <Composer 
                   onSend={send}
                   inputValue={inputValue}
-                  onInputChange={setInputValue}
+                  onInputChange={(e) => setInputValue(e.target.value)}
                   isLoading={isLoading}
                 />
               </div>
