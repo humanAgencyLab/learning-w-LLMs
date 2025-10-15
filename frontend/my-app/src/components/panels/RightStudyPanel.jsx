@@ -1,4 +1,7 @@
 import React from 'react';
+import TrophyIcon from '../icons/TrophyIcon';
+import GemIcon from '../icons/GemIcon';
+import StarIcon from '../icons/StarIcon';
 
 export default function RightStudyPanel({ topic, overallProgressPct, modules, onCompleteMilestone }) {
   return (
@@ -28,15 +31,15 @@ export default function RightStudyPanel({ topic, overallProgressPct, modules, on
         <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Achievements</h3>
         <div className="mt-2 flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-lg">⭐</span>
+            <StarIcon className="text-yellow-500" />
             <span className="text-sm font-semibold">450 XP</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-lg">💎</span>
+            <GemIcon className="text-blue-500" />
             <span className="text-sm font-semibold">12 Gems</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-lg">🏆</span>
+            <TrophyIcon className="text-yellow-600" />
             <span className="text-sm font-semibold">Trophy</span>
           </div>
         </div>
@@ -79,11 +82,14 @@ export default function RightStudyPanel({ topic, overallProgressPct, modules, on
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs text-neutral-600">
-                        +{ms.xp} XP · +{ms.gems} 💎
+                      <span className="text-xs text-neutral-600 flex items-center gap-1">
+                        <StarIcon className="w-4 h-4" /> +{ms.xp} XP
+                      </span>
+                      <span className="text-xs text-neutral-600 flex items-center gap-1">
+                        <GemIcon className="w-4 h-4" /> +{ms.gems}
                       </span>
                       {ms.trophyOnComplete && (
-                        <span className={`text-sm ${ms.done ? '' : 'opacity-40'}`}>🏆</span>
+                        <TrophyIcon className={`w-4 h-4 ${ms.done ? '' : 'opacity-40'}`} />
                       )}
                       {!ms.done && m.status !== 'locked' && (
                         <button

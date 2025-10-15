@@ -645,20 +645,16 @@ function ChatInterface() {
 
   return (
     <MainLayout>
-      <div className="min-h-screen bg-neutral-50">
+      <div className="min-h-screen bg-bg">
         <div className="mx-auto max-w-[1400px] px-4 md:px-6 py-4">
-          <div className="grid grid-cols-12 gap-6">
-            {/* LEFT: Sidebar/Nav + Study Panel UNDER it */}
-            <aside className="hidden md:block md:col-span-3">
-              <div className="sticky top-4 h-[calc(100vh-2rem)] flex flex-col">
-                {/* existing nav */}
+          <div className="flex gap-6">
+            {/* LEFT COLUMN */}
+            <aside className="hidden md:flex w-[320px] shrink-0">
+              <div className="sticky top-4 h-[calc(100vh-2rem)] flex flex-col w-full">
                 <div className="shrink-0">
                   <LeftProfilePanel />
                 </div>
-
                 <div className="h-4" />
-
-                {/* study panel scrolls independently */}
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <div className="h-full overflow-y-auto pr-1">
                     <RightStudyPanel
@@ -674,9 +670,8 @@ function ChatInterface() {
               </div>
             </aside>
 
-            {/* CENTER: Chat area */}
-            <main className="col-span-12 md:col-span-9 flex flex-col">
-              {/* Mobile: open panel as bottom sheet */}
+            {/* CENTER */}
+            <main className="flex-1 flex flex-col min-w-0">
               <div className="md:hidden mb-3">
                 <PlanProgressSheet
                   topic={topic}
@@ -688,8 +683,7 @@ function ChatInterface() {
                 />
               </div>
 
-              {/* Pre-chat or messages */}
-              <div className="flex-1 min-h-[60vh] rounded-2xl border bg-white">
+              <div className="flex-1 min-h-[60vh] rounded-xl border border-border bg-surface shadow-card overflow-hidden">
                 <ChatStream 
                   messages={messages} 
                   selectedCategory={selectedCategory}

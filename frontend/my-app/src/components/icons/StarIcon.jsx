@@ -1,0 +1,18 @@
+import React from 'react';
+
+export default function StarIcon({ className = '', ...props }) {
+  return (
+    <svg 
+      className={`icon-20 ${className}`}
+      viewBox="0 0 24 24" 
+      fill="none" 
+      xmlns="http://www.w3.org/2000/svg"
+      {...props}
+    >
+      <path 
+        d="M12 2L15.09 8.26L22 9L17 14.74L18.18 22L12 18.77L5.82 22L7 14.74L2 9L8.91 8.26L12 2Z" 
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
