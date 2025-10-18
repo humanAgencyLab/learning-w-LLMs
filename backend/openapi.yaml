@@ -1,18 +1,48 @@
 openapi: 3.0.0
 info:
-  title: Learning with LLMs API
+  title: Study Assist API
   version: 1.0.0
-  description: API for the Learning with LLMs educational chatbot application
+  description: |
+    API for the Study Assist learning platform - an LLM-powered educational chatbot 
+    that helps users study and revise topics dynamically with structured learning paths, 
+    quizzes, and gamification.
+  contact:
+    name: Study Assist Team
+    email: support@studyassist.dev
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
 
 servers:
   - url: http://localhost:5001
     description: Local development server
+  - url: https://api.studyassist.dev
+    description: Production server (future)
+
+tags:
+  - name: Health
+    description: Health and readiness checks
+  - name: Auth
+    description: Authentication and user management (Phase 1)
+  - name: Sessions
+    description: Study session management (Phase 4)
+  - name: Assessment
+    description: Learning assessment and topic determination (Phase 2)
+  - name: Chat
+    description: Chat interface and message handling (Phase 2)
+  - name: Quiz
+    description: Quiz generation and submission (Phase 3)
+  - name: Analytics
+    description: Performance tracking and research data (Phase 5)
 
 paths:
-  /health:
+  /v1/health:
     get:
-      summary: Health check endpoint
-      description: Returns the health status of the API server
+      tags:
+        - Health
+      summary: Health check
+      description: Returns the basic health status of the API server
+      operationId: getHealth
       responses:
         '200':
           description: Server is healthy
@@ -23,594 +53,311 @@ paths:
                 properties:
                   ok:
                     type: boolean
+                    description: Health status
                     example: true
-
-  /chat:
-    post:
-      summary: Send a message to the AI tutor
-      description: Send a message to the AI tutor and receive a response based on the learning stage
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ChatRequest'
-      responses:
-        '200':
-          description: Successful response from the AI tutor
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ChatResponse'
-        '400':
-          description: Bad request - missing required fields
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
+                  time:
                     type: string
-                    example: "Message is required"
+                    format: date-time
+                    description: Current server time
+                    example: "2024-01-15T10:30:00.000Z"
+                required:
+                  - ok
+                  - time
         '500':
-          description: Internal server error
+          description: Server error
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "OpenAI API request failed"
+                $ref: '#/components/schemas/Error'
 
-  /chat/stream:
-    post:
-      summary: Send a message to the AI Study Assistant with streaming response
-      description: This endpoint allows users to send a message to the AI tutor and receive a streaming response using Server-Sent Events (SSE). The response is sent token by token as it's generated.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ChatRequest'
-      responses:
-        '200':
-          description: Streaming response from the AI tutor
-          content:
-            text/event-stream:
-              schema:
-                type: string
-                description: |
-                  Server-Sent Events stream with the following event types:
-                  - data: {"token":"..."} - Individual token chunks
-                  - data: {"done":true,"sessionId":"...","final":"..."} - Completion event
-                  - data: {"error":"..."} - Error event
-                  - data: {"ping":true} - Heartbeat event
-              example: |
-                data: {"token":"Hello"}
-                data: {"token":" there"}
-                data: {"token":"!"}
-                data: {"done":true,"sessionId":"64f8a1b2c3d4e5f6a7b8c9d0","final":"Hello there!"}
-        '400':
-          description: Bad request. Missing message field or invalid parameters.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Message is required"
-
-  /session/summary:
-    post:
-      summary: Generate a summary of a study session
-      description: Generate a concise summary of a study session based on chat history
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SessionSummaryRequest'
-      responses:
-        '200':
-          description: Successful summary generation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SessionSummaryResponse'
-        '400':
-          description: Bad request - missing sessionId or no messages found
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "sessionId is required"
-        '404':
-          description: Session not found
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Session not found"
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Failed to generate session summary"
-
-  /sessions:
+  /v1/ready:
     get:
-      summary: Get recent study sessions
-      description: Retrieve a list of recent study sessions with metadata
-      parameters:
-        - name: limit
-          in: query
-          description: Maximum number of sessions to return
-          required: false
-          schema:
-            type: integer
-            default: 20
-            minimum: 1
-            maximum: 100
+      tags:
+        - Health
+      summary: Readiness check
+      description: |
+        Returns the readiness status of the API server including database connectivity.
+        This endpoint checks if the server is ready to handle requests.
+      operationId: getReady
       responses:
         '200':
-          description: List of recent sessions
+          description: Server is ready
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  sessions:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: string
-                          example: "64f8a1b2c3d4e5f6a7b8c9d0"
-                        createdAt:
-                          type: string
-                          format: date-time
-                        updatedAt:
-                          type: string
-                          format: date-time
-                        topic:
-                          type: string
-                          example: "Machine Learning"
-                        stage:
-                          type: integer
-                          minimum: 1
-                          maximum: 4
-                          example: 2
-                        lastMessage:
-                          type: object
-                          properties:
-                            text:
-                              type: string
-                              example: "Can you explain neural networks?"
-                            isUser:
-                              type: boolean
-                              example: true
-                            timestamp:
-                              type: string
-                              format: date-time
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
+                  ok:
+                    type: boolean
+                    description: Readiness status
+                    example: true
+                  db:
                     type: string
-                    example: "Failed to load sessions"
-
-  /session/{id}:
-    patch:
-      summary: Update session stage
-      description: Update the learning stage for a specific session
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: Session ID
-          schema:
-            type: string
-            example: "64f8a1b2c3d4e5f6a7b8c9d0"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - stage
-              properties:
-                stage:
-                  type: integer
-                  minimum: 1
-                  maximum: 4
-                  example: 3
-      responses:
-        '200':
-          description: Session updated successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    example: "64f8a1b2c3d4e5f6a7b8c9d0"
-                  stage:
-                    type: integer
-                    example: 3
-                  updatedAt:
+                    description: Database connection status
+                    enum: [connected, down]
+                    example: "connected"
+                  time:
                     type: string
                     format: date-time
-        '400':
-          description: Bad request - invalid stage value
+                    description: Current server time
+                    example: "2024-01-15T10:30:00.000Z"
+                required:
+                  - ok
+                  - db
+                  - time
+        '503':
+          description: Service unavailable
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  error:
+                  ok:
+                    type: boolean
+                    description: Readiness status
+                    example: false
+                  db:
                     type: string
-                    example: "Stage must be between 1 and 4"
-        '404':
-          description: Session not found
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Session not found"
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Failed to update session"
-
-  /session/{id}/notes:
-    patch:
-      summary: Update session notes
-      description: Update or create notes for a specific session
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: Session ID
-          schema:
-            type: string
-            example: "64f8a1b2c3d4e5f6a7b8c9d0"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - notes
-              properties:
-                notes:
-                  type: string
-                  example: "Key concepts: neural networks, backpropagation, gradient descent"
-      responses:
-        '200':
-          description: Notes updated successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    example: "64f8a1b2c3d4e5f6a7b8c9d0"
-                  notes:
-                    type: string
-                    example: "Key concepts: neural networks, backpropagation, gradient descent"
-                  updatedAt:
+                    description: Database connection status
+                    enum: [connected, down]
+                    example: "down"
+                  time:
                     type: string
                     format: date-time
-        '400':
-          description: Bad request - invalid notes format
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
+                    description: Current server time
+                    example: "2024-01-15T10:30:00.000Z"
                   error:
                     type: string
-                    example: "Notes must be a string"
-        '404':
-          description: Session not found
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Session not found"
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Failed to update notes"
+                    description: Error message
+                    example: "Database connection failed"
+                required:
+                  - ok
+                  - db
+                  - time
 
 components:
   schemas:
-    ChatRequest:
+    Error:
       type: object
-      required:
-        - message
       properties:
-        message:
+        error:
           type: string
-          description: The user's message to the tutor
-          example: "Explain gradients simply"
-        stage:
-          type: integer
-          description: Learning stage (1-4)
-          minimum: 1
-          maximum: 4
-          default: 1
-          example: 1
-        sessionId:
+          description: Error message
+          example: "Internal server error"
+        code:
           type: string
-          description: Session ID for conversation continuity
-          example: "64f8a1b2c3d4e5f6a7b8c9d0"
-
-    ChatResponse:
-      type: object
-      required:
-        - sessionId
-        - reply
-      properties:
-        sessionId:
-          type: string
-          description: Session ID for conversation continuity
-          example: "64f8a1b2c3d4e5f6a7b8c9d0"
-        reply:
-          type: string
-          description: The AI tutor's response
-          example: "Gradients are a fundamental concept in calculus that measure how steep a function is at any point..."
-        messageCount:
-          type: integer
-          description: Total number of messages in this session
-          example: 6
-        updatedAt:
+          description: Error code
+          example: "INTERNAL_ERROR"
+        timestamp:
           type: string
           format: date-time
-          description: Timestamp when the session was last updated
-          example: "2024-01-15T10:30:00Z"
-
-    SessionSummaryRequest:
-      type: object
+          description: Error timestamp
+          example: "2024-01-15T10:30:00.000Z"
+        requestId:
+          type: string
+          description: Request ID for debugging
+          example: "req_123456789"
       required:
-        - sessionId
-      properties:
-        sessionId:
-          type: string
-          description: The session ID to summarize
-          example: "64f8a1b2c3d4e5f6a7b8c9d0"
+        - error
+        - timestamp
 
-    SessionSummaryResponse:
+    # Placeholder schemas for future endpoints
+    User:
       type: object
-      required:
-        - sessionId
-        - summary
-      properties:
-        sessionId:
-          type: string
-          description: The session ID that was summarized
-          example: "64f8a1b2c3d4e5f6a7b8c9d0"
-        summary:
-          type: string
-          description: The generated summary of the study session
-          example: "• Key concept: Derivatives measure rate of change\n• Application: Used in optimization problems\n• Next steps: Practice with more complex functions"
-
-  /session/state:
-    get:
-      summary: Get SRL session state
-      description: Retrieve the current state of a Self-Regulated Learning session
-      parameters:
-        - name: sessionId
-          in: query
-          required: true
-          schema:
-            type: string
-          description: The session ID
-      responses:
-        '200':
-          description: Session state retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SRLState'
-        '404':
-          description: Session not found
-
-  /quiz/submit:
-    post:
-      summary: Submit quiz answers
-      description: Submit answers for a module quiz and get results
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/QuizSubmission'
-      responses:
-        '200':
-          description: Quiz submitted successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/QuizResult'
-
-    SRLState:
-      type: object
-      required:
-        - topic
-        - phase
-        - plan
-        - currentModuleId
-        - progress
-        - nextAction
-      properties:
-        topic:
-          type: string
-          description: The learning topic
-          example: "Python for ML"
-        phase:
-          type: string
-          enum: [assessment, planning, learning, quiz, feedback]
-          description: Current phase of the learning session
-          example: "learning"
-        plan:
-          type: array
-          items:
-            $ref: '#/components/schemas/Module'
-          description: The learning plan with modules and milestones
-        currentModuleId:
-          type: string
-          description: ID of the currently active module
-          example: "m1"
-        progress:
-          $ref: '#/components/schemas/Progress'
-        nextAction:
-          type: string
-          enum: [ask, teach, mini_exercise, start_quiz, submit_quiz, review]
-          description: The next action the user should take
-          example: "mini_exercise"
-
-    Module:
-      type: object
-      required:
-        - id
-        - title
-        - description
-        - status
-        - milestones
+      description: User profile information (Phase 1)
       properties:
         id:
           type: string
-          description: Unique module identifier
-          example: "m1"
+          description: Unique user identifier
+          example: "user_123456789"
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "user@example.com"
+        name:
+          type: string
+          description: User display name
+          example: "John Doe"
+        avatarUrl:
+          type: string
+          format: uri
+          description: User avatar image URL
+          example: "https://example.com/avatar.jpg"
+        preferences:
+          $ref: '#/components/schemas/UserPreferences'
+        stats:
+          $ref: '#/components/schemas/UserStats'
+      required:
+        - id
+        - email
+        - name
+
+    UserPreferences:
+      type: object
+      description: User preferences and settings
+      properties:
+        defaultModel:
+          type: string
+          description: Default LLM model preference
+          example: "llama3.1"
+        explanationLength:
+          type: string
+          description: Preferred explanation detail level
+          enum: [brief, concise-but-complete, detailed]
+          example: "concise-but-complete"
+        theme:
+          type: string
+          description: UI theme preference
+          enum: [light, dark, auto]
+          example: "dark"
+
+    UserStats:
+      type: object
+      description: User learning statistics
+      properties:
+        pointsTotal:
+          type: integer
+          description: Total points earned
+          example: 1250
+        gemsTotal:
+          type: integer
+          description: Total gems earned
+          example: 62
+        trophiesTotal:
+          type: integer
+          description: Total trophies earned
+          example: 3
+
+    StudySession:
+      type: object
+      description: Study session information (Phase 3)
+      properties:
+        id:
+          type: string
+          description: Unique session identifier
+          example: "session_123456789"
+        userId:
+          type: string
+          description: User who owns this session
+          example: "user_123456789"
+        topic:
+          type: string
+          description: Learning topic
+          example: "Machine Learning Fundamentals"
+        chatTitle:
+          type: string
+          description: Session title
+          example: "ML Basics - Neural Networks"
+        learningStyle:
+          type: string
+          description: Learning approach
+          enum: [studying, revision]
+          example: "studying"
+        modelUsed:
+          type: string
+          description: LLM model used
+          example: "llama3.1"
+        status:
+          type: string
+          description: Current session status
+          enum: [pre, assessing, learning, quizzing, feedback, completed]
+          example: "learning"
+        plan:
+          type: array
+          description: Learning modules
+          items:
+            $ref: '#/components/schemas/LearningModule'
+        progressPercent:
+          type: number
+          format: float
+          description: Overall progress percentage
+          minimum: 0
+          maximum: 100
+          example: 65.5
+        points:
+          type: integer
+          description: Points earned in this session
+          example: 45
+        gems:
+          type: integer
+          description: Gems earned in this session
+          example: 2
+        hasTrophy:
+          type: boolean
+          description: Whether session has earned a trophy
+          example: false
+        isViewOnly:
+          type: boolean
+          description: Whether session is completed and view-only
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+          description: Session creation timestamp
+        updatedAt:
+          type: string
+          format: date-time
+          description: Session last update timestamp
+      required:
+        - id
+        - userId
+        - topic
+        - learningStyle
+        - status
+
+    LearningModule:
+      type: object
+      description: Individual learning module within a session
+      properties:
+        id:
+          type: string
+          description: Module identifier
+          example: "module_1"
         title:
           type: string
           description: Module title
-          example: "Python Basics"
-        description:
-          type: string
-          description: Module description
-          example: "Learn syntax, variables, data types"
+          example: "Introduction to Neural Networks"
         status:
           type: string
-          enum: [in_progress, locked, complete]
-          description: Module status
+          description: Module completion status
+          enum: [pending, in_progress, completed]
           example: "in_progress"
-        milestones:
-          type: array
-          items:
-            type: string
-          description: List of module milestones
-          example: ["Install Python", "Write first program", "Understand data types"]
-
-    Progress:
-      type: object
-      required:
-        - overallPct
-        - modulePct
-      properties:
-        overallPct:
+        progress:
           type: number
+          format: float
+          description: Module progress percentage
           minimum: 0
           maximum: 100
-          description: Overall progress percentage
-          example: 10
-        modulePct:
-          type: number
-          minimum: 0
-          maximum: 100
-          description: Current module progress percentage
-          example: 33.33
-
-    QuizSubmission:
-      type: object
-      required:
-        - sessionId
-        - answers
-      properties:
-        sessionId:
-          type: string
-          description: The session ID
-          example: "64f8a1b2c3d4e5f6a7b8c9d0"
-        answers:
-          type: array
-          items:
-            $ref: '#/components/schemas/QuizAnswer'
-          description: Array of quiz answers
-
-    QuizAnswer:
-      type: object
-      required:
-        - questionIndex
-        - selectedAnswer
-      properties:
-        questionIndex:
+          example: 75.0
+        pointsAllocated:
           type: integer
-          description: Index of the question
-          example: 0
-        selectedAnswer:
-          type: string
-          description: The selected answer
-          example: "A"
-
-    QuizResult:
-      type: object
+          description: Points allocated to this module
+          example: 25
       required:
-        - passed
-        - score
-        - feedback
-      properties:
-        passed:
-          type: boolean
-          description: Whether the quiz was passed
-          example: true
-        score:
-          type: number
-          minimum: 0
-          maximum: 100
-          description: Quiz score percentage
-          example: 85
-        feedback:
-          type: string
-          description: Feedback on the quiz performance
-          example: "Great job! You've mastered the basics. Ready for the next module."
+        - id
+        - title
+        - status
+
+  securitySchemes:
+    # Placeholder for future authentication schemes
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token authentication (Phase 1)
+
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Session cookie authentication (Phase 1)
+
+security:
+  - BearerAuth: []
+  - CookieAuth: []
+
+# External documentation
+externalDocs:
+  description: Study Assist Documentation
+  url: https://docs.studyassist.dev

@@ -7,6 +7,11 @@ const Groq = require('groq-sdk');
 const swaggerUi = require('swagger-ui-express');
 const fs = require('fs');
 const yaml = require('js-yaml');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const morgan = require('morgan');
+const winston = require('winston');
+const { v4: uuidv4 } = require('uuid');
 
 const StudySession = require('./models/StudySession');
 const ChatLog = require('./models/ChatLog');
@@ -18,11 +23,68 @@ const { generateQuiz } = require('./prompts/quizGenerator');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// Middleware
+// Logger configuration
+const logger = winston.createLogger({
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
+    })
+  ]
+});
+
+// Request ID middleware
+app.use((req, res, next) => {
+  req.id = uuidv4();
+  res.setHeader('X-Request-Id', req.id);
+  next();
+});
+
+// Security middleware
+app.use(helmet());
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // limit each IP to 60 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(limiter);
+
+// CORS configuration
+const corsOrigins = process.env.CORS_ORIGINS ? 
+  process.env.CORS_ORIGINS.split(',').map(origin => origin.trim()) : 
+  ['http://localhost:3000'];
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000'
+  origin: corsOrigins,
+  credentials: true
 }));
-app.use(express.json());
+
+// Body parsing with size limit
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// Logging middleware
+if (process.env.NODE_ENV === 'production') {
+  app.use(morgan('combined', {
+    stream: {
+      write: (message) => logger.info(message.trim())
+    }
+  }));
+} else {
+  app.use(morgan('dev'));
+}
 
 // Enhanced STATE JSON Parser with Robust Extraction
 const stripAndParseState = (modelText) => {
@@ -341,6 +403,36 @@ const groq = new Groq({
 // Stage-aware system prompt helper
 
 // Routes
+app.get('/v1/health', (req, res) => {
+  res.json({ 
+    ok: true, 
+    time: new Date().toISOString() 
+  });
+});
+
+app.get('/v1/ready', async (req, res) => {
+  try {
+    // Check MongoDB connectivity
+    const dbState = mongoose.connection.readyState;
+    const isConnected = dbState === 1; // 1 = connected
+    
+    res.json({ 
+      ok: isConnected,
+      db: isConnected ? 'connected' : 'down',
+      time: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Readiness check failed:', error);
+    res.status(503).json({ 
+      ok: false,
+      db: 'down',
+      error: 'Database connection failed',
+      time: new Date().toISOString()
+    });
+  }
+});
+
+// Legacy health endpoint for backward compatibility
 app.get('/health', (req, res) => {
   res.json({ ok: true });
 });
@@ -2153,13 +2245,20 @@ app.post('/quiz/start', async (req, res) => {
   }
 });
 
-// Load and mount Swagger UI
-try {
-  const openapiSpec = yaml.load(fs.readFileSync(__dirname + '/openapi.yaml', 'utf8'));
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
-  console.log(`📚 API Documentation available at http://localhost:${PORT}/api-docs`);
-} catch (error) {
-  console.error('❌ Failed to load OpenAPI spec:', error);
+// Load and mount Swagger UI (only in non-production environments)
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    const openapiSpec = yaml.load(fs.readFileSync(__dirname + '/openapi.yaml', 'utf8'));
+    app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec, {
+      customCss: '.swagger-ui .topbar { display: none }',
+      customSiteTitle: 'Study Assist API Documentation'
+    }));
+    console.log(`📚 API Documentation available at http://localhost:${PORT}/docs`);
+  } catch (error) {
+    console.error('❌ Failed to load OpenAPI spec:', error);
+  }
+} else {
+  console.log('📚 API Documentation disabled in production');
 }
 
 // Start server
