@@ -1,0 +1,128 @@
+/* LeftNav - 3-part stack layout with dynamic sizing */
+.left {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 0;
+  border-right: 1px solid var(--neutral-100, #e6e7e8);
+  width: 100%;
+  height: 100vh;
+  background-color: var(--base-white, #ffffff);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 5;
+}
+
+/* Responsive nav with dynamic sizing */
+@media (max-width: 1200px) {
+  .left-header {
+    padding: 1.5vh 1.5vw;
+    gap: 1.5vh;
+  }
+  
+  .logo-section {
+    padding: 1.5vh 2vw 1.5vh 1.5vw;
+  }
+  
+  .logo-text {
+    font-size: calc(1rem + 0.5vw);
+    line-height: 1.5;
+  }
+}
+
+@media (max-width: 1024px) {
+  .left-header {
+    padding: 1.2vh 1.2vw;
+    gap: 1.2vh;
+  }
+  
+  .logo-section {
+    padding: 1.2vh 1.8vw 1.2vh 1.2vw;
+  }
+  
+  .logo-text {
+    font-size: calc(0.9rem + 0.4vw);
+    line-height: 1.4;
+  }
+}
+
+@media (max-width: 768px) {
+  .left-header {
+    padding: 1vh 1vw;
+    gap: 1vh;
+  }
+  
+  .logo-section {
+    padding: 1vh 1.5vw 1vh 1vw;
+  }
+  
+  .logo-text {
+    font-size: calc(0.8rem + 0.3vw);
+    line-height: 1.3;
+  }
+}
+
+.left-header {
+  padding: 1.8vh 1.8vw;
+  border-bottom: 1px solid var(--neutral-100, #e6e7e8);
+  display: flex;
+  flex-direction: column;
+  gap: 2vh;
+  flex-shrink: 0;
+  min-height: 8vh; /* Match TopBar height dynamically */
+}
+
+.logo-section {
+  display: flex;
+  align-items: center;
+  gap: 1vw;
+  padding: 1.8vh 1.8vw;
+}
+
+.logo-container {
+  width: calc(1.8vh + 1.2vw);
+  height: calc(1.8vh + 1.2vw);
+  min-width: 24px;
+  min-height: 24px;
+  max-width: 30px;
+  max-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.logo-text {
+  font-family: 'Inter', sans-serif;
+  font-size: calc(0.85rem + 0.4vw);
+  font-weight: 700;
+  color: var(--base-black, #030712);
+  line-height: 1.3;
+  letter-spacing: -0.4px;
+  margin: 0;
+}
+
+.left-scroll {
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-2, 8px);
+}
+
+.left-footer {
+  padding: var(--space-4, 16px);
+  border-top: 1px solid var(--neutral-100, #e6e7e8);
+  background: linear-gradient(to bottom, #ecf2fd, rgba(236, 242, 253, 0));
+  border-radius: 16px 16px 0 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .left-nav {
+    display: none; /* Hide on mobile for now */
+  }
+}

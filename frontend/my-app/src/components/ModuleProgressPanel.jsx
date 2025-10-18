@@ -1,50 +1,70 @@
 import React from 'react';
 import './ModuleProgressPanel.css';
 
-const ModuleProgressPanel = ({ 
-  topic, 
-  phase, 
-  plan, 
-  currentModuleId, 
-  progress, 
-  nextAction, 
+const ModuleProgressPanel = ({
+  topic,
+  phase,
+  plan,
+  currentModuleId,
+  progress,
+  nextAction,
   onNextAction,
-  planLocked = false
+  planLocked = false,
 }) => {
-  const currentModule = plan.find(m => m.id === currentModuleId);
-  
+  const currentModule = plan.find((m) => m.id === currentModuleId);
+
   const getPhaseBadgeClass = (phase) => {
     switch (phase) {
-      case 'assessment': return 'phase-badge assessment';
-      case 'plan_proposed': return 'phase-badge planning';
-      case 'planning': return 'phase-badge planning';
-      case 'learning': return 'phase-badge learning';
-      case 'quiz': return 'phase-badge quiz';
-      case 'feedback': return 'phase-badge feedback';
-      default: return 'phase-badge';
+      case 'assessment':
+        return 'phase-badge assessment';
+      case 'plan_proposed':
+        return 'phase-badge planning';
+      case 'planning':
+        return 'phase-badge planning';
+      case 'learning':
+        return 'phase-badge learning';
+      case 'quiz':
+        return 'phase-badge quiz';
+      case 'feedback':
+        return 'phase-badge feedback';
+      default:
+        return 'phase-badge';
     }
   };
 
   const getModuleStatusIcon = (status) => {
     switch (status) {
-      case 'complete': return '✓';
-      case 'in_progress': return '●';
-      case 'locked': return '🔒';
-      default: return '○';
+      case 'complete':
+        return '✓';
+      case 'in_progress':
+        return '●';
+      case 'locked':
+        return '🔒';
+      default:
+        return '○';
     }
   };
 
   const getNextActionText = (nextAction) => {
     switch (nextAction) {
-      case 'ask': return 'Ask Question';
-      case 'confirm_plan': return 'Confirm Plan';
-      case 'teach': return 'Continue Learning';
-      case 'teach_continued': return 'Continue Reading';
-      case 'mini_exercise': return 'Try Exercise';
-      case 'start_quiz': return 'Start Quiz';
-      case 'submit_quiz': return 'Submit Quiz';
-      case 'review': return 'Review Material';
-      default: return 'Next Step';
+      case 'ask':
+        return 'Ask Question';
+      case 'confirm_plan':
+        return 'Confirm Plan';
+      case 'teach':
+        return 'Continue Learning';
+      case 'teach_continued':
+        return 'Continue Reading';
+      case 'mini_exercise':
+        return 'Try Exercise';
+      case 'start_quiz':
+        return 'Start Quiz';
+      case 'submit_quiz':
+        return 'Submit Quiz';
+      case 'review':
+        return 'Review Material';
+      default:
+        return 'Next Step';
     }
   };
 
@@ -58,7 +78,10 @@ const ModuleProgressPanel = ({
             {phase?.toUpperCase() || 'ASSESSMENT'}
           </div>
           {planLocked && (
-            <div className="plan-locked-badge" title="Plan is locked - cannot be modified during learning">
+            <div
+              className="plan-locked-badge"
+              title="Plan is locked - cannot be modified during learning"
+            >
               🔒
             </div>
           )}
@@ -69,8 +92,8 @@ const ModuleProgressPanel = ({
       <div className="progress-section">
         <div className="progress-label">Overall Progress</div>
         <div className="progress-bar">
-          <div 
-            className="progress-fill" 
+          <div
+            className="progress-fill"
             style={{ width: `${progress?.overallPct || 0}%` }}
           ></div>
         </div>
@@ -85,27 +108,32 @@ const ModuleProgressPanel = ({
           </h4>
           <div className="module-progress">
             <div className="progress-bar">
-              <div 
-                className="progress-fill" 
+              <div
+                className="progress-fill"
                 style={{ width: `${progress?.modulePct || 0}%` }}
               ></div>
             </div>
             <div className="progress-text">{progress?.modulePct || 0}%</div>
           </div>
           <p className="module-description">{currentModule.description}</p>
-          
+
           {/* Milestones */}
           <div className="milestones">
             <h5>Milestones:</h5>
             <ul className="milestone-list">
               {currentModule.milestones?.map((milestone, index) => {
-                const isCompleted = currentModule.completedMilestones?.includes(index) || false;
+                const isCompleted =
+                  currentModule.completedMilestones?.includes(index) || false;
                 return (
                   <li key={index} className="milestone-item">
-                    <span className={`milestone-check ${isCompleted ? 'completed' : ''}`}>
+                    <span
+                      className={`milestone-check ${isCompleted ? 'completed' : ''}`}
+                    >
                       {isCompleted ? '✓' : '○'}
                     </span>
-                    <span className={`milestone-text ${isCompleted ? 'completed' : ''}`}>
+                    <span
+                      className={`milestone-text ${isCompleted ? 'completed' : ''}`}
+                    >
                       {milestone}
                     </span>
                   </li>
@@ -121,8 +149,8 @@ const ModuleProgressPanel = ({
         <h4>Learning Path</h4>
         <div className="modules-list">
           {plan.map((module, index) => (
-            <div 
-              key={module.id} 
+            <div
+              key={module.id}
               className={`module-card ${module.status} ${
                 module.id === currentModuleId ? 'current' : ''
               }`}
@@ -135,7 +163,7 @@ const ModuleProgressPanel = ({
                 <span className="module-title">{module.title}</span>
               </div>
               <p className="module-description">{module.description}</p>
-              
+
               {/* Module Milestones */}
               <div className="module-milestones">
                 {module.milestones?.slice(0, 3).map((milestone, mIndex) => (
@@ -157,7 +185,7 @@ const ModuleProgressPanel = ({
 
       {/* Next Action Button */}
       <div className="next-action-section">
-        <button 
+        <button
           className="next-action-btn"
           onClick={() => onNextAction && onNextAction(nextAction)}
           disabled={!nextAction}

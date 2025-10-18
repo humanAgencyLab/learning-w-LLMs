@@ -1,5 +1,5 @@
-import React from "react";
-import styles from "./InputDesign.module.css";
+import React from 'react';
+import styles from './InputDesign.module.css';
 
 const InputField = ({ type, placeholder, icon }) => {
   return (

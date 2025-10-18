@@ -218,7 +218,8 @@
   margin-bottom: 20px;
 }
 
-.reassess-btn, .quiz-btn {
+.reassess-btn,
+.quiz-btn {
   padding: 10px 16px;
   border: none;
   border-radius: 6px;
@@ -247,7 +248,8 @@
   background-color: #2563eb;
 }
 
-.reassess-btn:disabled, .quiz-btn:disabled {
+.reassess-btn:disabled,
+.quiz-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -332,7 +334,7 @@
     margin-left: 0;
     border-radius: 0;
   }
-  
+
   .stage-tracker.open {
     right: 0;
   }
@@ -353,7 +355,7 @@
     border-radius: 20px 20px 0 0;
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
   }
-  
+
   .stage-tracker.open {
     bottom: 0;
   }

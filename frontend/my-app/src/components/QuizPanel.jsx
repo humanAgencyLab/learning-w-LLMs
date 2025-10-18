@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
 import './QuizPanel.css';
 
-const QuizPanel = ({ 
-  isOpen, 
-  onClose, 
-  quizData, 
-  onSubmit 
-}) => {
+const QuizPanel = ({ isOpen, onClose, quizData, onSubmit }) => {
   const [answers, setAnswers] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showResults, setShowResults] = useState(false);
@@ -15,18 +10,20 @@ const QuizPanel = ({
   if (!isOpen || !quizData) return null;
 
   const handleAnswerChange = (questionIndex, answer) => {
-    setAnswers(prev => ({
+    setAnswers((prev) => ({
       ...prev,
-      [questionIndex]: answer
+      [questionIndex]: answer,
     }));
   };
 
   const handleSubmit = async () => {
     if (isSubmitting) return;
-    
+
     setIsSubmitting(true);
     try {
-      const answersArray = quizData.questions.map((_, index) => answers[index] || '');
+      const answersArray = quizData.questions.map(
+        (_, index) => answers[index] || '',
+      );
       const result = await onSubmit(answersArray);
       setResults(result);
       setShowResults(true);
@@ -55,14 +52,19 @@ const QuizPanel = ({
       <div className="quiz-panel">
         <div className="quiz-panel-header">
           <h3>Stage {quizData.stage} Quiz</h3>
-          <button className="close-btn" onClick={handleClose}>×</button>
+          <button className="close-btn" onClick={handleClose}>
+            ×
+          </button>
         </div>
 
         <div className="quiz-panel-content">
           {!showResults ? (
             <>
               <div className="quiz-instructions">
-                <p>Answer the following questions to test your understanding. You need 80% or higher to pass.</p>
+                <p>
+                  Answer the following questions to test your understanding. You
+                  need 80% or higher to pass.
+                </p>
               </div>
 
               <div className="quiz-questions">
@@ -71,13 +73,13 @@ const QuizPanel = ({
                     <div className="question-header">
                       <span className="question-number">Q{index + 1}</span>
                       <span className="question-type">
-                        {question.type === 'mcq' ? 'Multiple Choice' : 'Short Answer'}
+                        {question.type === 'mcq'
+                          ? 'Multiple Choice'
+                          : 'Short Answer'}
                       </span>
                     </div>
-                    
-                    <div className="question-text">
-                      {question.question}
-                    </div>
+
+                    <div className="question-text">{question.question}</div>
 
                     {question.type === 'mcq' ? (
                       <div className="mcq-options">
@@ -88,7 +90,9 @@ const QuizPanel = ({
                               name={`question-${index}`}
                               value={option}
                               checked={answers[index] === option}
-                              onChange={(e) => handleAnswerChange(index, e.target.value)}
+                              onChange={(e) =>
+                                handleAnswerChange(index, e.target.value)
+                              }
                             />
                             <span className="option-text">{option}</span>
                           </label>
@@ -98,7 +102,9 @@ const QuizPanel = ({
                       <div className="short-answer-input">
                         <textarea
                           value={answers[index] || ''}
-                          onChange={(e) => handleAnswerChange(index, e.target.value)}
+                          onChange={(e) =>
+                            handleAnswerChange(index, e.target.value)
+                          }
                           placeholder="Enter your answer here..."
                           rows={3}
                         />
@@ -109,10 +115,13 @@ const QuizPanel = ({
               </div>
 
               <div className="quiz-actions">
-                <button 
+                <button
                   className="submit-btn"
                   onClick={handleSubmit}
-                  disabled={isSubmitting || Object.keys(answers).length < quizData.questions.length}
+                  disabled={
+                    isSubmitting ||
+                    Object.keys(answers).length < quizData.questions.length
+                  }
                 >
                   {isSubmitting ? 'Submitting...' : 'Submit Quiz'}
                 </button>
@@ -120,16 +129,16 @@ const QuizPanel = ({
             </>
           ) : (
             <div className="quiz-results">
-              <div className={`results-header ${results.passed ? 'passed' : 'failed'}`}>
+              <div
+                className={`results-header ${results.passed ? 'passed' : 'failed'}`}
+              >
                 <div className="results-icon">
                   {results.passed ? '🎉' : '❌'}
                 </div>
                 <div className="results-title">
                   {results.passed ? 'Quiz Passed!' : 'Quiz Failed'}
                 </div>
-                <div className="results-score">
-                  Score: {results.scorePct}%
-                </div>
+                <div className="results-score">Score: {results.scorePct}%</div>
               </div>
 
               <div className="results-feedback">
@@ -164,8 +173,5 @@ const QuizPanel = ({
 };
 
 export default QuizPanel;
-
-
-
 
 

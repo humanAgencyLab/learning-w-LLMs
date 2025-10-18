@@ -1,9 +1,9 @@
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+import { API_BASE } from '../config';
 
 // Pre-assessment API
 export const runPreAssessment = async (topic, message, sessionId = null) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/preassessment`, {
+    const response = await fetch(`${API_BASE}/preassessment`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -11,7 +11,7 @@ export const runPreAssessment = async (topic, message, sessionId = null) => {
       body: JSON.stringify({
         topic,
         message,
-        sessionId
+        sessionId,
       }),
     });
 
@@ -27,9 +27,14 @@ export const runPreAssessment = async (topic, message, sessionId = null) => {
 };
 
 // Generate learning plan
-export const generateLearningPlan = async (sessionId, learningGoal, priorKnowledge, learningStyle) => {
+export const generateLearningPlan = async (
+  sessionId,
+  learningGoal,
+  priorKnowledge,
+  learningStyle,
+) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/learning-plan`, {
+    const response = await fetch(`${API_BASE}/learning-plan`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -38,7 +43,7 @@ export const generateLearningPlan = async (sessionId, learningGoal, priorKnowled
         sessionId,
         learningGoal,
         priorKnowledge,
-        learningStyle
+        learningStyle,
       }),
     });
 
@@ -56,7 +61,7 @@ export const generateLearningPlan = async (sessionId, learningGoal, priorKnowled
 // Get learning plan
 export const getLearningPlan = async (sessionId) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/plan/${sessionId}`, {
+    const response = await fetch(`${API_BASE}/plan/${sessionId}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -75,9 +80,15 @@ export const getLearningPlan = async (sessionId) => {
 };
 
 // Update module status
-export const updateModuleStatus = async (sessionId, moduleId, status, progress = null, quizScore = null) => {
+export const updateModuleStatus = async (
+  sessionId,
+  moduleId,
+  status,
+  progress = null,
+  quizScore = null,
+) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/session/${sessionId}/module`, {
+    const response = await fetch(`${API_BASE}/session/${sessionId}/module`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -86,7 +97,7 @@ export const updateModuleStatus = async (sessionId, moduleId, status, progress =
         moduleId,
         status,
         progress,
-        quizScore
+        quizScore,
       }),
     });
 
@@ -104,14 +115,14 @@ export const updateModuleStatus = async (sessionId, moduleId, status, progress =
 // Start module quiz
 export const startModuleQuiz = async (sessionId, moduleId = null) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/quiz/start`, {
+    const response = await fetch(`${API_BASE}/quiz/start`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         sessionId,
-        moduleId
+        moduleId,
       }),
     });
 

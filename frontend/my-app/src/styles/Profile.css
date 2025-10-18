@@ -1,250 +1,249 @@
-.profile-container{
-    max-width: 600px;
-    margin: auto;
-    padding: 2rem 1rem;
-    font-family: 'Poppins', sans-serif;
-    transition: background-color 0.3s;
+.profile-container {
+  max-width: 600px;
+  margin: auto;
+  padding: 2rem 1rem;
+  font-family: 'Poppins', sans-serif;
+  transition: background-color 0.3s;
 }
 
-.profile-heading{
-    display: flex;
-    align-items: center;
-    text-align: center;
-    font-size: 30px;
-    font-weight: 750;
-    color: #1E3A8A;
-    margin-bottom: 0.5rem;
+.profile-heading {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  font-size: 30px;
+  font-weight: 750;
+  color: #1e3a8a;
+  margin-bottom: 0.5rem;
 }
 
-.profile-description{
-    font-size: 16px;
-    color: #1E3A8A;
-    margin-top: 0.5rem;
-    margin-bottom: 1.5rem;
+.profile-description {
+  font-size: 16px;
+  color: #1e3a8a;
+  margin-top: 0.5rem;
+  margin-bottom: 1.5rem;
 }
 
-.profile-form{
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
-.profile-property{
-    font-size: 20px;
-    color: #1E3A8A;
-    margin: 20px ;
+.profile-property {
+  font-size: 20px;
+  color: #1e3a8a;
+  margin: 20px;
 }
 
-.input-group{
-    gap: 0.5rem;
-    background-color: #e8f2fc;
-    padding: 2px 20px 2px;
-    position: relative;
+.input-group {
+  gap: 0.5rem;
+  background-color: #e8f2fc;
+  padding: 2px 20px 2px;
+  position: relative;
 }
 
-select{
-    padding: 10px 12px;
-    font-size: 16px;
-    border: 2px solid #cbd5e1;
-    border-radius: 8px;
-    background-color: #f8fafc;
-    color: #1e293b;
-    font-weight: 600;
-    color: #1E3A8A;
+select {
+  padding: 10px 12px;
+  font-size: 16px;
+  border: 2px solid #cbd5e1;
+  border-radius: 8px;
+  background-color: #f8fafc;
+  color: #1e293b;
+  font-weight: 600;
+  color: #1e3a8a;
 }
 
-.profile-input{
-    background-color: #e8f2fc;
-    color: white;
-    border: 2px solid #1e293b;
-    border-radius: 8px;
-    padding: 8px 10px;
-    font-size: 16px;
-    font-weight: 500;
+.profile-input {
+  background-color: #e8f2fc;
+  color: white;
+  border: 2px solid #1e293b;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 16px;
+  font-weight: 500;
 }
 
-.profile-input:focus{
-    outline:none;
-    border-color: #1E3A8A;
+.profile-input:focus {
+  outline: none;
+  border-color: #1e3a8a;
 }
 
-.profile-avatar{
-    text-align: center;
-    margin-bottom: 1rem;
+.profile-avatar {
+  text-align: center;
+  margin-bottom: 1rem;
 }
 
-.profile-avatar-title{
-    color: #1E3A8A;
+.profile-avatar-title {
+  color: #1e3a8a;
 }
 
-.profile-avatar-img{
-    width: 120px;
-    height: 120px;
-    border-radius: 50%;
-    border: 3px solid #3b82f6;
-    margin-top: 10px;
+.profile-avatar-img {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 3px solid #3b82f6;
+  margin-top: 10px;
 }
 
-.avatar-selection{
-    display: flex;
-    flex-wrap: wrap;
-    gap: 15px;
-    justify-content: center; 
-    margin-bottom: 1.5rem;
+.avatar-selection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  justify-content: center;
+  margin-bottom: 1.5rem;
 }
 
-.avatar-option{
-    width: 70px;
-    height: 70px;
-    border-radius: 50%;
-    cursor: pointer;
-    border: 3px solid transparent;
-    transition: border 0.3s ease;
-    margin-top: 10px;
+.avatar-option {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 3px solid transparent;
+  transition: border 0.3s ease;
+  margin-top: 10px;
 }
 
-.avatar-option:hover{
-    border-color: #3b82f6;
+.avatar-option:hover {
+  border-color: #3b82f6;
 }
 
-.avatar-option.selected{
-    border-color: #1e3a8a;
+.avatar-option.selected {
+  border-color: #1e3a8a;
 }
 
-.profile-course-input{
-    display : flex;
-    gap: 10px;
-    margin-bottom: 10px;
-    margin-top: 5px;
+.profile-course-input {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  margin-top: 5px;
 }
 
-.profile-add-button{
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 14px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
+.profile-add-button {
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
 }
 
-.profile-add-button:hover{
-    background-color: #7b94d7;
-    transition: background-color 0.3s ease;
+.profile-add-button:hover {
+  background-color: #7b94d7;
+  transition: background-color 0.3s ease;
 }
 
-.profile-course-container{
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 10px;
+.profile-course-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
 }
-.profile-course-list{
-    list-style: none;
-    padding-left:0;
-    margin-top: 10px;
-}
-
-.profile-course-item{
-    padding: 6px 10px;
-    margin-bottom: 6px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+.profile-course-list {
+  list-style: none;
+  padding-left: 0;
+  margin-top: 10px;
 }
 
-.profile-remove-button{
-    font-weight: 600;
-    cursor: pointer;
-    background-color: #3b82f6;
-    color: white;
-    border:none;
-    border-radius: 6px;
-    padding: 8px 14px;
-    margin-left: 20px;
+.profile-course-item {
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.profile-remove-button:hover{
-    background-color: 7b94d7;
-    transition: background-color 0.3s ease;
+.profile-remove-button {
+  font-weight: 600;
+  cursor: pointer;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 14px;
+  margin-left: 20px;
 }
 
-.weekly-goals{
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding-bottom: 20px;
-    margin-bottom: 1px;
+.profile-remove-button:hover {
+  background-color: 7b94d7;
+  transition: background-color 0.3s ease;
 }
 
-.weekly-goal-row{
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-top: 0;
+.weekly-goals {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 20px;
+  margin-bottom: 1px;
 }
 
-.weekly-goal-row input{
-    width: 60px;
-    padding: 4px 6px;
-    margin-right: 4px;
-    border: 1px solid #1E3A8A;
-    border-radius: 6px;
-    text-align: center;
+.weekly-goal-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 0;
 }
 
-.weekly-goal-row span{
-    color: #1E3A8A;
-    font-weight: 500;
+.weekly-goal-row input {
+  width: 60px;
+  padding: 4px 6px;
+  margin-right: 4px;
+  border: 1px solid #1e3a8a;
+  border-radius: 6px;
+  text-align: center;
 }
 
-.options-buttons{
-    display: flex;
-    flex-wrap: wrap;
-    align-items: right;
-    gap: 10px;
-
+.weekly-goal-row span {
+  color: #1e3a8a;
+  font-weight: 500;
 }
 
-.option-button{
-    padding: 8px 14px;
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-    gap: 5px;
-    margin: 5px;
+.options-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: right;
+  gap: 10px;
 }
 
-.option-button:hover{
-    background-color: #7b94d7;
+.option-button {
+  padding: 8px 14px;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  gap: 5px;
+  margin: 5px;
 }
 
-.option-button.selected{
-    background-color: #1E3A8A;
+.option-button:hover {
+  background-color: #7b94d7;
 }
 
-.profile-horizontal-section{
-    display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
-    margin-bottom: 10px;
-}
-.half-width{
-    flex: 1;
-    min-width: 240px;
-    padding: 10px;
+.option-button.selected {
+  background-color: #1e3a8a;
 }
 
-.profile-submit-button{
-    color: white;
-    background-color: #1E3A8A;
-    border-radius: 8px;
-    border: none;
-    padding: 10px;
-    font-size: 16px;
-    transition: background-color 0.3s ease;
+.profile-horizontal-section {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.half-width {
+  flex: 1;
+  min-width: 240px;
+  padding: 10px;
+}
+
+.profile-submit-button {
+  color: white;
+  background-color: #1e3a8a;
+  border-radius: 8px;
+  border: none;
+  padding: 10px;
+  font-size: 16px;
+  transition: background-color 0.3s ease;
 }

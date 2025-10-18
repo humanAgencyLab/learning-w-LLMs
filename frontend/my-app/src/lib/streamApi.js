@@ -2,7 +2,7 @@
  * Streaming API helper functions for real-time chat responses
  */
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '';
+import { API_BASE } from '../config';
 
 /**
  * Send a message with streaming response
@@ -16,17 +16,17 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '';
  * @param {Function} params.onError - Callback for errors
  * @returns {Promise<void>}
  */
-export async function sendMessageStream({ 
-  message, 
-  stage = 1, 
-  sessionId, 
+export async function sendMessageStream({
+  message,
+  stage = 1,
+  sessionId,
   abortController,
   onToken,
   onComplete,
-  onError 
+  onError,
 }) {
   try {
-    const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+    const response = await fetch(`${API_BASE}/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -46,18 +46,18 @@ export async function sendMessageStream({
     try {
       while (true) {
         const { done, value } = await reader.read();
-        
+
         if (done) break;
-        
+
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || ''; // Keep incomplete line in buffer
-        
+
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              
+
               if (data.token) {
                 onToken(data.token);
               } else if (data.done) {
@@ -87,8 +87,3 @@ export async function sendMessageStream({
     }
   }
 }
-
-
-
-
-

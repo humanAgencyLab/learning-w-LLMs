@@ -127,13 +127,10 @@
     width: 100vw;
     right: -100vw;
   }
-  
+
   .notes-panel.open {
     right: 0;
   }
 }
-
-
-
 
 

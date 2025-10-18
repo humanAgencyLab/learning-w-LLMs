@@ -11,27 +11,37 @@ function LandingPage() {
 
   const handleStartLearning = () => {
     if (isAuthenticated) {
-      navigate("/chat");
+      navigate('/chat');
     } else {
-      navigate("/signin", {state: { from: "/chat" } }); /* Redirect to sign-in with intended destination */
+      navigate('/signin', {
+        state: { from: '/chat' },
+      }); /* Redirect to sign-in with intended destination */
     }
   };
 
   const handleStartExplanation = () => {
     if (isAuthenticated) {
-      navigate("/chatquiz"); /* explanation page hasn't been designed - placeholder : chat (quiz)*/
+      navigate(
+        '/chatquiz',
+      ); /* explanation page hasn't been designed - placeholder : chat (quiz)*/
     } else {
-      navigate("/signin", {state: { from: "/chatquiz" } }); /* Redirect to sign-in with intended destination */
+      navigate('/signin', {
+        state: { from: '/chatquiz' },
+      }); /* Redirect to sign-in with intended destination */
     }
-  }
+  };
 
   const handleStartRevision = () => {
     if (isAuthenticated) {
-      navigate("/chatquiz"); /* Revision page hasn't been designed - placeholder : chat (quiz)*/
+      navigate(
+        '/chatquiz',
+      ); /* Revision page hasn't been designed - placeholder : chat (quiz)*/
     } else {
-      navigate("/signin", {state: { from: "/chatquiz" } }); /* Redirect to sign-in with intended destination */
+      navigate('/signin', {
+        state: { from: '/chatquiz' },
+      }); /* Redirect to sign-in with intended destination */
     }
-  }
+  };
 
   return (
     <MainLayout>
@@ -55,10 +65,10 @@ function LandingPage() {
           <button className="start-btn" onClick={handleStartLearning}>
             Studying
           </button>
-          <button className='start-btn' onClick={handleStartExplanation}>
+          <button className="start-btn" onClick={handleStartExplanation}>
             Explanation
           </button>
-          <button className='start-btn' onClick={handleStartRevision}>
+          <button className="start-btn" onClick={handleStartRevision}>
             Revision
           </button>
         </div>
@@ -66,14 +76,7 @@ function LandingPage() {
         <div className="topic-tag">Time Complexity | Logic</div>
       </div>
     </MainLayout>
-
   );
 }
 
 export default LandingPage;
-
-
-
-
-
-

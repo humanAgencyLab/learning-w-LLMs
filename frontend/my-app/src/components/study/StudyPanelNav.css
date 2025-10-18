@@ -1,0 +1,252 @@
+/* StudyPanelNav Styles - Based on Figma Design */
+.study-panel {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+  background-color: var(--base-white, #ffffff);
+  border: 1px solid var(--neutral-100, #e6e7e8);
+  border-radius: 16px;
+  height: 624px;
+  overflow: hidden;
+}
+
+/* Panel Top - Sticky Header */
+.panel-top {
+  position: sticky;
+  top: 0;
+  background: var(--base-white, #ffffff);
+  padding: 16px;
+  z-index: 1;
+  border-bottom: 1px solid var(--neutral-100, #e6e7e8);
+  border-radius: 16px 16px 0 0;
+}
+
+.topic-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.topic-line {
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--base-black, #030712);
+  line-height: 24px;
+  letter-spacing: -0.25px;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.points-line {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--base-black, #030712);
+  line-height: 16px;
+  margin: 0;
+}
+
+/* Panel List - Scrollable Module List */
+.panel-list {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.module-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  border-radius: 0;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.module-item:hover {
+  background-color: transparent;
+}
+
+.module-item.current {
+  background-color: transparent;
+  border: none;
+}
+
+.module-item.locked {
+  opacity: 1;
+  cursor: pointer;
+}
+
+.module-item.locked:hover {
+  background-color: transparent;
+}
+
+.module-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.module-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.module-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.module-number {
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--base-black, #030712);
+  line-height: 24px;
+  letter-spacing: -0.25px;
+}
+
+.module-item.locked .module-number {
+  color: var(--neutral-600, #686d77);
+}
+
+.module-points {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--base-black, #030712);
+  line-height: 16px;
+}
+
+.module-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--base-black, #030712);
+  line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.module-item.locked .module-title {
+  color: var(--neutral-600, #686d77);
+}
+
+.lock-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.module-milestones {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: 19.5px;
+}
+
+.milestone-item {
+  display: flex;
+  align-items: center;
+}
+
+.milestone-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--base-black, #030712);
+  line-height: 20px;
+}
+
+.milestone-item.completed .milestone-text {
+  text-decoration: line-through;
+  color: var(--neutral-600, #686d77);
+}
+
+.module-item.locked .milestone-text {
+  color: var(--neutral-600, #686d77);
+}
+
+.no-modules {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100px;
+  color: var(--neutral-500, #aeb1b6);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  text-align: center;
+}
+
+/* Panel Footer - Removed, progress is now in panel-top */
+
+.progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--base-black, #030712);
+  line-height: 24px;
+  letter-spacing: -0.25px;
+  margin: 0;
+}
+
+.progress-percentage {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--base-black, #030712);
+  line-height: 20px;
+  margin: 0;
+}
+
+.progress-bar {
+  height: 4px;
+  background-color: var(--neutral-200, #d4d6d8);
+  border-radius: 100px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: var(--secondary-600, #ff7f05);
+  border-radius: 100px;
+  transition: width 0.3s ease;
+}
+
+/* Scrollbar styling */
+.panel-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.panel-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panel-list::-webkit-scrollbar-thumb {
+  background-color: var(--neutral-200, #d4d6d8);
+  border-radius: 2px;
+}
+
+.panel-list::-webkit-scrollbar-thumb:hover {
+  background-color: var(--neutral-300, #aeb1b6);
+}

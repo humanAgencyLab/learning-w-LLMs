@@ -106,7 +106,7 @@
   background: #f3f4f6;
 }
 
-.option-label input[type="radio"] {
+.option-label input[type='radio'] {
   margin: 0;
   margin-top: 0.125rem;
   accent-color: #3b82f6;
@@ -162,23 +162,20 @@
     margin: 0.5rem;
     max-height: 95vh;
   }
-  
+
   .quiz-header,
   .quiz-content,
   .quiz-footer {
     padding: 1rem;
   }
-  
+
   .question-card {
     padding: 1rem;
   }
-  
+
   .option-label {
     padding: 0.5rem;
   }
 }
-
-
-
 
 

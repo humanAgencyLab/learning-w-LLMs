@@ -69,18 +69,15 @@
     align-items: stretch;
     gap: 0.5rem;
   }
-  
+
   .stage-select {
     min-width: auto;
   }
-  
+
   .stage-description {
     margin-left: 0;
     text-align: center;
   }
 }
-
-
-
 
 

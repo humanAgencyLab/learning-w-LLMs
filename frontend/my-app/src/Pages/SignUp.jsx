@@ -1,20 +1,24 @@
-import React from "react";
-import { useNavigate } from "react-router-dom"; 
-import "../styles/SignUp.css";
-import EmailIcon from "../components/Sign In Components/EmailIcon";
-import LockIcon from "../components/Sign In Components/LockIcon";
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import '../styles/SignUp.css';
+import EmailIcon from '../components/SignIn/EmailIcon';
+import LockIcon from '../components/SignIn/LockIcon';
 
 function SignUp() {
   const navigate = useNavigate();
 
   const handleSubmit = (e) => {
-    e.preventDefault();          
-    navigate("/chat");          
+    e.preventDefault();
+    navigate('/chat');
   };
 
   return (
     <div className="signup-container">
-      <img src="/logo.png" alt="AI Study Assistant Logo" className="signup-logo" />
+      <img
+        src="/logo.png"
+        alt="AI Study Assistant Logo"
+        className="signup-logo"
+      />
 
       <h2 className="signup-title">Create an Account</h2>
 
@@ -34,7 +38,9 @@ function SignUp() {
           <input type="password" placeholder="Confirm Password" required />
         </div>
 
-        <button type="submit" className="signup-button">Sign Up</button>
+        <button type="submit" className="signup-button">
+          Sign Up
+        </button>
       </form>
     </div>
   );

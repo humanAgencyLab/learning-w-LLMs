@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
-import NavMenu from "./NavMenu";
-import NavFooter from "./NavFooter";
-import NavModeButton from "./NavModeButton";
-import './Navigation.css'
+import React, { useState, useEffect } from 'react';
+import NavMenu from './NavMenu';
+import NavFooter from './NavFooter';
+import NavModeButton from './NavModeButton';
+import './Navigation.css';
 
 function Navigation({ isOpen, setIsOpen }) {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
@@ -15,11 +15,11 @@ function Navigation({ isOpen, setIsOpen }) {
     const handleResize = () => {
       const mobile = window.innerWidth <= 768;
       setIsMobile(mobile);
-      setIsOpen(!mobile); 
+      setIsOpen(!mobile);
     };
 
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, [setIsOpen]);
 
   return (
@@ -30,7 +30,7 @@ function Navigation({ isOpen, setIsOpen }) {
       </button>
 
       {/* Add the show class depending on isOpen */}
-      <div className={`navigation-container ${isOpen ? "show" : ""}`}>
+      <div className={`navigation-container ${isOpen ? 'show' : ''}`}>
         <NavMenu />
         <NavModeButton />
         <NavFooter />

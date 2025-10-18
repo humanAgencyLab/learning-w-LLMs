@@ -2,7 +2,7 @@
  * API helper functions for communicating with the backend
  */
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '';
+import { API_BASE } from '../config';
 
 /**
  * Send a message to the AI tutor
@@ -13,7 +13,7 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '';
  * @returns {Promise<{sessionId: string, reply: string}>} Response from the AI tutor
  */
 export async function sendMessage({ message, stage = 1, sessionId }) {
-  const response = await fetch(`${API_BASE_URL}/chat`, {
+  const response = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -23,7 +23,9 @@ export async function sendMessage({ message, stage = 1, sessionId }) {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    throw new Error(
+      errorData.error || `HTTP error! status: ${response.status}`,
+    );
   }
 
   return response.json();
@@ -34,8 +36,8 @@ export async function sendMessage({ message, stage = 1, sessionId }) {
  * @returns {Promise<{ok: boolean}>} Health status
  */
 export async function getHealth() {
-  const response = await fetch(`${API_BASE_URL}/health`);
-  
+  const response = await fetch(`${API_BASE}/health`);
+
   if (!response.ok) {
     throw new Error(`Health check failed! status: ${response.status}`);
   }

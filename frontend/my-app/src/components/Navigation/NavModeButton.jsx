@@ -1,8 +1,8 @@
-import React, { useState } from "react";
-import "./Navigation.css";
+import React, { useState } from 'react';
+import './Navigation.css';
 
 function NavModeButton() {
-  const models = ["GPT-3.5", "Claude", "Gemini", "LLaMA"];
+  const models = ['GPT-3.5', 'Claude', 'Gemini', 'LLaMA'];
   const [currentModel, setCurrentModel] = useState(models[0]);
 
   const handleChange = (e) => {

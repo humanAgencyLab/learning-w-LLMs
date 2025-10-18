@@ -1,21 +1,24 @@
-import React from "react";
-import { useNavigate, Link } from "react-router-dom"; 
-import "../styles/ResetPassword.css";
-import EmailIcon from "../components/Sign In Components/EmailIcon";
-import LockIcon from "../components/Sign In Components/LockIcon";
-
+import React from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import '../styles/ResetPassword.css';
+import EmailIcon from '../components/SignIn/EmailIcon';
+import LockIcon from '../components/SignIn/LockIcon';
 
 function ResetPassword() {
   const navigate = useNavigate();
 
   const handleSubmit = (e) => {
-    e.preventDefault();          
-    navigate("/chat");          
+    e.preventDefault();
+    navigate('/chat');
   };
 
   return (
     <div className="resetpassword-container">
-      <img src="/logo.png" alt="AI Study Assistant Logo" className="resetpassword-logo" />
+      <img
+        src="/logo.png"
+        alt="AI Study Assistant Logo"
+        className="resetpassword-logo"
+      />
 
       <h2 className="resetpassword-title">Forgot password?</h2>
       <h3>No worries! We'll send you a secure code through your email</h3>
@@ -37,12 +40,14 @@ function ResetPassword() {
           <input type="password" placeholder="Confirm Password" required />
         </div>
 
-        <button type="submit" className="resetpassword-button">Reset password</button>
+        <button type="submit" className="resetpassword-button">
+          Reset password
+        </button>
       </form>
 
       <p className="resetpassword-prompt">
         Want to go back? <Link to="/signin">Sign in</Link>
-      </p>      
+      </p>
     </div>
   );
 }

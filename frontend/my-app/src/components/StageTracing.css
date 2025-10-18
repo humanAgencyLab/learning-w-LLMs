@@ -216,22 +216,19 @@
   .stage-actions {
     flex-direction: column;
   }
-  
+
   .action-btn {
     flex: none;
   }
-  
+
   .history-item {
     flex-direction: column;
     gap: 0.5rem;
   }
-  
+
   .history-icon {
     align-self: flex-start;
   }
 }
-
-
-
 
 

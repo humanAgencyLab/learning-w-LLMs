@@ -1,7 +1,11 @@
-const base = process.env.REACT_APP_API_BASE_URL || '';
+import { API_BASE } from '../config';
 
-export async function assessStage(message, topic = 'General Learning', historySessionId = null) {
-  const response = await fetch(`${base}/assess`, {
+export async function assessStage(
+  message,
+  topic = 'General Learning',
+  historySessionId = null,
+) {
+  const response = await fetch(`${API_BASE}/assess`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -18,7 +22,7 @@ export async function assessStage(message, topic = 'General Learning', historySe
 }
 
 export async function getSessionDetails(sessionId) {
-  const response = await fetch(`${base}/session/${sessionId}`, {
+  const response = await fetch(`${API_BASE}/session/${sessionId}`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -34,7 +38,7 @@ export async function getSessionDetails(sessionId) {
 }
 
 export async function updateSessionStage(sessionId, stage) {
-  const response = await fetch(`${base}/session/${sessionId}`, {
+  const response = await fetch(`${API_BASE}/session/${sessionId}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -51,7 +55,7 @@ export async function updateSessionStage(sessionId, stage) {
 }
 
 export async function startQuiz(sessionId, stage) {
-  const response = await fetch(`${base}/quiz/start`, {
+  const response = await fetch(`${API_BASE}/quiz/start`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -68,7 +72,7 @@ export async function startQuiz(sessionId, stage) {
 }
 
 export async function submitQuiz(quizId, sessionId, answers) {
-  const response = await fetch(`${base}/quiz/submit`, {
+  const response = await fetch(`${API_BASE}/quiz/submit`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -83,8 +87,3 @@ export async function submitQuiz(quizId, sessionId, answers) {
 
   return response.json();
 }
-
-
-
-
-

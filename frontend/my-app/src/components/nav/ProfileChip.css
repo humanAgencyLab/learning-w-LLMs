@@ -1,0 +1,78 @@
+/* ProfileChip Styles - Based on Figma Design */
+.profile-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.8vw;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+}
+
+.profile-avatar {
+  flex-shrink: 0;
+}
+
+.avatar-img {
+  width: calc(3vh + 1.5vw);
+  height: calc(3vh + 1.5vw);
+  min-width: 36px;
+  min-height: 36px;
+  max-width: 48px;
+  max-height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.profile-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.profile-name {
+  font-family: 'Inter', sans-serif;
+  font-size: calc(0.9rem + 0.2vw);
+  font-weight: 400;
+  color: var(--base-black, #030712);
+  margin: 0 0 0.3vh 0;
+  line-height: 1.3;
+  letter-spacing: -0.25px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-gems {
+  display: flex;
+  align-items: center;
+  gap: 0.5vw;
+}
+
+.gem-icon {
+  width: calc(1.2vh + 0.8vw);
+  height: calc(1.2vh + 0.8vw);
+  min-width: 14px;
+  min-height: 14px;
+  max-width: 20px;
+  max-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gem-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.gem-count {
+  font-family: 'Inter', sans-serif;
+  font-size: calc(0.9rem + 0.2vw);
+  font-weight: 700;
+  color: var(--primary-500, #4e81ee);
+  line-height: 1.3;
+  letter-spacing: -0.25px;
+}

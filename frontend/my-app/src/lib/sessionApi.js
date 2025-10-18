@@ -1,7 +1,7 @@
-const base = process.env.REACT_APP_API_BASE_URL || '';
+import { API_BASE } from '../config';
 
 export async function getSessions(limit = 20) {
-  const response = await fetch(`${base}/sessions?limit=${limit}`, {
+  const response = await fetch(`${API_BASE}/sessions?limit=${limit}`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -16,7 +16,7 @@ export async function getSessions(limit = 20) {
 }
 
 export async function updateSessionStage(sessionId, stage) {
-  const response = await fetch(`${base}/session/${sessionId}`, {
+  const response = await fetch(`${API_BASE}/session/${sessionId}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -33,7 +33,7 @@ export async function updateSessionStage(sessionId, stage) {
 }
 
 export async function updateSessionNotes(sessionId, notes) {
-  const response = await fetch(`${base}/session/${sessionId}/notes`, {
+  const response = await fetch(`${API_BASE}/session/${sessionId}/notes`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -48,8 +48,3 @@ export async function updateSessionNotes(sessionId, notes) {
 
   return response.json();
 }
-
-
-
-
-

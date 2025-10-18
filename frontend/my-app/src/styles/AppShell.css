@@ -1,0 +1,74 @@
+/* AppShell Layout - Dynamic Responsive Design */
+.app {
+  display: grid;
+  grid-template-columns: minmax(200px, 20vw) 1fr;
+  height: 100vh;
+  background-color: var(--neutral-50, #f7f8f8);
+  width: 100%;
+  max-width: 100vw;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+.main-area {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.main {
+  min-width: 0;
+  overflow: hidden;
+  background-color: var(--neutral-50, #f7f8f8);
+  padding: 2vh 0;
+  width: 100%;
+}
+
+/* Responsive breakpoints with dynamic sizing */
+@media (max-width: 1200px) {
+  .app {
+    grid-template-columns: minmax(180px, 18vw) 1fr;
+  }
+}
+
+@media (max-width: 1024px) {
+  .app {
+    grid-template-columns: minmax(160px, 16vw) 1fr;
+  }
+  
+  .main {
+    padding: 1.5vh 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+  
+  .main {
+    padding: 1vh 0;
+  }
+  
+  .left {
+    display: none; /* Hide left nav on mobile */
+  }
+}
+
+@media (max-width: 480px) {
+  .main {
+    padding: 0.8vh 0;
+  }
+}
+
+/* Additional styling for main content area */
+.main-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  height: 100%;
+  padding: 0 64px;
+}

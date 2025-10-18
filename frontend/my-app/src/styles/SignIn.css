@@ -46,7 +46,7 @@
   width: 20px;
   height: 20px;
   position: absolute;
-  left: 15px; 
+  left: 15px;
 }
 
 .input-group input {
@@ -83,7 +83,7 @@
 
 /* Only affect the bottom part */
 .signup-prompt:last-child {
-  margin-top: 0.5rem; 
+  margin-top: 0.5rem;
 }
 
 .signup-prompt a {
@@ -95,6 +95,3 @@
 .signup-prompt a:hover {
   text-decoration: underline;
 }
-
-
-

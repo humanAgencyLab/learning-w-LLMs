@@ -1,186 +1,185 @@
-.settings-container{
-    max-width: 600px;
-    width: 100%;
-    margin: auto;
-    padding: 2rem 1rem;
-    font-family: 'Poppins', sans-serif;
-    transition: background-color 0.3s;
+.settings-container {
+  max-width: 600px;
+  width: 100%;
+  margin: auto;
+  padding: 2rem 1rem;
+  font-family: 'Poppins', sans-serif;
+  transition: background-color 0.3s;
 }
 
-.settings-heading{
-    display:flex;
-    align-items: center;
-    text-align: center;
-    font-size: 30px;
-    font-weight: 750;
-    color: #1E3A8A;
-    margin-bottom: 0.5rem;
+.settings-heading {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  font-size: 30px;
+  font-weight: 750;
+  color: #1e3a8a;
+  margin-bottom: 0.5rem;
 }
 
-.settings-description{
-    font-size: 16px;
-    color: #1E3A8A;
-    margin-top: 0.5rem;
-    margin-bottom: 1.5rem;
+.settings-description {
+  font-size: 16px;
+  color: #1e3a8a;
+  margin-top: 0.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .profile-picture {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 1.5rem;
 }
 
 .profile-picture-img {
-    width: 150px;
-    height: 150px;
-    border-radius: 50%;
-    border: 4px solid #3B82F6;
-    object-fit: cover;
-    margin-bottom: 1rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}   
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  border: 4px solid #3b82f6;
+  object-fit: cover;
+  margin-bottom: 1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
 
 .profile-picture-input {
-    display: none;
-}   
+  display: none;
+}
 
 .profile-picture-label {
-    background-color: #1E3A8A;
-    color: white;
-    font-weight: 600;
-    padding: 0.5rem 1rem;
-    border: 2px solid black;
-    border-radius: 5px;
-    cursor: pointer;
-    display: inline-block;
-    text-align: center; 
-    margin-bottom: 5px;
-    transition: background-color 0.3s;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  background-color: #1e3a8a;
+  color: white;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border: 2px solid black;
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-block;
+  text-align: center;
+  margin-bottom: 5px;
+  transition: background-color 0.3s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .profile-picture-label:hover {
-    background-color: #7b94d7;
-}   
+  background-color: #7b94d7;
+}
 
-.settings-form{
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .settings-property {
-    font-size: 20px;
-    color: #1E3A8A;
-    margin: 20px;
+  font-size: 20px;
+  color: #1e3a8a;
+  margin: 20px;
 }
 
 .input-group {
-    gap: 0.5rem;
-    background-color:#e8f2fc;
-    padding: 2px 20px 2px;
-    position: relative;
+  gap: 0.5rem;
+  background-color: #e8f2fc;
+  padding: 2px 20px 2px;
+  position: relative;
 }
 
-.settings-input{
-    background-color:#e8f2fc;
-    color: white;
-    border: 2px solid #1e293b;
-    border-radius: 8px;
-    padding: 8px 10px;
-    font-size: 16px;
-    font-weight: 500;
+.settings-input {
+  background-color: #e8f2fc;
+  color: white;
+  border: 2px solid #1e293b;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 16px;
+  font-weight: 500;
 }
 
-.settings-button{
-    background-color: #243e8b;
-    border-radius: 5px;
-    color: white;
-    font-weight: 600;
-    padding: 0.5rem 1rem;
-    cursor: pointer;
-    border-color: black;
-    transition: background-color 0.3s;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+.settings-button {
+  background-color: #243e8b;
+  border-radius: 5px;
+  color: white;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-color: black;
+  transition: background-color 0.3s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .button-container {
-    display: flex;
-    justify-content: flex-end;
-    cursor: pointer;
+  display: flex;
+  justify-content: flex-end;
+  cursor: pointer;
 }
 
-button:hover{
-    background-color:#7b94d7;
+button:hover {
+  background-color: #7b94d7;
 }
 
-.settings-container.dark{
-    background-color:#1E3A8A;
-    color: white;
-    transition: background-color 0.3s;
+.settings-container.dark {
+  background-color: #1e3a8a;
+  color: white;
+  transition: background-color 0.3s;
 }
 
-.settings-heading.dark{
-    color: white;
-    transition: background-color 0.3s;
+.settings-heading.dark {
+  color: white;
+  transition: background-color 0.3s;
 }
 
-.settings-description.dark{
-    color: white;
-    transition: background-color 0.3s;
+.settings-description.dark {
+  color: white;
+  transition: background-color 0.3s;
 }
 
-.input-group.dark{
-    background-color: #326dc5;
-    transition: background-color 0.3s;
+.input-group.dark {
+  background-color: #326dc5;
+  transition: background-color 0.3s;
 }
 
-.settings-property.dark{
-    color: #e8f2fc;
-    transition: background-color 0.3s;
+.settings-property.dark {
+  color: #e8f2fc;
+  transition: background-color 0.3s;
 }
 
-.settings-button.dark{
-    background-color: #e8f2fc;
-    color: #1E3A8A;
-    transition: background-color 0.3s;
+.settings-button.dark {
+  background-color: #e8f2fc;
+  color: #1e3a8a;
+  transition: background-color 0.3s;
 }
 
-.settings-input.dark{
-    background-color:#326dc5;
-    color: white;
-    transition: background-color 0.3s;
+.settings-input.dark {
+  background-color: #326dc5;
+  color: white;
+  transition: background-color 0.3s;
 }
 
-.settings-button.dark:hover{
-    background-color: #7b94d7;
-    transition: background-color 0.3s;
+.settings-button.dark:hover {
+  background-color: #7b94d7;
+  transition: background-color 0.3s;
 }
 
-.profile-picture-label.dark{
-    background-color: #e8f2fc;
-    color: #1E3A8A;
-    transition: background-color 0.3s;
+.profile-picture-label.dark {
+  background-color: #e8f2fc;
+  color: #1e3a8a;
+  transition: background-color 0.3s;
 }
 
-.profile-picture-label.dark:hover{
-    background-color: #7b94d7;
-    transition: background-color 0.3s;
+.profile-picture-label.dark:hover {
+  background-color: #7b94d7;
+  transition: background-color 0.3s;
 }
 
-.settings-input.dark::placeholder{
-    color: white;
-    transition: background-color 0.3s;
+.settings-input.dark::placeholder {
+  color: white;
+  transition: background-color 0.3s;
 }
 
 .settings-submit-button {
-    color: white;
-    background-color: #1E3A8A;
-    border-radius: 8px;
-    border: none;
-    padding: 10px;
-    font-size: 16px;
-    transition: background-color 0.3s ease;
+  color: white;
+  background-color: #1e3a8a;
+  border-radius: 8px;
+  border: none;
+  padding: 10px;
+  font-size: 16px;
+  transition: background-color 0.3s ease;
 }
-

@@ -1,0 +1,65 @@
+/* ProfileChip Styles - Based on Figma Design */
+.profile-chip {
+  background: linear-gradient(to bottom, #ecf2fd, rgba(236, 242, 253, 0));
+  border-radius: 16px 16px 0 0;
+  padding: 16px;
+  width: 236px;
+}
+
+.profile-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-avatar {
+  flex-shrink: 0;
+}
+
+.avatar-img {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.profile-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.profile-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--base-black, #030712);
+  margin: 0 0 4px 0;
+  line-height: 21px;
+  letter-spacing: -0.25px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-gems {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gem-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.gem-count {
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--primary-500, #4e81ee);
+  line-height: 24px;
+  letter-spacing: -0.25px;
+}

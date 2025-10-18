@@ -1,9 +1,9 @@
 .menu-btn {
-  display: block; 
+  display: block;
   position: fixed;
   top: 1rem;
   left: 1rem;
-  background: #3B82F6;
+  background: #3b82f6;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -23,7 +23,7 @@
   flex-direction: column;
   align-items: center;
   padding: 1rem;
-  box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
   position: fixed;
   left: 0;
   top: 0;
@@ -35,27 +35,56 @@
 }
 
 .navigation-container.show {
-    transform: translateX(0);
-  }
+  transform: translateX(0);
+}
 
+/* Navigation Menu Styles - Based on Figma Design */
 .nav-menu {
   list-style: none;
   padding: 0;
+  margin: 0;
   width: 100%;
 }
 
 .nav-menu-item {
-  margin: 1rem 0;
+  margin: 0;
+  width: 100%;
 }
 
-.nav-menu-item a {
+.nav-menu-link {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
   text-decoration: none;
-  color: #243e8b;
-  font-weight: 500;
+  color: var(--base-black, #030712);
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 21px;
+  letter-spacing: -0.25px;
+  transition: background-color 0.2s ease;
+  border-radius: 8px;
+  margin: 0 16px;
+  width: calc(100% - 32px);
 }
 
-.nav-menu-item a:hover {
-  text-decoration: underline;
+.nav-menu-link:hover {
+  background-color: var(--neutral-100, #e6e7e8);
+}
+
+.nav-menu-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.nav-menu-label {
+  flex: 1;
 }
 
 .nav-mode-container {
@@ -81,6 +110,180 @@
 
 .nav-footer {
   margin-top: auto;
-  font-size: 1.0rem;
+  font-size: 1rem;
   color: #6b7280;
+}
+
+/* Study Path Section */
+.study-path-item {
+  margin: 0.5rem 0;
+}
+
+.study-path-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  transition: background-color 0.2s ease;
+}
+
+.study-path-header:hover {
+  background-color: #e5e7eb;
+}
+
+.study-path-title {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.study-path-toggle {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.study-path-content {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background-color: #f9fafb;
+  border-radius: 0.375rem;
+  border: 1px solid #e5e7eb;
+}
+
+.study-path-topic {
+  margin-bottom: 1rem;
+}
+
+.topic-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 0.5rem 0;
+}
+
+.topic-badges {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.study-path-progress {
+  margin-bottom: 1rem;
+}
+
+.study-path-modules {
+  margin-bottom: 1rem;
+}
+
+.study-path-modules h5 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 0 0 0.5rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.modules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.module-item {
+  padding: 0.5rem;
+  background-color: white;
+  border-radius: 0.25rem;
+  border: 1px solid #e5e7eb;
+}
+
+.module-item.completed {
+  border-color: #10b981;
+  background-color: #f0fdf4;
+}
+
+.module-item.in_progress {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+}
+
+.module-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.module-number {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7280;
+  min-width: 1rem;
+}
+
+.module-status {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.module-title {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #1f2937;
+  flex: 1;
+}
+
+.module-progress {
+  margin-top: 0.25rem;
+}
+
+.study-path-phase {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 0.5rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.phase-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+/* User Profile in Footer */
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background-color: #f9fafb;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+}
+
+.user-info {
+  flex: 1;
+}
+
+.user-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 0.125rem;
+}
+
+.user-status {
+  font-size: 0.75rem;
+  color: #10b981;
+}
+
+.footer-credit {
+  text-align: center;
+}
+
+.footer-credit p {
+  margin: 0;
+  font-size: 0.75rem;
 }

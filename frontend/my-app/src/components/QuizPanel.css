@@ -144,12 +144,12 @@
   background-color: #eff6ff;
 }
 
-.mcq-option input[type="radio"] {
+.mcq-option input[type='radio'] {
   margin-right: 12px;
   accent-color: #3b82f6;
 }
 
-.mcq-option input[type="radio"]:checked + .option-text {
+.mcq-option input[type='radio']:checked + .option-text {
   font-weight: 500;
   color: #1e40af;
 }
@@ -281,7 +281,9 @@
   justify-content: center;
 }
 
-.promote-btn, .retry-btn, .close-results-btn {
+.promote-btn,
+.retry-btn,
+.close-results-btn {
   padding: 10px 20px;
   border: none;
   border-radius: 6px;
@@ -324,25 +326,22 @@
   .quiz-panel-overlay {
     padding: 10px;
   }
-  
+
   .quiz-panel {
     max-height: 95vh;
   }
-  
+
   .quiz-panel-content {
     padding: 16px;
   }
-  
+
   .question-card {
     padding: 16px;
   }
-  
+
   .results-actions {
     flex-direction: column;
   }
 }
-
-
-
 
 

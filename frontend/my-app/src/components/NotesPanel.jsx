@@ -9,25 +9,28 @@ function NotesPanel({ sessionId, isOpen, onToggle }) {
   const [error, setError] = useState(null);
 
   // Debounced save function
-  const debouncedSave = useCallback((notesToSave) => {
-    const timeoutId = setTimeout(async () => {
-      if (!sessionId || !notesToSave.trim()) return;
-      
-      setSaving(true);
-      setError(null);
-      try {
-        await updateSessionNotes(sessionId, notesToSave);
-        setLastSaved(new Date());
-      } catch (err) {
-        console.error('Failed to save notes:', err);
-        setError('Failed to save notes');
-      } finally {
-        setSaving(false);
-      }
-    }, 1000); // 1 second delay
-    
-    return () => clearTimeout(timeoutId);
-  }, [sessionId]);
+  const debouncedSave = useCallback(
+    (notesToSave) => {
+      const timeoutId = setTimeout(async () => {
+        if (!sessionId || !notesToSave.trim()) return;
+
+        setSaving(true);
+        setError(null);
+        try {
+          await updateSessionNotes(sessionId, notesToSave);
+          setLastSaved(new Date());
+        } catch (err) {
+          console.error('Failed to save notes:', err);
+          setError('Failed to save notes');
+        } finally {
+          setSaving(false);
+        }
+      }, 1000); // 1 second delay
+
+      return () => clearTimeout(timeoutId);
+    },
+    [sessionId],
+  );
 
   // Load notes when session changes
   useEffect(() => {
@@ -56,7 +59,7 @@ function NotesPanel({ sessionId, isOpen, onToggle }) {
     const now = new Date();
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins}m ago`;
     return date.toLocaleTimeString();
@@ -68,7 +71,7 @@ function NotesPanel({ sessionId, isOpen, onToggle }) {
     <div className="notes-panel">
       <div className="notes-header">
         <h3>Session Notes</h3>
-        <button 
+        <button
           className="close-btn"
           onClick={onToggle}
           aria-label="Close notes panel"
@@ -76,7 +79,7 @@ function NotesPanel({ sessionId, isOpen, onToggle }) {
           ×
         </button>
       </div>
-      
+
       <div className="notes-content">
         <div className="notes-status">
           {saving && <span className="saving">Saving...</span>}
@@ -85,7 +88,7 @@ function NotesPanel({ sessionId, isOpen, onToggle }) {
           )}
           {error && <span className="error">Save failed</span>}
         </div>
-        
+
         <textarea
           value={notes}
           onChange={handleNotesChange}
@@ -93,11 +96,9 @@ function NotesPanel({ sessionId, isOpen, onToggle }) {
           className="notes-textarea"
           disabled={!sessionId}
         />
-        
+
         {!sessionId && (
-          <div className="no-session">
-            Start a conversation to add notes
-          </div>
+          <div className="no-session">Start a conversation to add notes</div>
         )}
       </div>
     </div>
@@ -105,4 +106,3 @@ function NotesPanel({ sessionId, isOpen, onToggle }) {
 }
 
 export default NotesPanel;
-

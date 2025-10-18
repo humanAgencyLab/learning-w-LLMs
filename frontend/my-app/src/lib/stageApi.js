@@ -1,6 +1,6 @@
 // API helper functions for stage assessment and progression
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL || '';
+import { API_BASE } from '../config';
 
 // Initial assessment for first message
 export const assessStage = async (sessionId, userMessage) => {
@@ -11,8 +11,8 @@ export const assessStage = async (sessionId, userMessage) => {
     },
     body: JSON.stringify({
       sessionId,
-      userMessage
-    })
+      userMessage,
+    }),
   });
 
   if (!response.ok) {
@@ -30,8 +30,8 @@ export const recheckAssessment = async (sessionId) => {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      sessionId
-    })
+      sessionId,
+    }),
   });
 
   if (!response.ok) {
@@ -50,8 +50,8 @@ export const startQuiz = async (sessionId, stage) => {
     },
     body: JSON.stringify({
       sessionId,
-      stage
-    })
+      stage,
+    }),
   });
 
   if (!response.ok) {
@@ -71,8 +71,8 @@ export const submitQuiz = async (sessionId, quizId, answers) => {
     body: JSON.stringify({
       sessionId,
       quizId,
-      answers
-    })
+      answers,
+    }),
   });
 
   if (!response.ok) {
@@ -90,8 +90,8 @@ export const promoteStage = async (sessionId) => {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      sessionId
-    })
+      sessionId,
+    }),
   });
 
   if (!response.ok) {
@@ -111,8 +111,3 @@ export const getSessionDetails = async (sessionId) => {
 
   return response.json();
 };
-
-
-
-
-

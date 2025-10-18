@@ -102,7 +102,7 @@
   line-height: 1.5;
 }
 
-.consent-checkbox input[type="checkbox"] {
+.consent-checkbox input[type='checkbox'] {
   margin: 0;
   transform: scale(1.2);
 }
@@ -113,7 +113,8 @@
   justify-content: flex-end;
 }
 
-.consent-btn, .decline-btn {
+.consent-btn,
+.decline-btn {
   padding: 12px 24px;
   border: none;
   border-radius: 6px;
@@ -153,12 +154,13 @@
     margin: 20px;
     padding: 20px;
   }
-  
+
   .consent-buttons {
     flex-direction: column;
   }
-  
-  .consent-btn, .decline-btn {
+
+  .consent-btn,
+  .decline-btn {
     width: 100%;
   }
 }

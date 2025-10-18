@@ -8,17 +8,19 @@ function QuizModal({ isOpen, onClose, quizData, onSubmit }) {
   if (!isOpen || !quizData) return null;
 
   const handleAnswerChange = (questionIndex, selectedAnswer) => {
-    setAnswers(prev => ({
+    setAnswers((prev) => ({
       ...prev,
-      [questionIndex]: selectedAnswer
+      [questionIndex]: selectedAnswer,
     }));
   };
 
   const handleSubmit = async () => {
-    const answersArray = Object.entries(answers).map(([questionIndex, selectedAnswer]) => ({
-      questionIndex: parseInt(questionIndex),
-      selectedAnswer: selectedAnswer
-    }));
+    const answersArray = Object.entries(answers).map(
+      ([questionIndex, selectedAnswer]) => ({
+        questionIndex: parseInt(questionIndex),
+        selectedAnswer: selectedAnswer,
+      }),
+    );
 
     setIsSubmitting(true);
     try {
@@ -35,12 +37,15 @@ function QuizModal({ isOpen, onClose, quizData, onSubmit }) {
       <div className="quiz-modal">
         <div className="quiz-header">
           <h2>Module Quiz</h2>
-          <button className="close-btn" onClick={onClose}>×</button>
+          <button className="close-btn" onClick={onClose}>
+            ×
+          </button>
         </div>
 
         <div className="quiz-content">
           <div className="quiz-progress">
-            {Object.keys(answers).length} / {quizData.questions.length} questions answered
+            {Object.keys(answers).length} / {quizData.questions.length}{' '}
+            questions answered
           </div>
 
           {quizData.questions.map((question, index) => (
@@ -48,7 +53,7 @@ function QuizModal({ isOpen, onClose, quizData, onSubmit }) {
               <div className="question-text">
                 {index + 1}. {question.question}
               </div>
-              
+
               <div className="options">
                 {question.options.map((option, optionIndex) => (
                   <label key={optionIndex} className="option-label">
@@ -70,7 +75,7 @@ function QuizModal({ isOpen, onClose, quizData, onSubmit }) {
         </div>
 
         <div className="quiz-footer">
-          <button 
+          <button
             className="submit-btn"
             onClick={handleSubmit}
             disabled={!isComplete || isSubmitting}
@@ -84,5 +89,3 @@ function QuizModal({ isOpen, onClose, quizData, onSubmit }) {
 }
 
 export default QuizModal;
-
-

@@ -1,11 +1,11 @@
-"use client";
-import React from "react";
-import styles from "./InputDesign.module.css";
-import StatusBar from "./StatusBar";
-import EmailIcon from "./EmailIcon";
-import LockIcon from "./LockIcon";
-import InputField from "./InputField";
-import SignUpPrompt from "./SignUpPrompt";
+'use client';
+import React from 'react';
+import styles from './InputDesign.module.css';
+import StatusBar from './StatusBar';
+import EmailIcon from './EmailIcon';
+import LockIcon from './LockIcon';
+import InputField from './InputField';
+import SignUpPrompt from './SignUpPrompt';
 
 function InputDesign() {
   return (

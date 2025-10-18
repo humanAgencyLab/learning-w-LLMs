@@ -2,7 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { getSessions } from '../lib/sessionApi';
 import './SessionSidebar.css';
 
-function SessionSidebar({ currentSessionId, onSessionSelect, isOpen, onToggle }) {
+function SessionSidebar({
+  currentSessionId,
+  onSessionSelect,
+  isOpen,
+  onToggle,
+}) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -45,7 +50,7 @@ function SessionSidebar({ currentSessionId, onSessionSelect, isOpen, onToggle })
       1: 'Beginner',
       2: 'Learning',
       3: 'Practicing',
-      4: 'Advanced'
+      4: 'Advanced',
     };
     return stages[stage] || 'Unknown';
   };
@@ -54,7 +59,7 @@ function SessionSidebar({ currentSessionId, onSessionSelect, isOpen, onToggle })
     <div className={`session-sidebar ${isOpen ? 'open' : ''}`}>
       <div className="sidebar-header">
         <h3>Recent Sessions</h3>
-        <button 
+        <button
           className="close-btn"
           onClick={onToggle}
           aria-label="Close sidebar"
@@ -62,7 +67,7 @@ function SessionSidebar({ currentSessionId, onSessionSelect, isOpen, onToggle })
           ×
         </button>
       </div>
-      
+
       <div className="sidebar-content">
         {loading && <div className="loading">Loading sessions...</div>}
         {error && (
@@ -73,45 +78,52 @@ function SessionSidebar({ currentSessionId, onSessionSelect, isOpen, onToggle })
             </button>
           </div>
         )}
-        
+
         {!loading && !error && sessions.length === 0 && (
           <div className="empty">No sessions yet</div>
         )}
-        
-        {!loading && !error && sessions.map((session) => (
-          <div
-            key={session.id}
-            className={`session-item ${currentSessionId === session.id ? 'active' : ''}`}
-            onClick={() => onSessionSelect(session.id)}
-          >
-            <div className="session-header">
-              <span className="session-topic">{session.topic}</span>
-              <span className="session-stage">Stage {session.stage}</span>
-            </div>
-            
-            {session.lastMessage && (
-              <div className="session-preview">
-                <span className={`message-type ${session.lastMessage.isUser ? 'user' : 'ai'}`}>
-                  {session.lastMessage.isUser ? 'You' : 'AI'}:
-                </span>
-                <span className="message-text">{session.lastMessage.text}</span>
+
+        {!loading &&
+          !error &&
+          sessions.map((session) => (
+            <div
+              key={session.id}
+              className={`session-item ${currentSessionId === session.id ? 'active' : ''}`}
+              onClick={() => onSessionSelect(session.id)}
+            >
+              <div className="session-header">
+                <span className="session-topic">{session.topic}</span>
+                <span className="session-stage">Stage {session.stage}</span>
               </div>
-            )}
-            
-            <div className="session-meta">
-              <span className="session-time">{formatDate(session.updatedAt)}</span>
-              <span className="session-stage-label">{getStageLabel(session.stage)}</span>
+
+              {session.lastMessage && (
+                <div className="session-preview">
+                  <span
+                    className={`message-type ${session.lastMessage.isUser ? 'user' : 'ai'}`}
+                  >
+                    {session.lastMessage.isUser ? 'You' : 'AI'}:
+                  </span>
+                  <span className="message-text">
+                    {session.lastMessage.text}
+                  </span>
+                </div>
+              )}
+
+              <div className="session-meta">
+                <span className="session-time">
+                  {formatDate(session.updatedAt)}
+                </span>
+                <span className="session-stage-label">
+                  {getStageLabel(session.stage)}
+                </span>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
       </div>
     </div>
   );
 }
 
 export default SessionSidebar;
-
-
-
 
 

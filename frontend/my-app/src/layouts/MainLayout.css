@@ -1,15 +1,22 @@
 .main-layout {
   display: flex;
   flex-direction: row;
+  min-height: 100vh;
+}
+
+.main-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 100vh;
 }
 
 .main-content {
-  min-height: 100vh;
-  padding: 2rem 1rem;
+  flex: 1;
+  padding: 0 1rem 2rem 1rem;
   font-family: 'Poppins', sans-serif;
-  background-color: #ffffff;
-
-  /* Show in the center */
+  background-color: var(--color-bg);
   display: flex;
   flex-direction: column;
+  min-height: calc(100vh - 80px); /* Account for topbar height */
 }

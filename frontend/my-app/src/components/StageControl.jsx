@@ -13,10 +13,10 @@ function StageControl({ sessionId, currentStage, onStageChange }) {
 
   const handleStageChange = async (newStage) => {
     if (newStage === stage || !sessionId) return;
-    
+
     setUpdating(true);
     setError(null);
-    
+
     try {
       await updateSessionStage(sessionId, newStage);
       setStage(newStage);
@@ -35,7 +35,7 @@ function StageControl({ sessionId, currentStage, onStageChange }) {
     { value: 1, label: 'Beginner', description: 'Learning basics' },
     { value: 2, label: 'Learning', description: 'Building understanding' },
     { value: 3, label: 'Practicing', description: 'Applying knowledge' },
-    { value: 4, label: 'Advanced', description: 'Mastering concepts' }
+    { value: 4, label: 'Advanced', description: 'Mastering concepts' },
   ];
 
   return (
@@ -56,20 +56,17 @@ function StageControl({ sessionId, currentStage, onStageChange }) {
           </option>
         ))}
       </select>
-      
+
       {updating && <span className="updating">Updating...</span>}
       {error && <span className="error">{error}</span>}
-      
+
       <div className="stage-description">
-        {stages.find(s => s.value === stage)?.description}
+        {stages.find((s) => s.value === stage)?.description}
       </div>
     </div>
   );
 }
 
 export default StageControl;
-
-
-
 
 

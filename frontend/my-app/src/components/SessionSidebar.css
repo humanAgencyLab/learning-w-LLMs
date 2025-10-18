@@ -139,7 +139,9 @@
   font-weight: 500;
 }
 
-.loading, .error, .empty {
+.loading,
+.error,
+.empty {
   padding: 1rem;
   text-align: center;
   color: #6b7280;
@@ -174,13 +176,10 @@
     width: 100vw;
     left: -100vw;
   }
-  
+
   .session-sidebar.open {
     left: 0;
   }
 }
-
-
-
 
 
