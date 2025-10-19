@@ -30,7 +30,7 @@ export const Modal = ({
     padding: 'var(--space-6)',
     maxWidth: '500px',
     width: '90%',
-    maxHeight: '80vh',
+    maxHeight: '80%',
     overflow: 'auto',
   };
 

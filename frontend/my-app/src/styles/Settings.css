@@ -115,64 +115,6 @@ button:hover {
   background-color: #7b94d7;
 }
 
-.settings-container.dark {
-  background-color: #1e3a8a;
-  color: white;
-  transition: background-color 0.3s;
-}
-
-.settings-heading.dark {
-  color: white;
-  transition: background-color 0.3s;
-}
-
-.settings-description.dark {
-  color: white;
-  transition: background-color 0.3s;
-}
-
-.input-group.dark {
-  background-color: #326dc5;
-  transition: background-color 0.3s;
-}
-
-.settings-property.dark {
-  color: #e8f2fc;
-  transition: background-color 0.3s;
-}
-
-.settings-button.dark {
-  background-color: #e8f2fc;
-  color: #1e3a8a;
-  transition: background-color 0.3s;
-}
-
-.settings-input.dark {
-  background-color: #326dc5;
-  color: white;
-  transition: background-color 0.3s;
-}
-
-.settings-button.dark:hover {
-  background-color: #7b94d7;
-  transition: background-color 0.3s;
-}
-
-.profile-picture-label.dark {
-  background-color: #e8f2fc;
-  color: #1e3a8a;
-  transition: background-color 0.3s;
-}
-
-.profile-picture-label.dark:hover {
-  background-color: #7b94d7;
-  transition: background-color 0.3s;
-}
-
-.settings-input.dark::placeholder {
-  color: white;
-  transition: background-color 0.3s;
-}
 
 .settings-submit-button {
   color: white;

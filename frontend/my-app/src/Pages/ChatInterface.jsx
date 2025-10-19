@@ -1,16 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import '../styles/ChatInterface.css';
 import { sendMessage } from '../lib/api';
-import { summarizeSession } from '../lib/summaryApi';
 import QuizModal from '../components/QuizModal';
 import QuizPanel from '../components/QuizPanel';
 import {
   submitQuiz as newSubmitQuiz,
 } from '../lib/stageApi';
 import useSessionStore from '../state/sessionStore';
-// import { Select } from '../components/ui'; // Not used in new structure
-import StateDisplay from '../components/StateDisplay';
-import NextActionBar from '../components/NextActionBar';
 
 function ChatInterface() {
   // Session store
@@ -18,6 +13,9 @@ function ChatInterface() {
     sessionId,
     learningStyle,
     model,
+    topic,
+    phase,
+    isViewOnly,
     setLearningStyle,
     setModel,
   } = useSessionStore();
@@ -26,53 +24,39 @@ function ChatInterface() {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [summary, setSummary] = useState('');
-  const [summarizing, setSummarizing] = useState(false);
-  const [showModelDropdown, setShowModelDropdown] = useState(false);
-
-  // Check if we have messages to determine UI state
-  const hasMessages = messages.length > 0;
   
+  // Determine UI state based on phase
+  const isPreSurface = phase === 'pre';
+  const isActiveLearning = ['learning', 'quizzing', 'feedback', 'completed'].includes(phase);
+  const hasMessages = messages.length > 0;
 
-  // Model dropdown functionality
-  const handleModelChange = (newModel) => {
-    setModel(newModel);
-    setShowModelDropdown(false);
-  };
-
-  const models = [
-    { value: 'llama', label: 'Llama' },
-    { value: 'gpt', label: 'GPT' },
-    { value: 'claude', label: 'Claude' }
-  ];
-  // Streaming features (for future use)
-  // const [isStreaming, setIsStreaming] = useState(false);
-  // const [streamingEnabled, setStreamingEnabled] = useState(false);
-  // const [abortController, setAbortController] = useState(null);
-
-  // Core features
-  const [lastUserMessage, setLastUserMessage] = useState(null);
-  const [toast, setToast] = useState(null);
-
-  // Quiz features
-  const [quizModalOpen, setQuizModalOpen] = useState(false);
   const [quizPanelOpen, setQuizPanelOpen] = useState(false);
-  const [currentQuizData, setCurrentQuizData] = useState(null);
+  const [quizModalOpen, setQuizModalOpen] = useState(false);
+  const [currentQuizData] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [lastUserMessage, setLastUserMessage] = useState('');
 
-  // SRL state fetching will be implemented in future phases
+  useEffect(() => {
+    // Scroll to bottom of messages
+    const messageList = document.getElementById('message-list');
+    if (messageList) {
+      messageList.scrollTop = messageList.scrollHeight;
+    }
+  }, [messages]);
 
-  // Handle message submission
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading) return;
 
-    const userMessage = {
-      text: inputValue,
-      sender: 'user',
-      timestamp: new Date().toISOString(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
+    const newUserMessage = { sender: 'user', text: inputValue, isError: false, timestamp: new Date().toISOString() };
+    setMessages((prevMessages) => [...prevMessages, newUserMessage]);
     setLastUserMessage(inputValue);
     setInputValue('');
     setIsLoading(true);
@@ -84,129 +68,80 @@ function ChatInterface() {
         sessionId,
         learningStyle,
         model,
-        phase,
         topic,
-        plan,
       });
 
       if (response.success) {
-        const aiMessage = {
-          text: response.message,
-          sender: 'ai',
-          timestamp: new Date().toISOString(),
-        };
-        setMessages(prev => [...prev, aiMessage]);
-        setMessageCount(prev => prev + 1);
-
-        // Update session state if provided
-        if (response.sessionState) {
-          setTopic(response.sessionState.topic || topic);
-          setPhase(response.sessionState.phase || phase);
-          setPlan(response.sessionState.plan || plan);
-          setProgress(response.sessionState.progressPercent || progressPercent);
-          setPoints(response.sessionState.points || points);
-          setGems(Math.floor((response.sessionState.points || points) / 20));
-        }
+        setMessages((prevMessages) => [...prevMessages, { sender: 'ai', text: response.response, isError: false, timestamp: new Date().toISOString() }]);
       } else {
         setError(response.error || 'Failed to send message');
+        setMessages((prevMessages) => [...prevMessages, { sender: 'ai', text: 'Error: Could not get a response.', isError: true, timestamp: new Date().toISOString() }]);
       }
-    } catch (error) {
-      setError('Failed to send message');
-      console.error('Error sending message:', error);
+    } catch (err) {
+      console.error('Error sending message:', err);
+      setError('Failed to send message. Please try again.');
+      setMessages((prevMessages) => [...prevMessages, { sender: 'ai', text: 'Error: Could not get a response.', isError: true, timestamp: new Date().toISOString() }]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handle quiz submission
-  const handleQuizSubmit = async (answers) => {
-    try {
-      const response = await newSubmitQuiz({
-        sessionId,
-        answers,
-      });
-
-      if (response.success) {
-        setQuizModalOpen(false);
-        setQuizPanelOpen(false);
-        setCurrentQuizData(null);
-        
-        // Update session state
-        setPhase(response.sessionState?.phase || phase);
-        setProgress(response.sessionState?.progressPercent || progressPercent);
-        setPoints(response.sessionState?.points || points);
-        setGems(Math.floor((response.sessionState?.points || points) / 20));
-      }
-    } catch (error) {
-      setError('Failed to submit quiz');
-      console.error('Error submitting quiz:', error);
-    }
-  };
-
-  // Handle session summarization
-  const onSummarize = async () => {
-    if (!sessionId) return;
-
-    setSummarizing(true);
-    try {
-      const response = await summarizeSession(sessionId);
-      if (response.success) {
-        setSummary(response.summary);
-      } else {
-        setError(response.error || 'Failed to summarize session');
-      }
-    } catch (error) {
-      setError('Failed to summarize session');
-      console.error('Error summarizing session:', error);
-    } finally {
-      setSummarizing(false);
-    }
-  };
-
-  // Handle message actions
   const handleCopyMessage = (text) => {
     navigator.clipboard.writeText(text);
-    setToast({ type: 'success', message: 'Message copied to clipboard' });
-    setTimeout(() => setToast(null), 3000);
+    setToast({ message: 'Message copied!', type: 'success' });
   };
 
-  const handleDeleteMessage = (index) => {
-    setMessages(prev => prev.filter((_, i) => i !== index));
+  const handleDeleteMessage = (indexToDelete) => {
+    setMessages((prevMessages) => prevMessages.filter((_, index) => index !== indexToDelete));
+    setToast({ message: 'Message deleted!', type: 'info' });
   };
 
-  const handleRetryLastMessage = () => {
-    if (lastUserMessage) {
-      setInputValue(lastUserMessage);
-    }
-  };
+  const handleRetryLastMessage = async () => {
+    if (!lastUserMessage || isLoading) return;
 
-  // SRL state fetching will be implemented in future phases
+    setIsLoading(true);
+    setError(null);
+    // Remove the last AI message if it was an error or the one we're retrying
+    setMessages((prevMessages) => prevMessages.filter(
+      (msg, index, arr) => !(msg.sender === 'ai' && index === arr.length - 1)
+    ));
 
-  // Auto-hide toast after 3 seconds
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
-
-  // Close model dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (showModelDropdown && !event.target.closest('.model-selector-inline')) {
-        setShowModelDropdown(false);
+    try {
+      const response = await sendMessage({
+        message: lastUserMessage,
+        sessionId,
+        learningStyle,
+        model,
+        topic,
+      });
+      if (response.success) {
+        setMessages((prevMessages) => [...prevMessages, { sender: 'ai', text: response.response, isError: false, timestamp: new Date().toISOString() }]);
+      } else {
+        setError(response.error || 'Failed to retry message');
+        setMessages((prevMessages) => [...prevMessages, { sender: 'ai', text: 'Error: Could not get a response.', isError: true, timestamp: new Date().toISOString() }]);
       }
-    };
+    } catch (err) {
+      console.error('Error retrying message:', err);
+      setError('Failed to retry message. Please try again.');
+      setMessages((prevMessages) => [...prevMessages, { sender: 'ai', text: 'Error: Could not get a response.', isError: true, timestamp: new Date().toISOString() }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showModelDropdown]);
+  const handleQuizSubmit = async (quizId, answers) => {
+    try {
+      await newSubmitQuiz(sessionId, quizId, answers);
+      setToast({ message: 'Quiz submitted successfully!', type: 'success' });
+      setQuizPanelOpen(false);
+    } catch (error) {
+      console.error('Error submitting quiz:', error);
+      setToast({ message: 'Failed to submit quiz.', type: 'error' });
+    }
+  };
 
   return (
     <>
-      {/* State Debug Panel - Hidden for design review */}
-      {/* <StateDisplay /> */}
-
       {/* Quiz Modal */}
       <QuizModal
         isOpen={quizModalOpen}
@@ -223,160 +158,259 @@ function ChatInterface() {
         onSubmit={handleQuizSubmit}
       />
 
-        <div className="chat-interface">
-            <div id="chat-content" className={hasMessages ? 'has-messages' : ''}>
-              {/* Ready title - only shown when no messages */}
-              {!hasMessages && <h2 className="ready-title">Ready when you are.</h2>}
+      {/* CONTENT COLUMN */}
+      <div className="flex h-full min-h-0 flex-col">
+        {/* Pre Surface State - Centered */}
+        {isPreSurface && (
+          <div className="flex-1 flex items-center justify-center bg-[#f7f8f8]">
+            <div className="flex flex-col gap-8 items-center w-[700px] max-w-full px-4">
+              {/* Title */}
+              <p className="font-bold text-[21px] leading-7 text-[#030712] tracking-[-0.6px] text-center">
+                Ready when you are.
+              </p>
 
-              {/* Message list */}
-              {hasMessages && (
-                <div id="message-list">
+              {/* Composer Card */}
+              <div className="bg-white border border-[#4e81ee] flex gap-2 h-40 items-start px-4 py-3 rounded-3xl w-full relative">
+                <textarea
+                  placeholder="Ask anything..."
+                  className="w-full h-full resize-none border-none outline-none bg-transparent text-lg text-[#030712] placeholder:text-[#aeb1b6]"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
+                />
+                
+                {/* Model selector dropdown */}
+                <div className="absolute bottom-[18px] right-[72px] flex items-center">
+                  <select 
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="font-normal text-base leading-[21px] text-[#424855] tracking-[-0.25px] bg-transparent border-none outline-none cursor-pointer appearance-none pr-1"
+                  >
+                    <option value="llama">Llama</option>
+                    <option value="gpt">ChatGPT</option>
+                  </select>
+                  <svg className="w-3 h-3 ml-0.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+
+                {/* Send button (circular) */}
+                <button
+                  disabled={!inputValue.trim()}
+                  onClick={handleSubmit}
+                  className={`absolute bg-[#4e81ee] bottom-2 flex gap-3 items-center justify-center p-3 right-2 rounded-[50px] ${
+                    !inputValue.trim() ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                        <div className="w-6 h-6">
+                          <img src="/icons/send-arrow.svg" alt="arrow up" className="w-6 h-6" />
+                        </div>
+                </button>
+              </div>
+
+              {/* Studying / Revision toggle below card */}
+              <div className="flex gap-4 items-center justify-center">
+                <button
+                  type="button"
+                  onClick={() => setLearningStyle("studying")}
+                  className={`flex gap-3 items-center justify-center px-5 py-2.5 rounded-lg border bg-white ${
+                    learningStyle === "studying" 
+                      ? "border-[#4e81ee] text-[#4e81ee]" 
+                      : "border-[#e6e7e8] text-[#686d77]"
+                  }`}
+                >
+                  <img 
+                    src="/icons/studying.svg" 
+                    alt="graduation cap" 
+                    className="w-6 h-6" 
+                    style={{ 
+                      filter: learningStyle === "studying" ? "none" : "brightness(0) saturate(100%) invert(42%) sepia(7%) saturate(1459%) hue-rotate(184deg) brightness(92%) contrast(89%)"
+                    }}
+                  />
+                  <p className={`font-bold text-lg leading-7 tracking-[-0.4px] ${
+                    learningStyle === "studying" ? "text-[#4e81ee]" : "text-[#686d77]"
+                  }`}>
+                    Studying
+                  </p>
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => setLearningStyle("revision")}
+                  className={`flex gap-3 items-center justify-center px-5 py-2.5 rounded-lg border bg-white ${
+                    learningStyle === "revision" 
+                      ? "border-[#4e81ee] text-[#4e81ee]" 
+                      : "border-[#e6e7e8] text-[#686d77]"
+                  }`}
+                >
+                  <img 
+                    src="/icons/revision.svg" 
+                    alt="revision" 
+                    className="w-6 h-6" 
+                    style={{ 
+                      filter: learningStyle === "revision" ? "brightness(0) saturate(100%) invert(36%) sepia(85%) saturate(1369%) hue-rotate(210deg) brightness(98%) contrast(96%)" : "none"
+                    }}
+                  />
+                  <p className={`font-bold text-lg leading-7 tracking-[-0.4px] ${
+                    learningStyle === "revision" ? "text-[#4e81ee]" : "text-[#686d77]"
+                  }`}>
+                    Revision
+                  </p>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Active Learning State */}
+        {isActiveLearning && (
+          <>
+            {/* Header (topic chip) */}
+            {topic && (
+              <div className="mb-4 flex items-center gap-3 flex-shrink-0 px-4 pt-4">
+                <div className="rounded-full bg-brand-ghost px-3 py-1 text-xs font-medium text-text">
+                  {topic}
+                </div>
+              </div>
+            )}
+
+            {/* Thread (scrolls) */}
+            <div id="message-list" className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+              {hasMessages ? (
+                <div className="flex flex-col gap-4">
                   {messages.map((message, index) => (
                     <div
                       key={index}
-                      className={`msg ${message.sender} ${message.isError ? 'error' : ''}`}
+                      className={`flex flex-col gap-3 ${
+                        message.sender === 'user' ? 'items-end' : 'items-start'
+                      }`}
                     >
-                      <div className="message-content">{message.text}</div>
-                      <div className="message-actions">
-                        <button
-                          className="action-btn copy-btn"
-                          onClick={() => handleCopyMessage(message.text)}
-                          title="Copy message"
-                        >
-                          📋
-                        </button>
-                        <button
-                          className="action-btn delete-btn"
-                          onClick={() => handleDeleteMessage(index)}
-                          title="Delete message"
-                        >
-                          🗑️
-                        </button>
-                        {message.sender === 'ai' &&
-                          index === messages.length - 1 &&
-                          lastUserMessage && (
+                      {/* Message Bubble */}
+                      <div
+                        className={`max-w-[80%] p-4 rounded-2xl ${
+                          message.sender === 'user'
+                            ? 'bg-[#4e81ee] text-white'
+                            : 'bg-white border border-[#e6e7e8] text-[#030712]'
+                        } ${message.isError ? 'border-red-200 bg-red-50 text-red-700' : ''}`}
+                      >
+                        <div className="text-base leading-relaxed">{message.text}</div>
+                      </div>
+                      
+                      {/* Message Actions */}
+                      <div className={`flex gap-2 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        {message.sender === 'ai' ? (
+                          <>
                             <button
-                              className="action-btn retry-btn"
-                              onClick={handleRetryLastMessage}
-                              title="Retry last message"
+                              className="text-gray-500 hover:text-gray-700 text-sm"
+                              onClick={() => handleCopyMessage(message.text)}
+                              title="Copy message"
                             >
-                              🔄
+                              📋 Copy
                             </button>
-                          )}
+                            <button
+                              className="text-gray-500 hover:text-green-600 text-sm"
+                              title="Like message"
+                            >
+                              👍 Like
+                            </button>
+                            <button
+                              className="text-gray-500 hover:text-red-600 text-sm"
+                              title="Dislike message"
+                            >
+                              👎 Dislike
+                            </button>
+                            {index === messages.length - 1 && (
+                              <button
+                                className="text-gray-500 hover:text-blue-600 text-sm"
+                                onClick={handleRetryLastMessage}
+                                title="Regenerate response"
+                              >
+                                🔄 Regenerate
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <button
+                            className="text-gray-500 hover:text-red-600 text-sm"
+                            onClick={() => handleDeleteMessage(index)}
+                            title="Delete message"
+                          >
+                            🗑️ Delete
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
                 </div>
+              ) : (
+                <div className="flex items-center justify-center h-full text-[#5b6470] text-base">
+                  Start a conversation by typing a message below
+                </div>
               )}
+            </div>
 
-          {/* Composer - centered when no messages, sticky when has messages */}
-          <div className={`composer ${hasMessages ? 'composer--sticky' : 'composer--centered'}`}>
-            <div className="message-input-wrapper">
-              <textarea
-                placeholder="Ask anything..."
-                className="message-input"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
-                disabled={isLoading}
-                rows={3}
-              />
-                  <div className="input-footer">
-                    <div className="model-selector-inline" onClick={() => setShowModelDropdown(!showModelDropdown)}>
-                      <span className="model-label">{model === 'llama' ? 'Llama' : model === 'gpt' ? 'GPT' : 'Claude'}</span>
-                      <img src="http://localhost:3845/assets/767772adfffd13ba9ae8ffbf04e9e553137b127f.svg" alt="chevron down" className="chevron-icon" />
-                      
-                      {showModelDropdown && (
-                        <div className="model-dropdown">
-                          {models.map((modelOption) => (
-                            <div
-                              key={modelOption.value}
-                              className={`model-option ${model === modelOption.value ? 'selected' : ''}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleModelChange(modelOption.value);
-                              }}
-                            >
-                              {modelOption.label}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      className={`send-button ${inputValue.trim() ? 'active' : ''}`}
-                      type="submit"
-                      onClick={handleSubmit}
-                      disabled={isLoading || inputValue.trim() === ''}
+            {/* Composer - Fixed at bottom */}
+            {!isViewOnly && (
+              <div className="flex-shrink-0 p-4 border-t border-[#e6e7e8] bg-white">
+                <div className="flex items-center gap-3 max-w-4xl mx-auto">
+                  <textarea
+                    placeholder="Ask anything..."
+                    className="flex-1 resize-none rounded-2xl border border-[#e6e7e8] bg-white p-4 text-base text-[#030712] placeholder:text-[#aeb1b6] focus:border-[#4e81ee] focus:outline-none"
+                    style={{ minHeight: "60px" }}
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
+                    disabled={isLoading}
+                  />
+                  <div className="flex items-center gap-3">
+                    {/* Model Selector Dropdown */}
+                    <select 
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      className="rounded-lg border border-[#e6e7e8] bg-white px-3 py-2 text-sm text-[#424855] focus:border-[#4e81ee] focus:outline-none"
                     >
-                      <img src="http://localhost:3845/assets/098c23e71fb36edbb514140ebf775994687e90e2.svg" alt="arrow up" className="send-icon" />
+                      <option value="llama">Llama</option>
+                      <option value="gpt">ChatGPT</option>
+                    </select>
+                    
+                    {/* Send Button */}
+                    <button 
+                      className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${
+                        inputValue.trim() && !isLoading
+                          ? 'bg-[#4e81ee] hover:bg-blue-600' 
+                          : 'bg-gray-300 cursor-not-allowed'
+                      }`}
+                      onClick={handleSubmit} 
+                      disabled={isLoading || !inputValue.trim()}
+                    >
+                      <img src="/icons/send-arrow.svg" alt="send" className="w-6 h-6" />
                     </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Learning Style Picker - only shown when no messages */}
-          {!hasMessages && (
-            <div className="learning-style-picker">
-              <div className="style-chips">
-                <button
-                  className={`style-chip ${learningStyle === 'studying' ? 'active' : ''}`}
-                  onClick={() => setLearningStyle('studying')}
-                >
-                  <img src="http://localhost:3845/assets/4cc94fa96d909a20207214a51b7031bcc94c73cd.svg" alt="graduation cap" className="chip-icon" />
-                  Studying
-                </button>
-                <button
-                  className={`style-chip ${learningStyle === 'revision' ? 'active' : ''}`}
-                  onClick={() => setLearningStyle('revision')}
-                >
-                  <img src="http://localhost:3845/assets/d1f21b07d6b52b5ab7dd42e8756831bc2e77e4a9.svg" alt="revision" className="chip-icon" />
-                  Revision
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-            {/* Error toast notification */}
-            {error && (
-              <div className="error-toast">
-                <span>{error}</span>
-                <button onClick={() => setError(null)} className="error-close">×</button>
+                  </div>
+                </div>
               </div>
             )}
-
-        {sessionId && (
-          <div className="summary-section">
-            <button
-              onClick={onSummarize}
-              disabled={!sessionId || summarizing}
-              className="summary-button"
-            >
-              {summarizing ? 'Summarizing…' : 'Summarize Session'}
-            </button>
-          </div>
-        )}
-
-        {summary && (
-          <div className="summary-panel">
-            <h3>Session Summary</h3>
-            <div className="summary-content">
-              {summary.split('\n').map((line, index) => (
-                <p key={index}>{line}</p>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Toast Notifications */}
-        {toast && (
-          <div className={`toast toast-${toast.type}`}>{toast.message}</div>
+          </>
         )}
       </div>
 
-      {/* Next Action Bar */}
-      <NextActionBar />
+      {/* Error toast notification */}
+      {error && (
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg shadow-soft">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="ml-2 text-red-500">×</button>
+        </div>
+      )}
+
+      {/* Toast Notifications */}
+      {toast && (
+        <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-lg shadow-soft ${
+          toast.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
+          toast.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
+          'bg-blue-50 text-blue-700 border border-blue-200'
+        }`}>
+          {toast.message}
+        </div>
+      )}
     </>
   );
 }

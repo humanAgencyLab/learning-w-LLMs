@@ -1,0 +1,21 @@
+/* LEGACY - DO NOT IMPORT. Tailwind CSS replaces this. Kept for reference only. */
+/* AppShell Layout - Grid-based structure */
+.app {
+  display: grid;
+  grid-template-rows: var(--topbar-height, 72px) 1fr;
+  height: 100vh;
+  background-color: var(--color-bg, #f7f8f8);
+  width: 100%;
+  overflow: hidden;
+}
+
+.app-body {
+  display: grid;
+  grid-template-columns: var(--leftnav-width, 280px) 1fr;
+  min-height: 0;
+}
+
+.main {
+  min-width: 0;
+  overflow: hidden;
+}

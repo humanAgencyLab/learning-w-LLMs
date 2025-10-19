@@ -9,7 +9,7 @@ export const Sidebar = ({
 }) => {
   const sidebarStyles = {
     width: isOpen ? width : '0',
-    height: '100vh',
+    height: '100%',
     backgroundColor: 'var(--color-panel)',
     borderRight: '1px solid var(--color-border)',
     padding: isOpen ? 'var(--space-6)' : '0',

@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import '../styles/Settings.css';
+// import '../styles/Settings.css'; // LEGACY - Using Tailwind CSS
 import EmailIcon from '../components/SignIn/EmailIcon';
 import LockIcon from '../components/SignIn/LockIcon';
 import PhoneIcon from '../components/Icons-Avatars/PhoneIcon';
 import UserIcon from '../components/Icons-Avatars/UserIcon';
 import defaultProfile from '../components/Icons-Avatars/defaultProfile.png';
-import MainLayout from '../layouts/MainLayout';
 import FontSizeIcon from '../components/Icons-Avatars/FontSizeIcon';
 import AppearanceModeIcon from '../components/Icons-Avatars/ApperanceModeIcon';
 import HistoryIcon from '../components/Icons-Avatars/HistoryIcon';
@@ -43,8 +42,7 @@ function Settings() {
   };
 
   return (
-    <MainLayout>
-      <div className={`settings-container ${darkMode ? 'dark' : ''}`}>
+    <div className={`settings-container ${darkMode ? 'dark' : ''}`}>
         <h1 className={`settings-heading ${darkMode ? 'dark' : ''}`}>
           {' '}
           Settings{' '}
@@ -226,7 +224,6 @@ function Settings() {
           </button>
         </form>
       </div>
-    </MainLayout>
   );
 }
 

@@ -1,52 +1,34 @@
-import React from 'react';
+import React from "react";
 
-export const Button = ({ 
-  children, 
-  variant = 'primary', 
-  fullWidth = false, 
-  className = '', 
-  ...props 
-}) => {
-  const baseStyles = {
-    padding: 'var(--space-3) var(--space-4)',
-    borderRadius: 'var(--radius-md)',
-    border: 'none',
-    cursor: 'pointer',
-    fontSize: '14px',
-    fontWeight: '500',
-    transition: 'all 0.2s ease',
-    width: fullWidth ? '100%' : 'auto',
+export function Button({ className = "", variant = "ghost", size = "md", style = {}, ...props }) {
+  const baseStyles = "inline-flex items-center justify-center gap-2 rounded-lg border focus-visible:outline-none focus-visible:ring-2";
+  
+  const sizeClasses = {
+    sm: "h-8 px-3 text-xs",
+    md: "h-10 px-4 text-sm",
+    lg: "h-12 px-5 text-base",
   };
-
+  
   const variantStyles = {
-    primary: {
-      backgroundColor: 'var(--color-primary)',
-      color: 'var(--color-text)',
-    },
-    secondary: {
-      backgroundColor: 'var(--color-panel)',
-      color: 'var(--color-text)',
-      border: '1px solid var(--color-border)',
+    solid: {
+      backgroundColor: 'var(--brand)',
+      color: 'white',
+      borderColor: 'transparent',
+      boxShadow: '0 6px 24px rgba(0,0,0,0.06)'
     },
     ghost: {
-      backgroundColor: 'transparent',
-      color: 'var(--color-text)',
-      border: '1px solid transparent',
-    },
+      backgroundColor: 'var(--bg)',
+      color: 'var(--text)',
+      borderColor: 'var(--border)',
+      boxShadow: '0 6px 24px rgba(0,0,0,0.06)'
+    }
   };
-
-  const styles = {
-    ...baseStyles,
-    ...variantStyles[variant],
-  };
-
+  
   return (
     <button 
-      style={styles} 
-      className={className}
+      className={`${baseStyles} ${sizeClasses[size]} ${className}`}
+      style={{ ...variantStyles[variant], ...style }}
       {...props}
-    >
-      {children}
-    </button>
+    />
   );
-};
+}

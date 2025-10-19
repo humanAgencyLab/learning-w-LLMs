@@ -1,10 +1,8 @@
 import React from 'react';
-import MainLayout from '../layouts/MainLayout';
-import '../styles/Performance.css';
+// import '../styles/Performance.css'; // LEGACY - Using Tailwind CSS
 
 function Performance() {
   return (
-    <MainLayout>
       <div className="performance-page">
         {/* Accuracy Rate */}
         <div className="card accuracy-card">
@@ -59,7 +57,6 @@ function Performance() {
           </div>
         </div>
       </div>
-    </MainLayout>
   );
 }
 

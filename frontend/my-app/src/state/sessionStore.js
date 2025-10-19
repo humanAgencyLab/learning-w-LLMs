@@ -1,41 +1,42 @@
 import { create } from 'zustand';
 
-const useSessionStore = create((set, get) => ({
-  // State
-  sessionId: 'test-session-123',
-  phase: 'learning', // 'pre' | 'assessing' | 'learning' | 'quizzing' | 'feedback' | 'completed'
-  learningStyle: 'studying', // 'studying' | 'revision' only
-  model: 'llama',
-  topic: 'React Development',
-  chatTitle: '',
-  plan: [
-    { id: 'm1', title: 'Introduction to React', status: 'complete', points: 20, milestones: [{ text: 'Setup React project', completed: true }] },
-    { id: 'm2', title: 'Components and Props', status: 'in_progress', points: 20, milestones: [{ text: 'Create first component', completed: false }] },
-    { id: 'm3', title: 'State Management', status: 'locked', points: 0, milestones: [{ text: 'Learn useState hook', completed: false }] },
-  ],
-  progressPercent: 40,
-  points: 40,
-  gems: 2,
-  hasTrophy: false,
-  isViewOnly: false,
-  nextAction: null,
+const initial = { 
+  sessionId: null, 
+  phase: 'pre', 
+  learningStyle: 'studying', 
+  model: 'llama', 
+  topic: null, 
+  chatTitle: '', 
+  plan: null, 
+  progressPercent: 0, 
+  points: 0, 
+  gems: 0, 
+  isViewOnly: false, 
+  nextAction: 'start_assessment', 
+  messages: [] 
+};
+
+    const useSessionStore = create((set, get) => ({
+      // State
+      sessionId: null,
+      phase: 'pre', // 'pre' | 'assessing' | 'learning' | 'quizzing' | 'feedback' | 'completed'
+      learningStyle: 'studying', // 'studying' | 'revision' only
+      model: 'llama',
+      topic: null,
+      chatTitle: '',
+      plan: null,
+      progressPercent: 0,
+      points: 0,
+      gems: 0,
+      hasTrophy: false,
+      isViewOnly: false,
+      nextAction: 'start_assessment',
 
   // Actions
-  reset: () => set({
-    sessionId: null,
-    phase: 'pre',
-    learningStyle: 'studying',
-    model: 'llama',
-    topic: '',
-    chatTitle: '',
-    plan: [],
-    progressPercent: 0,
-    points: 0,
-    gems: 0,
-    hasTrophy: false,
-    isViewOnly: false,
-    nextAction: null,
-  }),
+  reset: () => {
+    localStorage.removeItem('sessionId');
+    set({ ...initial });
+  },
 
   setLearningStyle: (style) => {
     if (style !== 'studying' && style !== 'revision') {

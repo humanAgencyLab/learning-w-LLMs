@@ -1,15 +1,24 @@
-/* TopBar Styles - Dynamic Responsive Design */
+/* LEGACY - DO NOT IMPORT. Tailwind CSS replaces this. Kept for reference only. */
 .topbar {
-  position: relative;
-  z-index: 10;
-  background-color: var(--base-white, #ffffff);
-  border-bottom: 1px solid var(--neutral-100, #e6e7e8);
-  padding: 2vh 0;
-  margin: 0;
-  width: 100%;
-  min-height: 8vh; /* Match LeftNav header height */
-  display: flex;
-  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--color-bg, #ffffff);
+  height: var(--topbar-height, 72px);
+}
+
+.topbar .title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-md {
+  height: 44px;
+  line-height: 44px;
+  padding: 0 20px;
+  border-radius: 12px;
+  font-weight: 600;
 }
 
 .topbar-content {

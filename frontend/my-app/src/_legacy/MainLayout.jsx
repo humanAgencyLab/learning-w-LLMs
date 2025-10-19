@@ -1,5 +1,6 @@
+// LEGACY - DO NOT IMPORT. AppShell/LeftNav replaces this. Kept for reference only.
 import React, { useState, useEffect } from 'react';
-import Navigation from '../components/Navigation/Navigation';
+import Navigation from './Navigation/Navigation';
 // import './MainLayout.css'; // LEGACY - DO NOT IMPORT
 
 function MainLayout({ children }) {

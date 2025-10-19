@@ -1,14 +1,67 @@
-/* ChatInterface - Main content area */
-.chat-interface {
+/* LEGACY - DO NOT IMPORT. Tailwind CSS replaces this. Kept for reference only. */
+#chat-main {
+  height: calc(100vh - var(--topbar-height, 72px));
   display: flex;
   flex-direction: column;
-  height: 100%;
-  max-width: 900px;
+  overflow: hidden;
+  min-height: 0;
+  padding-inline: 24px;
+}
+
+#message-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px 0;
+}
+
+#message-list.list--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#composer.composer--sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  background: var(--color-bg, #ffffff);
+  border-top: 1px solid var(--color-border, #e6e7e8);
+  box-shadow: 0 -8px 24px rgba(0,0,0,.05);
+}
+
+#composer.composer--centered {
   margin: 0 auto;
-  padding: 3vh 4vw;
-  font-family: 'Inter', sans-serif;
-  width: 100%;
-  box-sizing: border-box;
+  background: transparent;
+  border: none;
+}
+
+.chip {
+  height: 40px;
+  line-height: 40px;
+  padding: 0 20px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.model {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.composer .input {
+  height: 56px;
+  border-radius: 16px;
+  padding: 0 20px;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+}
+
+.composer--centered .input {
+  height: 64px;
 }
 
 /* Chat content container */

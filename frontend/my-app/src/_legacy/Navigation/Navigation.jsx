@@ -1,3 +1,4 @@
+// LEGACY - DO NOT IMPORT. AppShell/LeftNav replaces this. Kept for reference only.
 import React, { useState, useEffect } from 'react';
 import NavMenu from './NavMenu';
 import NavFooter from './NavFooter';

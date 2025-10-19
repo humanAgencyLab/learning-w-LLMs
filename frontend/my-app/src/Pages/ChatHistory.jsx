@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import '../styles/ChatHistory.css';
-import MainLayout from '../layouts/MainLayout';
+// import '../styles/ChatHistory.css'; // LEGACY - Using Tailwind CSS
 
 function ChatHistory() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,8 +67,7 @@ function ChatHistory() {
   };
 
   return (
-    <MainLayout>
-      <div className="chat-history-container">
+    <div className="chat-history-container">
         <h1 className="chat-history-heading">Chat History</h1>
         <h3 className="chat-history-description">
           View your previous conversations with AI Study Assistant
@@ -126,7 +124,6 @@ function ChatHistory() {
           ))}
         </div>
       </div>
-    </MainLayout>
   );
 }
 

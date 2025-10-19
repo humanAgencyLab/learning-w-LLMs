@@ -1,7 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import '../styles/LandingPage.css';
-import MainLayout from '../layouts/MainLayout';
 
 function LandingPage() {
   const navigate = useNavigate();
@@ -44,8 +43,7 @@ function LandingPage() {
   };
 
   return (
-    <MainLayout>
-      <div className={`landing-container`}>
+    <div className={`landing-container`}>
         {/* Navigation */}
         <nav className="navbar">
           <Link to="/about">About Us</Link>
@@ -75,7 +73,6 @@ function LandingPage() {
 
         <div className="topic-tag">Time Complexity | Logic</div>
       </div>
-    </MainLayout>
   );
 }
 

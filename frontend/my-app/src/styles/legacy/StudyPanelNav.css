@@ -1,24 +1,26 @@
-/* StudyPanelNav Styles - Based on Figma Design */
+/* LEGACY - DO NOT IMPORT. Tailwind CSS replaces this. Kept for reference only. */
+/* StudyPanelNav - Topic & Overall fixed, only Modules scroll */
 .study-panel {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   min-height: 0;
-  background-color: var(--base-white, #ffffff);
-  border: 1px solid var(--neutral-100, #e6e7e8);
-  border-radius: 16px;
-  height: 624px;
-  overflow: hidden;
+  height: 100%;
 }
 
-/* Panel Top - Sticky Header */
-.panel-top {
+.topic-fixed {
   position: sticky;
   top: 0;
-  background: var(--base-white, #ffffff);
-  padding: 16px;
+  z-index: 2;
+  background: var(--color-bg, #ffffff);
+  padding: 12px 16px;
+}
+
+.overall-fixed {
+  position: sticky;
+  top: 56px;
   z-index: 1;
-  border-bottom: 1px solid var(--neutral-100, #e6e7e8);
-  border-radius: 16px 16px 0 0;
+  background: var(--color-bg, #ffffff);
+  padding: 8px 16px 12px;
 }
 
 .topic-header {
@@ -49,14 +51,20 @@
   margin: 0;
 }
 
-/* Panel List - Scrollable Module List */
-.panel-list {
-  overflow-y: auto;
+.modules-scroll {
   min-height: 0;
-  padding: 0 16px 16px;
+  overflow: auto;
+  padding: 0 16px 24px;
+}
+
+.module-row {
+  height: 40px;
   display: flex;
-  flex-direction: column;
-  gap: 40px;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .module-item {

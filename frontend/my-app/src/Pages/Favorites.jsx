@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import '../styles/Favorites.css';
+// import '../styles/Favorites.css'; // LEGACY - Using Tailwind CSS
 import { useNavigate } from 'react-router-dom';
-import MainLayout from '../layouts/MainLayout';
 
 function Favorites() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -52,8 +51,7 @@ function Favorites() {
   };
 
   return (
-    <MainLayout>
-      <div className="favorites-container">
+    <div className="favorites-container">
         <h1 className="favorites-heading"> Favorites</h1>
         <h3 className="favorites-description">
           View bookmarked conversation with AI Study Assistant
@@ -94,7 +92,6 @@ function Favorites() {
           ))}
         </div>
       </div>
-    </MainLayout>
   );
 }
 

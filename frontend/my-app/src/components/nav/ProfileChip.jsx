@@ -1,19 +1,13 @@
 import React from 'react';
-import './ProfileChip.css';
 
 function ProfileChip({ name, gems }) {
   return (
-    <div className="profile-chip">
-        <div className="profile-avatar">
-          <img src="http://localhost:3845/assets/b67ca395c616301e6bc108685999d7acc3382993.png" alt={name} className="avatar-img" />
-        </div>
-        <div className="profile-info">
-          <div className="profile-name">{name}</div>
-          <div className="profile-gems">
-            <img src="http://localhost:3845/assets/9b3a0383b659d8cb4955b9d49e6353cac1aab30c.svg" alt="diamond" className="gem-icon" />
-            <span className="gem-count">{gems}</span>
-          </div>
-        </div>
+    <div className="flex items-center gap-3 truncate rounded-lg border border-border p-3">
+      <img className="h-8 w-8 rounded-full" src="/icons/profile.png" alt={name} />
+      <div className="min-w-0">
+        <div className="truncate text-sm font-medium">{name}</div>
+        <div className="truncate text-xs text-text-soft">💎 {gems}</div>
+      </div>
     </div>
   );
 }

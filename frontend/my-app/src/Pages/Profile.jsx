@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import '../styles/Profile.css';
+// import '../styles/Profile.css'; // LEGACY - Using Tailwind CSS
 import birdAvatar from '../components/Icons-Avatars/birdAvatar.png';
 import catAvatar from '../components/Icons-Avatars/catAvatar.png';
 import dogAvatar from '../components/Icons-Avatars/dogAvatar.png';
@@ -12,7 +12,6 @@ import gorillaAvatar from '../components/Icons-Avatars/gorillaAvatar.png';
 import snakeAvatar from '../components/Icons-Avatars/snakeAvatar.png';
 import kangarooAvatar from '../components/Icons-Avatars/kangarooAvatar.png';
 import sheepAvatar from '../components/Icons-Avatars/sheepAvatar.png';
-import MainLayout from '../layouts/MainLayout';
 
 function Profile() {
   // logic for avatars
@@ -51,8 +50,7 @@ function Profile() {
   const [selectedSkill, setSelectedSkill] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('');
   return (
-    <MainLayout>
-      <div className="profile-container">
+    <div className="profile-container">
         <h1 className="profile-heading">Profile</h1>
         <h3 className="profile-description">
           Your Personal Learning Dashboard
@@ -219,7 +217,6 @@ function Profile() {
           </button>
         </form>
       </div>
-    </MainLayout>
   );
 }
 export default Profile;
