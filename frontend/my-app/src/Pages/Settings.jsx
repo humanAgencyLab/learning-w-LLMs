@@ -18,7 +18,7 @@ function Settings() {
   const [notifications, setNotificiations] = useState(true);
   const [fontSize, setFontSize] = useState(20);
   const [profilePicture, setProfilePicture] = useState(
-    'https://via.placeholder.com/150',
+    '/icons/profile.png',
   );
   const [preview, setPreview] = useState(null);
 

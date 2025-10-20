@@ -10,10 +10,7 @@ import SignUpPrompt from './SignUpPrompt';
 function InputDesign() {
   return (
     <>
-      <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@600;700&display=swap"
-        rel="stylesheet"
-      />
+      {/* Fonts loaded via Tailwind CSS configuration */}
       <main className={styles.container}>
         <header className={styles.statusBar}>
           <StatusBar />
@@ -21,7 +18,7 @@ function InputDesign() {
 
         <figure className={styles.logoContainer}>
           <img
-            src="https://cdn.builder.io/api/v1/image/assets/TEMP/470cd0ebfc3f50115546b5467b96ef7fc85731dc?placeholderIfAbsent=true"
+            src="/icons/logo.svg"
             alt="AI Study Assistant Logo"
             className={styles.logo}
           />
