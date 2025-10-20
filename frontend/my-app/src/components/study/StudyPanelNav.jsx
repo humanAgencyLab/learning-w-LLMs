@@ -18,43 +18,150 @@ function StudyPanelNav({
     return null;
   }
 
+  // Determine module states based on sequential completion logic
+  const getModuleState = (module, index) => {
+    const totalMilestones = module.milestones?.length || 0;
+    const completedMilestones = module.milestones?.filter(m => m.completed).length || 0;
+    
+    // Check if previous module is completed
+    const previousModuleCompleted = index === 0 || 
+      (displayModules[index - 1]?.milestones?.every(m => m.completed) || false);
+    
+    // Check if current module is completed
+    const isCompleted = completedMilestones === totalMilestones && totalMilestones > 0;
+    
+    // Check if current module is active (has some progress but not complete)
+    const isActive = completedMilestones > 0 && !isCompleted && previousModuleCompleted;
+    
+    // Check if module is locked (previous not completed)
+    const isLocked = !previousModuleCompleted;
+    
+    if (isCompleted) return 'completed';
+    if (isActive) return 'active';
+    if (isLocked) return 'locked';
+    return 'available';
+  };
+
   return (
-    <section className="rounded-lg border border-[#e6e7e8] bg-[#f7f8f8] p-2 h-full flex flex-col">
-      {/* Topic header (fixed) */}
-      <div className="pb-1 flex-shrink-0">
-        <div className="text-xs font-semibold truncate text-[#030712]">Topic: {displayTopic}</div>
-        <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-white">
-          <div
-            className="h-full rounded bg-[#4e81ee]"
-            style={{ width: `${displayProgress}%` }}
-          />
-        </div>
+    <section className="relative rounded-lg border border-[#e6e7e8] bg-gradient-to-b from-[#f7f8f8] to-[#ffffff] p-3 h-full flex flex-col overflow-hidden">
+      {/* Background Elliptical Elements */}
+      <div className="absolute inset-0 pointer-events-none">
+        {/* Large Ellipse - Top Right */}
+        <div className="absolute top-0 right-0 w-[137px] h-[207px] bg-gradient-to-br from-[#4e81ee]/10 to-[#4e81ee]/5 rounded-full transform translate-x-1/2 -translate-y-1/2"></div>
+        {/* Medium Ellipse - Center Left */}
+        <div className="absolute top-16 left-0 w-[149px] h-[187px] bg-gradient-to-br from-[#4e81ee]/8 to-[#4e81ee]/3 rounded-full transform -translate-x-1/2"></div>
       </div>
 
-      {/* Overall row (fixed) */}
-      <div className="py-1 text-xs text-[#5b6470] flex-shrink-0">
-        Overall Progress <span className="float-right">{displayProgress}%</span>
+      {/* Topic Section - Sticky at top with point count */}
+      <div className="sticky top-0 z-10 bg-gradient-to-b from-[#f7f8f8] to-transparent pb-2 flex-shrink-0">
+        <div className="text-sm font-semibold truncate text-[#030712] mb-1">Topic: {displayTopic}</div>
+        <div className="text-xs text-[#5b6470] mb-2">{sessionData.points || 5}/100 point</div>
       </div>
 
-      {/* Scrollable modules */}
-      <div className="min-h-0 flex-1 overflow-auto">
-        <ul className="pr-1">
-          {displayModules.map(module => (
-            <li key={module.id} className="mb-1 rounded bg-white p-2 text-xs">
-              <div className="font-medium text-[#030712]">{module.title}</div>
-              <ul className="mt-1 pl-3 text-xs text-[#5b6470] list-disc">
-                {module.milestones?.slice(0, 2).map((milestone, i) => (
-                  <li key={i} className={milestone.completed ? 'text-green-600' : ''}>
-                    {milestone.completed ? '✓ ' : '○ '}{milestone.text}
-                  </li>
-                ))}
-                {module.milestones?.length > 2 && (
-                  <li>+{module.milestones.length - 2} more...</li>
-                )}
-              </ul>
-            </li>
-          ))}
+      {/* Scrollable Modules Section */}
+      <div className="min-h-0 flex-1 overflow-auto py-2 relative z-10">
+        <ul className="space-y-2">
+          {displayModules.map((module, index) => {
+            const moduleState = getModuleState(module, index);
+            const isActive = moduleState === 'active';
+            const isCompleted = moduleState === 'completed';
+            const isLocked = moduleState === 'locked';
+            
+            return (
+              <li key={module.id} className={`rounded-lg p-3 shadow-sm backdrop-blur-sm ${
+                isActive ? 'bg-gradient-to-r from-orange-50 to-white border border-orange-200' : 
+                isCompleted ? 'bg-white border border-gray-200' :
+                isLocked ? 'bg-white border border-gray-200' :
+                'bg-white border border-gray-200'
+              }`}>
+                {/* Module Header */}
+                <div className="mb-2">
+                  {/* Module Number and Points Row */}
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`font-medium text-sm ${
+                      isActive ? 'text-gray-800' :
+                      isCompleted ? 'text-gray-800' :
+                      isLocked ? 'text-gray-400' :
+                      'text-gray-800'
+                    }`}>
+                      Module {index}
+                    </span>
+                    <div className={`flex items-center ${isLocked ? 'gap-1' : 'gap-2'}`}>
+                      <span className={`text-xs ${
+                        isLocked ? 'text-gray-400' : 'text-gray-600'
+                      }`}>
+                        {module.points || 20} point
+                      </span>
+                      {isLocked && (
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Module Name Row */}
+                  <div className={`text-sm ${
+                    isActive ? 'text-gray-800 font-medium' :
+                    isCompleted ? 'text-gray-800 font-medium' :
+                    isLocked ? 'text-gray-400' :
+                    'text-gray-800'
+                  }`}>
+                    {module.title}
+                  </div>
+                </div>
+                
+                {/* Module Milestones */}
+                <ul className="space-y-1">
+                  {module.milestones?.map((milestone, i) => {
+                    // Determine milestone state within the module
+                    const previousMilestoneCompleted = i === 0 || module.milestones[i - 1]?.completed;
+                    const isMilestoneCompleted = milestone.completed;
+                    const isMilestoneActive = !isMilestoneCompleted && previousMilestoneCompleted && isActive;
+                    const isMilestoneLocked = !previousMilestoneCompleted && !isMilestoneCompleted;
+                    
+                    return (
+                      <li 
+                        key={i} 
+                        className={`text-xs flex items-center gap-2 ${
+                          isMilestoneCompleted ? 'text-gray-800 font-medium' : 
+                          isMilestoneActive ? 'text-orange-600 font-medium' :
+                          isMilestoneLocked ? 'text-gray-400' :
+                          isLocked ? 'text-gray-400' :
+                          'text-gray-600'
+                        }`}
+                      >
+                        <span className="w-2 h-2 flex items-center justify-center text-xs">
+                          {isMilestoneCompleted ? '✓' : 
+                           isMilestoneActive ? '●' : '•'}
+                        </span>
+                        <span className="flex-1">{milestone.text}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </li>
+            );
+          })}
         </ul>
+      </div>
+
+      {/* Progress Section - Sticky at bottom with progress bar */}
+      <div className="sticky bottom-0 z-10 bg-gradient-to-b from-transparent to-[#ffffff] pt-2 flex-shrink-0 backdrop-blur-sm">
+        <div className="border-t border-gray-200 pt-2">
+          <div className="text-xs text-gray-600 text-center mb-2">
+            Overall Progress
+          </div>
+          <div className="text-sm font-semibold text-gray-800 text-center mb-2">
+            {displayProgress}%
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+            <div
+              className="h-full rounded-full bg-orange-500 transition-all duration-300"
+              style={{ width: `${displayProgress}%` }}
+            />
+          </div>
+        </div>
       </div>
     </section>
   );

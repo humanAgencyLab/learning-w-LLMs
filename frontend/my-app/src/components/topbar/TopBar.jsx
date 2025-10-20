@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import useSessionStore from '../../state/sessionStore';
 
 function TopBar({ onStartNewChat }) {
-  const { phase, topic, sessionId } = useSessionStore();
+  const { phase, topic, sessionId, setDummyData } = useSessionStore();
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   
   const handleStartChat = async () => {
@@ -25,7 +25,7 @@ function TopBar({ onStartNewChat }) {
 
   return (
     <>
-      <div className="bg-white flex gap-6 items-center justify-end px-16 py-4 w-full">
+      <div className="bg-white flex gap-6 items-center justify-between px-16 py-4 w-full">
         <div className="text-base font-semibold">
           {showTitle && topic ? (
             <div className="flex items-center gap-2">
@@ -36,7 +36,27 @@ function TopBar({ onStartNewChat }) {
             </div>
           ) : null}
         </div>
-        <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
+              {phase === 'pre' && (
+                <button 
+                  onClick={setDummyData}
+                  className="bg-gray-500 flex gap-3 items-center justify-center px-5 py-3 rounded-[50px]"
+                >
+                  <p className="font-bold text-base leading-6 text-white tracking-[-0.25px]">
+                    Load Demo
+                  </p>
+                </button>
+              )}
+              {phase !== 'pre' && (
+                <button 
+                  onClick={onStartNewChat}
+                  className="bg-gray-500 flex gap-3 items-center justify-center px-5 py-3 rounded-[50px]"
+                >
+                  <p className="font-bold text-base leading-6 text-white tracking-[-0.25px]">
+                    Reset
+                  </p>
+                </button>
+              )}
               <button 
                 onClick={handleStartChat}
                 className="bg-[#4e81ee] flex gap-3 items-center justify-center px-5 py-3 rounded-[50px]"
@@ -46,7 +66,7 @@ function TopBar({ onStartNewChat }) {
                 </p>
                 <img src="/icons/start-chat.svg" alt="chat" className="w-5 h-5" />
               </button>
-        </div>
+            </div>
       </div>
 
       {/* Confirmation Dialog */}

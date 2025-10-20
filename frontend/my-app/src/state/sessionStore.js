@@ -115,6 +115,99 @@ const initial = {
   hasProgress: () => get().progressPercent > 0,
   hasPlan: () => get().plan.length > 0,
   isActive: () => get().sessionId !== null,
+
+  // AI/System controlled milestone completion
+  completeModuleMilestone: (moduleIndex, milestoneIndex) => {
+    const currentPlan = get().plan;
+    if (currentPlan && currentPlan[moduleIndex] && currentPlan[moduleIndex].milestones[milestoneIndex]) {
+      const updatedPlan = [...currentPlan];
+      updatedPlan[moduleIndex].milestones[milestoneIndex].completed = true;
+      
+      // Calculate new progress
+      const totalMilestones = updatedPlan.reduce((sum, module) => sum + module.milestones.length, 0);
+      const completedMilestones = updatedPlan.reduce((sum, module) => 
+        sum + module.milestones.filter(m => m.completed).length, 0);
+      const newProgress = Math.round((completedMilestones / totalMilestones) * 100);
+      
+      // Calculate new points (5 points per milestone)
+      const newPoints = completedMilestones * 5;
+      
+      set({ 
+        plan: updatedPlan, 
+        progressPercent: newProgress,
+        points: newPoints,
+        gems: Math.floor(newPoints / 20)
+      });
+    }
+  },
+
+  // Debug/Testing methods
+  setDummyData: () => {
+    const dummyPlan = [
+      {
+        id: 'module-0',
+        title: 'Setup',
+        points: 20,
+        milestones: [
+          { text: 'Install python', completed: true },
+          { text: 'Basic syntax', completed: false },
+          { text: 'Control structure', completed: false },
+        ]
+      },
+      {
+        id: 'module-1', 
+        title: 'Data Structures',
+        points: 20,
+        milestones: [
+          { text: 'Lists and tuples', completed: false },
+          { text: 'Dictionaries and sets', completed: false },
+          { text: 'Working with data', completed: false },
+        ]
+      },
+      {
+        id: 'module-2',
+        title: 'File Input/Output',
+        points: 20,
+        milestones: [
+          { text: 'Reading files', completed: false },
+          { text: 'Writing files', completed: false },
+          { text: 'File handling', completed: false },
+        ]
+      },
+      {
+        id: 'module-3',
+        title: 'Functions & Modules',
+        points: 20,
+        milestones: [
+          { text: 'Function definition', completed: false },
+          { text: 'Function parameters', completed: false },
+          { text: 'Module imports', completed: false },
+        ]
+      },
+      {
+        id: 'module-4',
+        title: 'Advanced Topics',
+        points: 20,
+        milestones: [
+          { text: 'Object-oriented programming', completed: false },
+          { text: 'Error handling', completed: false },
+          { text: 'Testing and debugging', completed: false },
+        ]
+      }
+    ];
+
+    set({
+      sessionId: 'dummy-session-123',
+      phase: 'learning',
+      topic: 'Python Basic',
+      chatTitle: 'Learning Python Fundamentals',
+      plan: dummyPlan,
+      progressPercent: 7, // 1 out of 15 milestones completed
+      points: 5, // 1 milestone * 5 points
+      gems: 0,
+      isViewOnly: false,
+    });
+  },
 }));
 
 export default useSessionStore;

@@ -20,7 +20,33 @@ function ChatInterface() {
     setModel,
   } = useSessionStore();
 
-  const [messages, setMessages] = useState([]);
+  // Initialize with dummy messages for testing chat state
+  const [messages, setMessages] = useState([
+    {
+      sender: 'user',
+      text: 'I want to learn Python programming. Can you help me get started?',
+      isError: false,
+      timestamp: new Date(Date.now() - 300000).toISOString() // 5 minutes ago
+    },
+    {
+      sender: 'ai',
+      text: 'Absolutely! I\'d be happy to help you learn Python. Python is a great choice for beginners because of its simple and readable syntax.\n\nLet me start by asking you a few questions to understand your current level and what you\'d like to focus on:\n\n1. Have you programmed in any other languages before?\n2. What\'s your main goal with Python (web development, data analysis, automation, etc.)?\n3. How much time can you dedicate to learning each week?\n\nBased on your answers, I can create a personalized learning plan for you!',
+      isError: false,
+      timestamp: new Date(Date.now() - 280000).toISOString() // 4.5 minutes ago
+    },
+    {
+      sender: 'user', 
+      text: 'I\'m completely new to programming, and I\'m interested in data analysis. I can probably study for about 5-6 hours per week.',
+      isError: false,
+      timestamp: new Date(Date.now() - 200000).toISOString() // 3.5 minutes ago
+    },
+    {
+      sender: 'ai',
+      text: 'Perfect! That\'s a great foundation to work with. Since you\'re new to programming and interested in data analysis, I\'ll create a learning path that combines Python fundamentals with data analysis concepts.\n\nHere\'s what I recommend for your first few weeks:\n\n**Week 1-2: Python Basics**\n- Variables and data types\n- Basic operations and functions\n- Simple programs\n\n**Week 3-4: Data Structures**\n- Lists, tuples, and dictionaries\n- Working with data\n- Basic file operations\n\nWould you like me to start with the first lesson on variables and data types?',
+      isError: false,
+      timestamp: new Date(Date.now() - 150000).toISOString() // 2.5 minutes ago
+    }
+  ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -91,10 +117,6 @@ function ChatInterface() {
     setToast({ message: 'Message copied!', type: 'success' });
   };
 
-  const handleDeleteMessage = (indexToDelete) => {
-    setMessages((prevMessages) => prevMessages.filter((_, index) => index !== indexToDelete));
-    setToast({ message: 'Message deleted!', type: 'info' });
-  };
 
   const handleRetryLastMessage = async () => {
     if (!lastUserMessage || isLoading) return;
@@ -170,42 +192,54 @@ function ChatInterface() {
               </p>
 
               {/* Composer Card */}
-              <div className="bg-white border border-[#4e81ee] flex gap-2 h-40 items-start px-4 py-3 rounded-3xl w-full relative">
+              <div className={`bg-white border flex flex-col gap-4 items-start px-4 py-3 rounded-[24px] w-full relative transition-all duration-200 ${
+                inputValue.trim() ? 'border-[#4e81ee]' : 'border-[#e6e7e8]'
+              }`}>
                 <textarea
                   placeholder="Ask anything..."
-                  className="w-full h-full resize-none border-none outline-none bg-transparent text-lg text-[#030712] placeholder:text-[#aeb1b6]"
+                  className="w-full resize-none border-none outline-none bg-transparent text-lg leading-[28px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.4px]"
+                  style={{ minHeight: "28px" }}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
                 />
                 
-                {/* Model selector dropdown */}
-                <div className="absolute bottom-[18px] right-[72px] flex items-center">
-                  <select 
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    className="font-normal text-base leading-[21px] text-[#424855] tracking-[-0.25px] bg-transparent border-none outline-none cursor-pointer appearance-none pr-1"
-                  >
-                    <option value="llama">Llama</option>
-                    <option value="gpt">ChatGPT</option>
-                  </select>
-                  <svg className="w-3 h-3 ml-0.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
+                {/* Controls at bottom */}
+                <div className="flex gap-2 items-center justify-end w-full">
+                  {/* Model selector dropdown */}
+                  <div className="flex items-center gap-1">
+                    <select 
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      className="font-normal text-base leading-[21px] text-[#424855] tracking-[-0.25px] bg-transparent border-none outline-none cursor-pointer appearance-none"
+                    >
+                      <option value="llama">Llama</option>
+                      <option value="gpt">ChatGPT</option>
+                    </select>
+                    <svg className="w-3 h-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
 
-                {/* Send button (circular) */}
-                <button
-                  disabled={!inputValue.trim()}
-                  onClick={handleSubmit}
-                  className={`absolute bg-[#4e81ee] bottom-2 flex gap-3 items-center justify-center p-3 right-2 rounded-[50px] ${
-                    !inputValue.trim() ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                >
-                        <div className="w-6 h-6">
-                          <img src="/icons/send-arrow.svg" alt="arrow up" className="w-6 h-6" />
-                        </div>
-                </button>
+                  {/* Send button (circular) */}
+                  <button
+                    disabled={!inputValue.trim()}
+                    onClick={handleSubmit}
+                    className={`flex items-center justify-center p-3 rounded-[50px] transition-all duration-200 ${
+                      inputValue.trim() 
+                        ? 'bg-[#4e81ee] hover:bg-blue-600' 
+                        : 'bg-gray-300 cursor-not-allowed'
+                    }`}
+                  >
+                    <img 
+                      src="/icons/send-arrow.svg" 
+                      alt="arrow up" 
+                      className={`w-6 h-6 transition-all duration-200 ${
+                        inputValue.trim() ? 'filter-none' : 'filter grayscale opacity-50'
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
 
               {/* Studying / Revision toggle below card */}
@@ -213,7 +247,7 @@ function ChatInterface() {
                 <button
                   type="button"
                   onClick={() => setLearningStyle("studying")}
-                  className={`flex gap-3 items-center justify-center px-5 py-2.5 rounded-lg border bg-white ${
+                  className={`flex gap-3 items-center justify-center px-5 py-2.5 rounded-lg border bg-white transition-all duration-200 ${
                     learningStyle === "studying" 
                       ? "border-[#4e81ee] text-[#4e81ee]" 
                       : "border-[#e6e7e8] text-[#686d77]"
@@ -237,7 +271,7 @@ function ChatInterface() {
                 <button
                   type="button"
                   onClick={() => setLearningStyle("revision")}
-                  className={`flex gap-3 items-center justify-center px-5 py-2.5 rounded-lg border bg-white ${
+                  className={`flex gap-3 items-center justify-center px-5 py-2.5 rounded-lg border bg-white transition-all duration-200 ${
                     learningStyle === "revision" 
                       ? "border-[#4e81ee] text-[#4e81ee]" 
                       : "border-[#e6e7e8] text-[#686d77]"
@@ -265,80 +299,94 @@ function ChatInterface() {
         {/* Active Learning State */}
         {isActiveLearning && (
           <>
-            {/* Header (topic chip) */}
-            {topic && (
-              <div className="mb-4 flex items-center gap-3 flex-shrink-0 px-4 pt-4">
-                <div className="rounded-full bg-brand-ghost px-3 py-1 text-xs font-medium text-text">
-                  {topic}
-                </div>
-              </div>
-            )}
-
             {/* Thread (scrolls) */}
-            <div id="message-list" className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+            <div id="message-list" className="min-h-0 flex-1 overflow-auto px-6 py-4">
               {hasMessages ? (
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-6">
                   {messages.map((message, index) => (
                     <div
                       key={index}
-                      className={`flex flex-col gap-3 ${
+                      className={`flex flex-col gap-2 ${
                         message.sender === 'user' ? 'items-end' : 'items-start'
                       }`}
                     >
                       {/* Message Bubble */}
                       <div
-                        className={`max-w-[80%] p-4 rounded-2xl ${
+                        className={`max-w-[85%] ${
                           message.sender === 'user'
-                            ? 'bg-[#4e81ee] text-white'
-                            : 'bg-white border border-[#e6e7e8] text-[#030712]'
-                        } ${message.isError ? 'border-red-200 bg-red-50 text-red-700' : ''}`}
+                            ? 'bg-white text-[#030712] p-4 rounded-2xl border border-[#e6e7e8]'
+                            : 'bg-transparent text-[#030712]'
+                        } ${message.isError ? 'border-red-200 bg-red-50 text-red-700 p-4 rounded-2xl' : ''}`}
                       >
-                        <div className="text-base leading-relaxed">{message.text}</div>
+                        <div className={`leading-relaxed whitespace-pre-wrap ${
+                          message.sender === 'user' ? 'text-sm' : 'text-base'
+                        }`}>
+                          {message.sender === 'ai' ? (
+                            <div className="prose prose-sm max-w-none">
+                              {message.text.split('\n').map((line, lineIndex) => {
+                                // Handle bold text formatting
+                                if (line.startsWith('**') && line.endsWith('**')) {
+                                  return (
+                                    <div key={lineIndex} className="font-bold text-[#030712] mb-2">
+                                      {line.slice(2, -2)}
+                                    </div>
+                                  );
+                                }
+                                // Handle bullet points
+                                if (line.startsWith('- ')) {
+                                  return (
+                                    <div key={lineIndex} className="ml-4 mb-1">
+                                      • {line.slice(2)}
+                                    </div>
+                                  );
+                                }
+                                // Regular text
+                                return (
+                                  <div key={lineIndex} className={lineIndex === 0 ? 'mb-2' : 'mb-1'}>
+                                    {line}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            message.text
+                          )}
+                        </div>
                       </div>
                       
                       {/* Message Actions */}
-                      <div className={`flex gap-2 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        {message.sender === 'ai' ? (
-                          <>
-                            <button
-                              className="text-gray-500 hover:text-gray-700 text-sm"
-                              onClick={() => handleCopyMessage(message.text)}
-                              title="Copy message"
-                            >
-                              📋 Copy
-                            </button>
-                            <button
-                              className="text-gray-500 hover:text-green-600 text-sm"
-                              title="Like message"
-                            >
-                              👍 Like
-                            </button>
-                            <button
-                              className="text-gray-500 hover:text-red-600 text-sm"
-                              title="Dislike message"
-                            >
-                              👎 Dislike
-                            </button>
-                            {index === messages.length - 1 && (
-                              <button
-                                className="text-gray-500 hover:text-blue-600 text-sm"
-                                onClick={handleRetryLastMessage}
-                                title="Regenerate response"
-                              >
-                                🔄 Regenerate
-                              </button>
-                            )}
-                          </>
-                        ) : (
+                      {message.sender === 'ai' && (
+                        <div className="flex gap-3 mt-2">
                           <button
-                            className="text-gray-500 hover:text-red-600 text-sm"
-                            onClick={() => handleDeleteMessage(index)}
-                            title="Delete message"
+                            className="flex items-center justify-center w-8 h-8 text-[#5b6470] hover:text-[#030712] hover:bg-gray-100 rounded-full transition-colors"
+                            onClick={() => handleCopyMessage(message.text)}
+                            title="Copy message"
                           >
-                            🗑️ Delete
+                            <img src="/icons/copy.svg" alt="copy" className="w-4 h-4" />
                           </button>
-                        )}
-                      </div>
+                          <button
+                            className="flex items-center justify-center w-8 h-8 text-[#5b6470] hover:text-green-600 hover:bg-green-50 rounded-full transition-colors"
+                            title="Like message"
+                          >
+                            <img src="/icons/like.svg" alt="like" className="w-4 h-4" />
+                          </button>
+                          <button
+                            className="flex items-center justify-center w-8 h-8 text-[#5b6470] hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                            title="Dislike message"
+                          >
+                            <img src="/icons/dislike.svg" alt="dislike" className="w-4 h-4" />
+                          </button>
+                          {index === messages.length - 1 && (
+                            <button
+                              className="flex items-center justify-center w-8 h-8 text-[#5b6470] hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                              onClick={handleRetryLastMessage}
+                              title="Regenerate response"
+                            >
+                              <img src="/icons/regenerate.svg" alt="regenerate" className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -351,31 +399,37 @@ function ChatInterface() {
 
             {/* Composer - Fixed at bottom */}
             {!isViewOnly && (
-              <div className="flex-shrink-0 p-4 border-t border-[#e6e7e8] bg-white">
+              <div className="flex-shrink-0 bg-[#f7f8f8] p-6">
                 <div className="flex items-center gap-3 max-w-4xl mx-auto">
-                  <textarea
-                    placeholder="Ask anything..."
-                    className="flex-1 resize-none rounded-2xl border border-[#e6e7e8] bg-white p-4 text-base text-[#030712] placeholder:text-[#aeb1b6] focus:border-[#4e81ee] focus:outline-none"
-                    style={{ minHeight: "60px" }}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
-                    disabled={isLoading}
-                  />
-                  <div className="flex items-center gap-3">
-                    {/* Model Selector Dropdown */}
-                    <select 
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
-                      className="rounded-lg border border-[#e6e7e8] bg-white px-3 py-2 text-sm text-[#424855] focus:border-[#4e81ee] focus:outline-none"
-                    >
-                      <option value="llama">Llama</option>
-                      <option value="gpt">ChatGPT</option>
-                    </select>
+                  <div className="flex-1 relative">
+                    <textarea
+                      placeholder="Ask anything..."
+                      className="w-full resize-none rounded-[24px] border border-[#e6e7e8] bg-white p-4 pr-24 text-lg leading-[28px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.4px] focus:border-[#4e81ee] focus:outline-none"
+                      style={{ minHeight: "56px", maxHeight: "120px" }}
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
+                      disabled={isLoading}
+                    />
                     
-                    {/* Send Button */}
+                    {/* Model Selector Dropdown - Inside textarea */}
+                    <div className="absolute bottom-[18px] right-[72px] flex items-center gap-1">
+                      <select 
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                        className="bg-transparent border-none outline-none text-base leading-[21px] text-[#424855] tracking-[-0.25px] cursor-pointer appearance-none font-normal"
+                      >
+                        <option value="llama">Llama</option>
+                        <option value="gpt">ChatGPT</option>
+                      </select>
+                      <svg className="w-3 h-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                    
+                    {/* Send Button - Inside textarea */}
                     <button 
-                      className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${
+                      className={`absolute bottom-[8px] right-[8px] flex h-12 w-12 items-center justify-center rounded-[50px] transition-all duration-200 ${
                         inputValue.trim() && !isLoading
                           ? 'bg-[#4e81ee] hover:bg-blue-600' 
                           : 'bg-gray-300 cursor-not-allowed'
@@ -383,7 +437,13 @@ function ChatInterface() {
                       onClick={handleSubmit} 
                       disabled={isLoading || !inputValue.trim()}
                     >
-                      <img src="/icons/send-arrow.svg" alt="send" className="w-6 h-6" />
+                      <img 
+                        src="/icons/send-arrow.svg" 
+                        alt="send" 
+                        className={`w-6 h-6 ${
+                          inputValue.trim() ? 'filter-none' : 'filter grayscale opacity-50'
+                        }`}
+                      />
                     </button>
                   </div>
                 </div>

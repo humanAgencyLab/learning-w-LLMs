@@ -22,17 +22,17 @@ function LeftNav() {
 
       {/* Middle Content Area - Takes remaining space */}
       <div className="flex-1 min-h-0 flex flex-col">
-        {/* Navigation Menu - Flexible height, scrollable */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        {/* Navigation Menu - Reduced height */}
+        <div className="flex-shrink-0 overflow-y-auto" style={{ maxHeight: '200px' }}>
           <div className="flex flex-col gap-1 px-0 py-2">
             <PrimaryNav />
           </div>
         </div>
 
-        {/* Study Panel - Flexible height, scrollable */}
+        {/* Study Panel - Takes remaining space */}
         {showStudyPanel && (
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            <div className="px-0 py-2">
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <div className="px-2 py-2 h-full">
               <StudyPanelNav />
             </div>
           </div>
