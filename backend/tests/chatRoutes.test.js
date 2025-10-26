@@ -218,7 +218,8 @@ describe('Chat Routes', () => {
         .expect(404);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Session not found');
+      expect(response.body.code).toBe('NOT_FOUND');
+      expect(response.body.message).toBe('Session not found');
     });
 
     it('should return 409 for illegal phase (pre)', async () => {
