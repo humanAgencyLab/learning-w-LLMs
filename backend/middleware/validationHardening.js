@@ -31,30 +31,49 @@ function sanitizeHtml(input) {
 const validateInput = (req, res, next) => {
   try {
     // Sanitize userMessage if present
-    if (req.body.userMessage) {
+    if (req.body.userMessage !== undefined) {
+      const originalMessage = req.body.userMessage;
       req.body.userMessage = sanitizeHtml(req.body.userMessage);
-    }
-
-    // Validate userMessage length
-    if (req.body.userMessage) {
-      if (req.body.userMessage.length < 1) {
+      
+      // Check if message is empty after sanitization
+      if (!req.body.userMessage || req.body.userMessage.trim().length === 0) {
         return res.status(400).json({
           success: false,
-          error: 'User message is required',
+          error: 'User message cannot be empty',
           code: 'VALIDATION_ERROR',
           fieldErrors: {
-            userMessage: 'Message cannot be empty'
+            message: 'Message cannot be empty after sanitization'
           }
         });
       }
+    }
+    
+    // Sanitize topic if present
+    if (req.body.topic !== undefined) {
+      req.body.topic = sanitizeHtml(req.body.topic);
+      
+      // Check if topic is empty after sanitization
+      if (!req.body.topic || req.body.topic.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Topic cannot be empty',
+          code: 'VALIDATION_ERROR',
+          fieldErrors: {
+            topic: 'Topic cannot be empty after sanitization'
+          }
+        });
+      }
+    }
 
+    // Validate userMessage length (after sanitization)
+    if (req.body.userMessage !== undefined) {
       if (req.body.userMessage.length > 1000) {
         return res.status(400).json({
           success: false,
           error: 'User message too long',
           code: 'VALIDATION_ERROR',
           fieldErrors: {
-            userMessage: 'Message must be 1000 characters or less'
+            message: 'Message must be 1000 characters or less'
           }
         });
       }
