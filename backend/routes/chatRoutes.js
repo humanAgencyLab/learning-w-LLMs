@@ -174,6 +174,46 @@ router.post('/v1/chat', async (req, res) => {
       });
     }
     
+    // Handle feedback phase continue intent
+    let phaseChanged = false;
+    if (session.phase === 'feedback' && hasContinueIntent(userMessage)) {
+      session.phase = 'learning';
+      phaseChanged = true;
+      await session.save();
+      console.log('Phase changed from feedback to learning', { sessionId });
+    }
+    
+    // Check for quiz intent (highest priority after phase guards)
+    const wantsQuiz = hasQuizIntent(userMessage);
+    if (wantsQuiz) {
+      console.log('Quiz intent detected', { sessionId, activeModuleId: session.activeModuleId });
+      
+      // Add user message
+      const userMessageObj = {
+        id: `msg_${Date.now()}`,
+        role: 'user',
+        content: userMessage,
+        timestamp: new Date(),
+        metadata: { type: 'chat', tokensIn: userMessage.length, intent: 'learning', phaseAtSend: session.phase }
+      };
+      
+      session.messages.push(userMessageObj);
+      await session.save();
+      
+      return res.json({
+        success: true,
+        data: {
+          message: "Great! Let's test your understanding of this module.",
+          nextAction: "START_QUIZ",
+          moduleId: session.activeModuleId,
+          tokensIn: userMessage.length,
+          tokensOut: 0,
+          hadCheckInReply: false,
+          followedUpOutstanding: false
+        }
+      });
+    }
+    
     // Handle non-learning intents
     if (intent === 'admin') {
       const neutralResponse = handleNeutralMessage(session, userMessage, intent, session.phase);
@@ -296,49 +336,6 @@ router.post('/v1/chat', async (req, res) => {
           followedUpOutstanding: false,
           phase: session.phase,
           intent: 'general'
-        }
-      });
-    }
-    
-    // Keep session in 'pre' phase until user explicitly starts learning
-    // No auto-transition - let the user choose what to learn about
-    
-    // Handle feedback phase continue intent
-    let phaseChanged = false;
-    if (session.phase === 'feedback' && hasContinueIntent(userMessage)) {
-      session.phase = 'learning';
-      phaseChanged = true;
-      await session.save();
-      console.log('Phase changed from feedback to learning', { sessionId });
-    }
-    
-    // Check for quiz intent
-    const wantsQuiz = hasQuizIntent(userMessage);
-    if (wantsQuiz) {
-      console.log('Quiz intent detected', { sessionId, activeModuleId: session.activeModuleId });
-      
-      // Add user message
-      const userMessageObj = {
-        id: `msg_${Date.now()}`,
-        role: 'user',
-        content: userMessage,
-        timestamp: new Date(),
-        metadata: { type: 'chat', tokensIn: userMessage.length }
-      };
-      
-      session.messages.push(userMessageObj);
-      await session.save();
-      
-      return res.json({
-        success: true,
-        data: {
-          message: "Great! Let's test your understanding of this module.",
-          nextAction: "START_QUIZ",
-          moduleId: session.activeModuleId,
-          tokensIn: userMessage.length,
-          tokensOut: 0,
-          hadCheckInReply: false,
-          followedUpOutstanding: false
         }
       });
     }
