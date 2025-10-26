@@ -23,9 +23,7 @@ const moduleSchema = z.object({
     .refine(title => !/^(Module|Part|Section)\s*\d+$/i.test(title), 'Title must be content-specific, not generic'),
   targets: z.array(z.string())
     .min(1, 'At least one learning target required')
-    .max(10, 'Too many targets')
-    .optional()
-    .default([]),
+    .max(10, 'Too many targets'),
   points: z.number()
     .int('Points must be integer')
     .min(1, 'Points must be positive')
@@ -46,10 +44,8 @@ const assessmentPlanSchema = z.object({
     .refine(title => !/```|`|#|\*|_/.test(title), 'Chat title cannot contain markdown or code fences')
     .refine(title => !/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]/u.test(title), 'Chat title cannot contain emojis'),
   rationale: z.string()
-    .min(10, 'Rationale too short')
-    .max(500, 'Rationale too long')
-    .optional()
-    .default('Personalized learning path based on your profile and goals'),
+    .min(1, 'Rationale is required')
+    .max(500, 'Rationale too long'),
   plan: z.array(moduleSchema)
     .min(2, 'Plan must have at least 2 modules')
     .max(8, 'Plan cannot have more than 8 modules')

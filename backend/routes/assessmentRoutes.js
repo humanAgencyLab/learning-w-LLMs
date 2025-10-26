@@ -220,6 +220,19 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     // Handle plan generation
     const { topic, chatTitle, rationale, plan, nextPhase } = parsedResponse;
     
+    // Backfill missing rationale
+    const finalRationale = rationale && rationale.length > 0 
+      ? rationale 
+      : 'Personalized learning path based on your profile and goals';
+    
+    // Backfill missing targets for each module
+    const finalPlan = plan.map(module => {
+      const targets = module.targets && module.targets.length > 0
+        ? module.targets
+        : [`Master ${module.title}`]; // Minimal backfill
+      return { ...module, targets };
+    });
+    
     // Reset session if topic changed
     if (!session.topic || session.topic !== topic) {
       session.points = 0;
@@ -231,14 +244,12 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     // Update session with plan
     session.topic = topic;
     session.chatTitle = chatTitle;
-    session.plan = plan.map(module => ({
+    session.plan = finalPlan.map(module => ({
       id: module.moduleId,
       title: module.title,
       description: `Learn ${module.title.toLowerCase()}`,
       status: module.moduleId === '1' ? 'in_progress' : 'locked',
-      milestones: module.targets && module.targets.length > 0 
-        ? module.targets 
-        : [`Understand ${module.title.toLowerCase()}`, `Practice ${module.title.toLowerCase()}`, `Apply ${module.title.toLowerCase()}`],
+      milestones: module.targets,
       completedMilestones: [],
       points: module.points,
       difficulty: module.difficulty || 'core'
@@ -279,8 +290,8 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     req.logger.info('Assessment plan generated successfully', {
       sessionId,
       topic,
-      modulesCount: plan.length,
-      sumPoints: plan.reduce((sum, m) => sum + m.points, 0),
+      modulesCount: finalPlan.length,
+      sumPoints: finalPlan.reduce((sum, m) => sum + m.points, 0),
       clarifyPathUsed: (session.meta.assessClarifyCount || 0) > 0,
       assessClarifyCount: session.meta.assessClarifyCount || 0,
       retryCount,
@@ -293,8 +304,8 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       data: {
         topic,
         chatTitle,
-        rationale: rationale || 'Personalized learning path based on your profile and goals',
-        plan,
+        rationale: finalRationale,
+        plan: finalPlan,
         nextPhase
       }
     });
