@@ -14,6 +14,10 @@ const { handleNeutralMessage } = require('../prompts/neutral_prompt');
 // Groq client setup (lazy initialization to avoid test conflicts)
 let groq;
 const getGroqClient = () => {
+  // Force reload in test environment to pick up new mocks
+  if (process.env.NODE_ENV === 'test') {
+    groq = undefined;
+  }
   if (!groq) {
     const Groq = require('groq-sdk');
     groq = new Groq({
@@ -21,6 +25,11 @@ const getGroqClient = () => {
     });
   }
   return groq;
+};
+
+// Export reset function for testing
+const resetGroqClient = () => {
+  groq = undefined;
 };
 
 // Teacher prompt now imported from teacher_prompt.js module
@@ -115,11 +124,26 @@ router.post('/v1/chat', async (req, res) => {
     const userMessage = req.sanitized?.message || req.body.userMessage;
     
     // Load session
-    const session = await Session.findById(sessionId);
+    let session;
+    try {
+      session = await Session.findById(sessionId);
+    } catch (error) {
+      // Invalid ObjectId format
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid session ID',
+        details: {
+          sessionId: ['Invalid session ID format']
+        }
+      });
+    }
+    
     if (!session) {
       return res.status(404).json({
         success: false,
-        error: 'Session not found'
+        code: 'NOT_FOUND',
+        message: 'Session not found'
       });
     }
     
@@ -507,3 +531,4 @@ router.post('/v1/chat', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.resetGroqClient = resetGroqClient;

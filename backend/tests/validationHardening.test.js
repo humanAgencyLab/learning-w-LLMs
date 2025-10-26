@@ -3,28 +3,26 @@ const mongoose = require('mongoose');
 const app = require('../app');
 const Session = require('../models/Session');
 
-// Mock Groq SDK
+// Mock Groq API
+const mockGroqCreate = jest.fn();
 jest.mock('groq-sdk', () => {
-  return {
-    Groq: jest.fn().mockImplementation(() => ({
-      chat: {
-        completions: {
-          create: jest.fn()
-        }
+  return jest.fn().mockImplementation(() => ({
+    chat: {
+      completions: {
+        create: mockGroqCreate
       }
-    }))
-  };
+    }
+  }));
 });
-
-const { Groq } = require('groq-sdk');
 
 describe('Validation Hardening', () => {
   let testSessionId;
-  let mockGroqClient;
+  let chatRoutes;
 
   beforeAll(async () => {
     // Connect to test database
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/learning-w-llms-test');
+    chatRoutes = require('../routes/chatRoutes');
   });
 
   beforeEach(async () => {
@@ -60,21 +58,21 @@ describe('Validation Hardening', () => {
     await session.save();
     testSessionId = session._id;
 
-    // Setup mock Groq client
-    mockGroqClient = {
-      chat: {
-        completions: {
-          create: jest.fn()
-        }
-      }
-    };
-    Groq.mockImplementation(() => mockGroqClient);
+    // Reset the Groq client cache so new mocks are used
+    if (chatRoutes.resetGroqClient) {
+      chatRoutes.resetGroqClient();
+    }
   });
 
   afterEach(async () => {
     // Clean up test data
     await Session.deleteMany({});
     jest.clearAllMocks();
+    
+    // Reset Groq client cache
+    if (chatRoutes.resetGroqClient) {
+      chatRoutes.resetGroqClient();
+    }
   });
 
   afterAll(async () => {
@@ -84,7 +82,7 @@ describe('Validation Hardening', () => {
   describe('HTML Sanitization', () => {
     it('should strip HTML tags from user messages', async () => {
       // Mock successful chat response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: 'Hello! How can I help you learn?'
@@ -116,7 +114,7 @@ describe('Validation Hardening', () => {
 
     it('should decode HTML entities', async () => {
       // Mock successful chat response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: 'Hello! How can I help you learn?'
@@ -224,7 +222,7 @@ describe('Validation Hardening', () => {
   describe('Assessment Output Validation', () => {
     it('should validate assessment output schema', async () => {
       // Mock invalid assessment response (points don't sum to 100)
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: JSON.stringify({
@@ -258,7 +256,7 @@ describe('Validation Hardening', () => {
 
     it('should validate unique module titles', async () => {
       // Mock invalid assessment response (duplicate titles)
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: JSON.stringify({
@@ -292,7 +290,7 @@ describe('Validation Hardening', () => {
 
     it('should validate sequential module IDs', async () => {
       // Mock invalid assessment response (non-sequential IDs)
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: JSON.stringify({
@@ -328,7 +326,7 @@ describe('Validation Hardening', () => {
   describe('Quiz Generation Validation', () => {
     it('should validate quiz generation schema', async () => {
       // Mock invalid quiz generation response (only 2 questions, need 3-5)
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: JSON.stringify({
@@ -368,7 +366,7 @@ describe('Validation Hardening', () => {
 
     it('should reject questions with forbidden options', async () => {
       // Mock invalid quiz generation response (contains "All of the above")
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: JSON.stringify({
@@ -402,11 +400,11 @@ describe('Validation Hardening', () => {
 
   describe('Error Taxonomy', () => {
     it('should return proper error codes for different scenarios', async () => {
-      // Test 404 for non-existent session
+      // Test 404 for non-existent session (use a valid-looking but non-existent ObjectId)
       const response1 = await request(app)
         .post('/v1/chat')
         .send({
-          sessionId: 'nonexistent-session-id',
+          sessionId: '507f1f77bcf86cd799439011',
           userMessage: 'Hello'
         });
 
