@@ -110,7 +110,8 @@ router.post('/v1/sessions', addRequestId, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({
         success: false,
-        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
         details: error.errors
       });
     }
@@ -134,9 +135,10 @@ router.get('/v1/sessions/:id', addRequestId, async (req, res) => {
     // Validate session ID format
     if (!id.match(/^[0-9a-fA-F]{24}$/)) {
       req.logger.warn('Invalid session ID format', { sessionId: id });
-      return res.status(400).json({
+      return res.status(404).json({
         success: false,
-        error: 'Invalid session ID format'
+        code: 'NOT_FOUND',
+        message: 'Resource not found'
       });
     }
     
@@ -146,7 +148,8 @@ router.get('/v1/sessions/:id', addRequestId, async (req, res) => {
       req.logger.warn('Session not found', { sessionId: id });
       return res.status(404).json({
         success: false,
-        error: 'Session not found'
+        code: 'NOT_FOUND',
+        message: 'Resource not found'
       });
     }
     
@@ -205,9 +208,10 @@ router.post('/v1/sessions/:id/resume', addRequestId, async (req, res) => {
     // Validate session ID format
     if (!id.match(/^[0-9a-fA-F]{24}$/)) {
       req.logger.warn('Invalid session ID format', { sessionId: id });
-      return res.status(400).json({
+      return res.status(404).json({
         success: false,
-        error: 'Invalid session ID format'
+        code: 'NOT_FOUND',
+        message: 'Resource not found'
       });
     }
     
@@ -217,7 +221,8 @@ router.post('/v1/sessions/:id/resume', addRequestId, async (req, res) => {
       req.logger.warn('Session not found for resume', { sessionId: id });
       return res.status(404).json({
         success: false,
-        error: 'Session not found'
+        code: 'NOT_FOUND',
+        message: 'Resource not found'
       });
     }
     

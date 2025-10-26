@@ -115,7 +115,8 @@ describe('Session Routes', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Validation failed');
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.message).toBe('Validation failed');
       expect(response.body.details).toBeDefined();
     });
 
@@ -139,7 +140,8 @@ describe('Session Routes', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Validation failed');
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.message).toBe('Validation failed');
     });
 
     it('should inject dummy profile for anonymous placeholder', async () => {
@@ -291,16 +293,18 @@ describe('Session Routes', () => {
         .expect(404);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Session not found');
+      expect(response.body.code).toBe('NOT_FOUND');
+      expect(response.body.message).toBe('Resource not found');
     });
 
     it('should return 400 for invalid session ID format', async () => {
       const response = await request(app)
         .get('/v1/sessions/invalid-id')
-        .expect(400);
+        .expect(404);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Invalid session ID format');
+      expect(response.body.code).toBe('NOT_FOUND');
+      expect(response.body.message).toBe('Resource not found');
     });
   });
 
@@ -395,16 +399,18 @@ describe('Session Routes', () => {
         .expect(404);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Session not found');
+      expect(response.body.code).toBe('NOT_FOUND');
+      expect(response.body.message).toBe('Resource not found');
     });
 
     it('should return 400 for invalid session ID format', async () => {
       const response = await request(app)
         .post('/v1/sessions/invalid-id/resume')
-        .expect(400);
+        .expect(404);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Invalid session ID format');
+      expect(response.body.code).toBe('NOT_FOUND');
+      expect(response.body.message).toBe('Resource not found');
     });
 
     it('should handle sessions with fewer than 20 messages', async () => {
