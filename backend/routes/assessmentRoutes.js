@@ -233,6 +233,28 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       return { ...module, targets };
     });
     
+    // Validate final plan structure
+    try {
+      assessmentPlanSchema.parse({
+        topic,
+        chatTitle,
+        rationale: finalRationale,
+        plan: finalPlan,
+        nextPhase
+      });
+    } catch (validationError) {
+      req.logger.error('Validation failed after backfill', {
+        sessionId,
+        error: validationError.message
+      });
+      return res.status(502).json({
+        success: false,
+        error: 'Invalid assessment response format',
+        code: 'ASSESSMENT_JSON_INVALID',
+        details: validationError.errors
+      });
+    }
+    
     // Reset session if topic changed
     if (!session.topic || session.topic !== topic) {
       session.points = 0;

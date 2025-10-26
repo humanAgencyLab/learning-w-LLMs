@@ -244,9 +244,10 @@ describe('Assessment Routes', () => {
               content: JSON.stringify({
                 topic: 'Python Basics',
                 chatTitle: 'Learn Python',
+                rationale: 'Python programming fundamentals',
                 plan: [
-                  { moduleId: '1', title: 'Variables', points: 50 },
-                  { moduleId: '2', title: 'Functions', points: 50 }
+                  { moduleId: '1', title: 'Variables', points: 50, targets: ['Use variables'] },
+                  { moduleId: '2', title: 'Functions', points: 50, targets: ['Define functions'] }
                 ],
                 nextPhase: 'learning'
               })
@@ -308,10 +309,12 @@ describe('Assessment Routes', () => {
             content: JSON.stringify({
               topic: 'Web Development',
               chatTitle: 'Full Stack Web Dev',
+              rationale: 'Comprehensive web dev course',
               plan: Array.from({length: 9}, (_, i) => ({
                 moduleId: (i + 1).toString(),
                 title: `Module ${i + 1}`,
-                points: 10
+                points: 10,
+                targets: ['Learn web development']
               })),
               nextPhase: 'learning'
             })
@@ -340,9 +343,10 @@ describe('Assessment Routes', () => {
             content: JSON.stringify({
               topic: 'Data Science',
               chatTitle: 'Learn Data Science',
+              rationale: 'Data science fundamentals',
               plan: [
-                { moduleId: '1', title: 'Statistics', points: 50 },
-                { moduleId: '2', title: 'Statistics', points: 50 }
+                { moduleId: '1', title: 'Statistics', points: 50, targets: ['Learn statistics'] },
+                { moduleId: '2', title: 'Statistics', points: 50, targets: ['Apply statistics'] }
               ],
               nextPhase: 'learning'
             })
@@ -371,9 +375,10 @@ describe('Assessment Routes', () => {
             content: JSON.stringify({
               topic: 'Machine Learning',
               chatTitle: 'Learn ML',
+              rationale: 'Machine learning path',
               plan: [
-                { moduleId: '1', title: 'Module 1', points: 50 },
-                { moduleId: '2', title: 'Module 2', points: 50 }
+                { moduleId: '1', title: 'Module 1', points: 50, targets: ['Learn ML'] },
+                { moduleId: '2', title: 'Module 2', points: 50, targets: ['Apply ML'] }
               ],
               nextPhase: 'learning'
             })
@@ -402,9 +407,10 @@ describe('Assessment Routes', () => {
             content: JSON.stringify({
               topic: 'Data Structures',
               chatTitle: 'Learn Data Structures',
+              rationale: 'Data structures fundamentals',
               plan: [
-                { moduleId: '1', title: 'Arrays', points: 50 },
-                { moduleId: '3', title: 'Linked Lists', points: 50 }
+                { moduleId: '1', title: 'Arrays', points: 50, targets: ['Work with arrays'] },
+                { moduleId: '3', title: 'Linked Lists', points: 50, targets: ['Implement linked lists'] }
               ],
               nextPhase: 'learning'
             })
