@@ -91,8 +91,10 @@ const contextControl = async (req, res, next) => {
           ...generalMessages // General messages (preserve chronology)
         ];
         
+        // Ensure meta exists and set summaryVersion starting at 1
         session.meta = session.meta || {};
-        session.meta.summaryVersion = (session.meta.summaryVersion || 0) + 1;
+        session.meta.summaryVersion = session.meta.summaryVersion || 0;
+        session.meta.summaryVersion += 1; // Start at 1 if first summary
         session.meta.summarizedUpToIndex = summaryResult.summarizedUpToIndex;
 
         // Save the updated session
@@ -135,10 +137,9 @@ const contextControl = async (req, res, next) => {
 
       return res.status(507).json({
         success: false,
-        error: 'Context limit exceeded',
         code: 'CONTEXT_LIMIT',
-        hint: 'Try shorter messages or start a new session',
-        retryAfter: 60
+        message: 'Context window exceeded',
+        hint: 'Your conversation is too long. Try starting a new session.'
       });
     }
 
@@ -223,14 +224,16 @@ async function summarizeConversation(session, messages, requestId) {
       throw new Error('Empty summary response from LLM');
     }
 
-    // Create system summary message
+    // Create system summary message with stable schema
+    const uuid = require('uuid');
     const summaryMessage = {
-      id: `summary_${Date.now()}`,
+      id: uuid.v4(),
       role: 'system',
       content: summaryContent,
-      timestamp: new Date(),
+      timestamp: Date.now(), // Number in milliseconds
       metadata: {
-        tokens: summaryResponse.usage?.completion_tokens || 0
+        tokens: summaryResponse.usage?.completion_tokens || 0,
+        summaryVersion: (session.meta?.summaryVersion || 0) + 1
       }
     };
 

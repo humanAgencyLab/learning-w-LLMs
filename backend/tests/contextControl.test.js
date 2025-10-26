@@ -243,7 +243,8 @@ describe('Context Control Middleware', () => {
 
       expect(response.status).toBe(507);
       expect(response.body.code).toBe('CONTEXT_LIMIT');
-      expect(response.body.hint).toContain('Try shorter messages');
+      expect(response.body.message).toBe('Context window exceeded');
+      expect(response.body.hint).toContain('Try starting a new session');
     });
   });
 

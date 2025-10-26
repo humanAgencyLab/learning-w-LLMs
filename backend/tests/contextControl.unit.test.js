@@ -247,10 +247,9 @@ describe('Context Control Middleware - Unit Tests', () => {
       expect(res.status).toHaveBeenCalledWith(507);
       expect(res.json).toHaveBeenCalledWith({
         success: false,
-        error: 'Context limit exceeded',
         code: 'CONTEXT_LIMIT',
-        hint: 'Try shorter messages or start a new session',
-        retryAfter: 60
+        message: 'Context window exceeded',
+        hint: 'Your conversation is too long. Try starting a new session.'
       });
     });
   });
