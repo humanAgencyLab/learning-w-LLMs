@@ -12,12 +12,21 @@ const ASSESSMENT_MAX_TOKENS = parseInt(process.env.ASSESSMENT_MAX_TOKENS) || 500
 // Groq client setup (lazy initialization to avoid test conflicts)
 let groq;
 const getGroqClient = () => {
+  // Force reload in test environment to pick up new mocks
+  if (process.env.NODE_ENV === 'test') {
+    groq = undefined;
+  }
   if (!groq) {
     groq = new Groq({
       apiKey: process.env.GROQ_API_KEY || 'test-key'
     });
   }
   return groq;
+};
+
+// Export reset function for testing
+const resetGroqClient = () => {
+  groq = undefined;
 };
 
 /**
@@ -75,6 +84,8 @@ const contextControl = async (req, res, next) => {
       // Perform summarization
       const summaryResult = await summarizeConversation(session, learningMessages, requestId);
       
+      console.log('Summarization result:', summaryResult.success, 'messages after:', summaryResult.summarizedMessages?.length);
+      
       if (summaryResult.success) {
         console.log('Summarization successful, updating session...');
         // Combine summarized learning messages with non-learning messages
@@ -90,6 +101,8 @@ const contextControl = async (req, res, next) => {
           ...remainingLearningMessages, // Remaining learning messages
           ...generalMessages // General messages (preserve chronology)
         ];
+        
+        console.log('Final session.messages length:', session.messages.length, 'summary message:', session.messages[0]?.role);
         
         // Ensure meta exists and set summaryVersion starting at 1
         session.meta = session.meta || {};
@@ -345,6 +358,7 @@ async function checkContextLimits(session, routePath, requestId) {
 
 module.exports = {
   contextControl,
+  resetGroqClient,
   SUMMARIZE_EVERY_N_TURNS,
   SUMMARIZE_CHUNK_SIZE,
   SUMMARY_MAX_TOKENS,

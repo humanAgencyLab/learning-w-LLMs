@@ -1,4 +1,4 @@
-const { contextControl } = require('../middleware/contextControl');
+const { contextControl, resetGroqClient } = require('../middleware/contextControl');
 const Session = require('../models/Session');
 const mongoose = require('mongoose');
 
@@ -23,6 +23,11 @@ describe('Context Control Middleware - Unit Tests', () => {
   });
 
   beforeEach(async () => {
+    // Reset groq client to pick up new mocks
+    if (resetGroqClient) {
+      resetGroqClient();
+    }
+    
     // Clear database
     await Session.deleteMany({});
     
