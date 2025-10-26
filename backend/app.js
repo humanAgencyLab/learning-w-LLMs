@@ -98,6 +98,10 @@ app.use(metricsTracker);
 app.use(applyRateLimit);
 app.use(trackRateLimitMetrics);
 
+// Input validation and sanitization (must be before routes)
+const { validateInput } = require('./middleware/validationHardening');
+app.use(validateInput);
+
 // Logging middleware
 if (process.env.NODE_ENV === 'production') {
   app.use(morgan('combined', {

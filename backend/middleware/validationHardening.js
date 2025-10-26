@@ -7,16 +7,22 @@ const logger = require('../utils/logger');
 function sanitizeHtml(input) {
   if (typeof input !== 'string') return input;
   
-  // Remove HTML tags but preserve line breaks
-  return input
-    .replace(/<[^>]*>/g, '') // Remove HTML tags
+  // Decode entities first, then remove HTML tags
+  let cleaned = input
+    .replace(/&amp;/g, '&')   // Decode &amp; first (order matters)
     .replace(/&lt;/g, '<')    // Decode &lt;
     .replace(/&gt;/g, '>')    // Decode &gt;
-    .replace(/&amp;/g, '&')   // Decode &amp;
     .replace(/&quot;/g, '"')  // Decode &quot;
     .replace(/&#x27;/g, "'")  // Decode &#x27;
+    .replace(/&#39;/g, "'")   // Decode &#39;
     .replace(/&#x2F;/g, '/')  // Decode &#x2F;
+    .replace(/&nbsp;/g, ' ')  // Decode &nbsp;
+    .replace(/<[^>]*>/g, '')  // Remove HTML tags
+    .trim()
+    .replace(/\s+/g, ' ')     // Collapse repeated spaces to single space
     .trim();
+  
+  return cleaned;
 }
 
 /**
