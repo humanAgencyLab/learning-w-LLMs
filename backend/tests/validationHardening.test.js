@@ -28,7 +28,7 @@ describe('Validation Hardening', () => {
   beforeEach(async () => {
     // Create a test session
       const session = new Session({
-        phase: 'pre',
+        phase: 'learning',
         mode: 'studying',
       topic: 'JavaScript Fundamentals',
       chatTitle: 'Learn JavaScript',
