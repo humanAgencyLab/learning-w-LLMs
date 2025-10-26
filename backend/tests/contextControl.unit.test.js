@@ -107,8 +107,9 @@ describe('Context Control Middleware - Unit Tests', () => {
 
   describe('Summarization Logic', () => {
     it('should trigger summarization at 40+ turns', async () => {
-      // Mock successful summarization response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      // Setup mock for Groq
+      const Groq = require('groq-sdk');
+      const mockCreate = jest.fn().mockResolvedValue({
         choices: [{
           message: {
             content: '• Concepts mastered: Variables, functions\n• Misconceptions resolved: None\n• Open questions: How to use closures?\n• Next micro-goal: Learn about scope'
@@ -118,7 +119,20 @@ describe('Context Control Middleware - Unit Tests', () => {
           completion_tokens: 25
         }
       });
-      console.log('Mock setup complete, mock calls:', mockGroqClient.chat.completions.create.mock.calls.length);
+      
+      // Replace Groq mock implementation
+      Groq.mockImplementation(() => ({
+        chat: {
+          completions: {
+            create: mockCreate
+          }
+        }
+      }));
+      
+      // Reset groq client so it picks up the new mock
+      resetGroqClient();
+      
+      console.log('Mock setup complete');
 
       const session = await Session.findById(testSessionId);
       const req = {
