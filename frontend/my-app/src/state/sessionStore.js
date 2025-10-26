@@ -39,7 +39,8 @@ const initial = {
   model: 'llama',
   meta: {
     countSinceLastCheck: 0,
-    outstandingCheck: null
+    outstandingCheck: null,
+    assessClarifyCount: 0
   },
   // UI state
   loading: false,
@@ -65,13 +66,18 @@ const useSessionStore = create(
           plan: Array.isArray(plan) ? plan : [],
           activeModuleId: plan && plan.length > 0 ? plan[0].id : null,
           phase: 'learning',
-      points: 0,
-      gems: 0,
+          points: 0,
+          gems: 0,
           progressPct: 0,
-      isViewOnly: false,
+          isViewOnly: false,
           // Only clear messages if topic changed
           messages: topicChanged ? [] : get().messages,
-          error: null
+          error: null,
+          // Clear assessClarifyCount when entering learning phase
+          meta: {
+            ...get().meta,
+            assessClarifyCount: 0
+          }
         });
       },
 
@@ -223,7 +229,8 @@ const useSessionStore = create(
           model: 'llama',
           meta: {
             countSinceLastCheck: 0,
-            outstandingCheck: null
+            outstandingCheck: null,
+            assessClarifyCount: 0
           },
           loading: false,
           error: null,
@@ -302,19 +309,24 @@ const useSessionStore = create(
 
           if (response.clarify) {
             // Handle clarifying questions
-            get().appendMessage({
-              role: 'assistant',
-              content: response.questions.join('\n\n'),
-              ts: new Date().toISOString()
+            set({
+              meta: {
+                ...state.meta,
+                assessClarifyCount: (state.meta.assessClarifyCount || 0) + 1
+              }
             });
-            // Stay in assessing phase
-          } else if (response.topic && response.plan) {
+            // Stay in assessing phase, return questions for UI
+            set({ loading: false });
+            return response;
+          } else if (response.data?.plan) {
             // Apply assessment results
             get().applyAssessment({
-              topic: response.topic,
-              chatTitle: response.chatTitle,
-              plan: response.plan
+              topic: response.data.topic,
+              chatTitle: response.data.chatTitle,
+              plan: response.data.plan
             });
+            set({ loading: false });
+            return response;
           }
 
           set({ loading: false });
@@ -333,6 +345,53 @@ const useSessionStore = create(
             error: error.message, 
             loading: false,
             phase: 'pre' // Revert to pre on error
+          });
+          throw error;
+        }
+      },
+
+      answerClarify: async (answers) => {
+        const state = get();
+        if (!state.sessionId) {
+          throw new Error('No active session');
+        }
+
+        set({ loading: true, error: null });
+
+        try {
+          const response = await assessmentApi.answerClarify(state.sessionId, answers);
+
+          // Check if we got a plan or more clarification
+          if (response.data?.plan) {
+            // We got a plan - transition to learning
+            get().applyAssessment({
+              topic: response.data.topic,
+              chatTitle: response.data.chatTitle,
+              plan: response.data.plan
+            });
+            // Clear assessClarifyCount
+            set({
+              meta: {
+                ...state.meta,
+                assessClarifyCount: 0
+              }
+            });
+          } else if (response.clarify) {
+            // Still in clarification
+            set({
+              meta: {
+                ...state.meta,
+                assessClarifyCount: (state.meta.assessClarifyCount || 0) + 1
+              }
+            });
+          }
+
+          set({ loading: false });
+          return response;
+        } catch (error) {
+          set({ 
+            error: error.message, 
+            loading: false 
           });
           throw error;
         }
@@ -379,19 +438,33 @@ const useSessionStore = create(
               console.log('Assistant message added. Messages count now:', get().messages.length);
 
               // Update meta if provided
-              if (response.meta) {
-                set({ meta: { ...state.meta, ...response.meta } });
+              if (response.data?.meta || response.meta) {
+                set({ meta: { ...state.meta, ...(response.data?.meta || response.meta) } });
               }
 
               // Update phase if it changed (e.g., from 'pre' to 'learning')
-              if (response.data.phase && response.data.phase !== state.phase) {
+              if (response.data?.phase && response.data.phase !== state.phase) {
                 console.log('Phase changed from', state.phase, 'to', response.data.phase);
                 set({ phase: response.data.phase });
               }
 
+              // Only update points/gems for learning intent
+              // General and admin intents should not mutate progress
+              const intent = response.data?.intent;
+              if (intent === 'learning' && response.data.pointsDelta) {
+                const newPoints = Math.max(0, Math.min(100, state.points + (response.data.pointsDelta || 0)));
+                const newGems = Math.floor(newPoints / 20);
+                set({ 
+                  points: newPoints, 
+                  gems: newGems,
+                  progressPct: newPoints
+                });
+              }
+              // If intent is 'general' or 'admin', do not mutate points/gems
+
           // Check for quiz intent
-          if (response.nextAction === 'START_QUIZ') {
-            await get().startQuizFromChat(response.moduleId);
+          if (response.data?.nextAction === 'START_QUIZ' || response.nextAction === 'START_QUIZ') {
+            await get().startQuizFromChat(response.moduleId || response.data?.moduleId);
           }
 
           set({ loading: false });

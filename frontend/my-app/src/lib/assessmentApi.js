@@ -22,6 +22,27 @@ export async function assess({ sessionId, userMessage, mode, profile }) {
   return response.json();
 }
 
+export async function answerClarify(sessionId, answers) {
+  const response = await fetch(`${API_BASE}/v1/assessment`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sessionId,
+      userMessage: answers, // Send answers as userMessage
+      mode: 'studying'
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'Failed to answer clarification');
+  }
+
+  return response.json();
+}
+
 // Legacy methods for backward compatibility
 export async function assessStage(
   message,

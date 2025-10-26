@@ -29,6 +29,7 @@ const SessionFlow = () => {
     // Methods
     startNewSession,
     startAssessment,
+    answerClarify,
     sendMessage,
     startQuiz,
     submitQuiz,
@@ -52,6 +53,8 @@ const SessionFlow = () => {
 
   const [inputMessage, setInputMessage] = useState('');
   const [quizAnswers, setQuizAnswers] = useState({});
+  const [clarifyQuestions, setClarifyQuestions] = useState([]);
+  const [clarifyAnswers, setClarifyAnswers] = useState({});
 
   // Auto-create session on mount
   useEffect(() => {
@@ -65,7 +68,20 @@ const SessionFlow = () => {
     if (!message) return;
     
     setInputMessage('');
-    await startAssessment(message, mode);
+    const response = await startAssessment(message, mode);
+    
+    // Check if we got clarification questions
+    if (response?.clarify && response?.questions) {
+      setClarifyQuestions(response.questions);
+      setClarifyAnswers({});
+    }
+  };
+
+  const handleAnswerClarify = async () => {
+    const answers = Object.values(clarifyAnswers).join(' ');
+    await answerClarify(answers);
+    setClarifyQuestions([]);
+    setClarifyAnswers({});
   };
 
   const handleChat = async () => {
@@ -157,6 +173,42 @@ const SessionFlow = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Clarification Form */}
+      {phase === 'assessing' && clarifyQuestions.length > 0 && (
+        <Card>
+          <CardContent>
+            <h2 className="text-lg font-semibold mb-4">Please clarify your learning goals</h2>
+            <div className="space-y-4">
+              {clarifyQuestions.map((question, index) => (
+                <div key={index} className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    {question}
+                  </label>
+                  <Input
+                    value={clarifyAnswers[index] || ''}
+                    onChange={(e) =>
+                      setClarifyAnswers(prev => ({
+                        ...prev,
+                        [index]: e.target.value
+                      }))
+                    }
+                    placeholder="Your answer..."
+                    className="w-full"
+                  />
+                </div>
+              ))}
+              <Button 
+                onClick={handleAnswerClarify} 
+                disabled={Object.keys(clarifyAnswers).length !== clarifyQuestions.length}
+                className="w-full"
+              >
+                Continue to Learning Plan
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Study Panel */}
       {showPlan && (

@@ -41,11 +41,21 @@ export const useSession = () => {
 
   const startAssessment = useCallback(async (message, mode = 'studying') => {
     try {
-      await store.startAssessment(message, mode);
-      return true;
+      const response = await store.startAssessment(message, mode);
+      return response;
     } catch (error) {
       console.error('Failed to start assessment:', error);
-      return false;
+      return null;
+    }
+  }, [store]);
+
+  const answerClarify = useCallback(async (answers) => {
+    try {
+      const response = await store.answerClarify(answers);
+      return response;
+    } catch (error) {
+      console.error('Failed to answer clarification:', error);
+      return null;
     }
   }, [store]);
 
@@ -94,6 +104,7 @@ export const useSession = () => {
     continueSession,
     sendMessage,
     startAssessment,
+    answerClarify,
     startQuiz,
     submitQuiz,
     
