@@ -10,6 +10,7 @@ const {
   clarifySchema 
 } = require('../validation/assessmentValidation');
 const { contextControl } = require('../middleware/contextControl');
+const { buildAssessmentPrompt } = require('../prompts/srl_assessment_prompt');
 
 // Initialize Pino logger
 const logger = pino({
@@ -40,52 +41,7 @@ const getGroqClient = () => {
   return groq;
 };
 
-// Profile-aware assessment prompt builder
-const buildAssessmentPrompt = (profile, userMessage, mode, isRetry = false) => {
-  const retryInstruction = isRetry ? 
-    '\n\nIMPORTANT: Return only valid JSON matching the schema. No prose, no explanations, no markdown.' : '';
-  
-  return `You are an expert learning assessment AI. Create a personalized learning plan based on the user's profile and request.
-
-USER PROFILE:
-- Background: ${profile.background}
-- Goals: ${profile.goals.join(', ')}
-- Strengths: ${profile.strengths.join(', ')}
-- Knowledge Gaps: ${profile.gaps.join(', ')}
-- Time Available: ${profile.timePerDayMins} minutes per day
-- Preferred Style: ${profile.preferredStyle}
-
-USER REQUEST: "${userMessage}"
-MODE: ${mode}
-
-INSTRUCTIONS:
-1. If the user's topic is too vague or doesn't align with their profile, ask 1-2 targeted clarifying questions instead of creating a plan.
-2. If the topic is clear and specific, create a learning plan with 2-8 modules.
-3. Each module must have unique, content-specific titles (not "Module 1", "Part 2", etc.).
-4. Points must sum to exactly 100 across all modules.
-5. No single module can exceed 60 points.
-6. Module IDs must be sequential strings starting from "1".
-
-RESPONSE FORMAT (JSON only):
-For a plan:
-{
-  "topic": "specific topic name (≤60 chars, no emojis)",
-  "chatTitle": "human-friendly title (≤40 chars)",
-  "plan": [
-    {"moduleId": "1", "title": "specific module title", "points": 20, "difficulty": "intro"},
-    {"moduleId": "2", "title": "another specific title", "points": 40, "difficulty": "core"}
-  ],
-  "nextPhase": "learning"
-}
-
-For clarifying questions:
-{
-  "clarify": true,
-  "questions": ["What specific aspect of X do you want to focus on?", "Are you more interested in theory or practical applications?"]
-}
-
-${retryInstruction}`;
-};
+// Assessment prompt builder now imported from srl_assessment_prompt.js
 
 // JSON parsing with retry logic
 const parseAssessmentResponse = async (response, isRetry = false) => {
@@ -124,7 +80,7 @@ const callAssessmentAPI = async (prompt, isRetry = false) => {
       messages: [
         {
           role: 'system',
-          content: 'You are an expert learning assessment AI. Return only valid JSON matching the provided schema. No prose, no explanations, no markdown.'
+          content: 'You are an expert learning assessment AI. Return ONLY valid JSON matching the schema. No prose, no markdown blocks, no explanations outside the JSON. Return the raw JSON object only.'
         },
         {
           role: 'user',
@@ -133,7 +89,8 @@ const callAssessmentAPI = async (prompt, isRetry = false) => {
       ],
       temperature: 0.5,
       top_p: 0.95,
-      max_tokens: req.maxTokens || 500 // Use context control max tokens
+      max_tokens: 800,
+      response_format: { type: "json_object" } // Force JSON mode
     });
 
     return response.choices[0].message.content;
@@ -192,14 +149,19 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     session.phase = 'assessing';
     await session.save();
     
-    // Check for too many clarification attempts using persisted clarifyCount
-    if (session.clarifyCount >= 2) {
-      req.logger.warn('Too many clarification attempts', { sessionId, clarifyCount: session.clarifyCount });
-      // Force a plan generation
+    // Track clarification count for this assessment phase
+    const assessClarifyCount = session.meta.assessClarifyCount || 0;
+    
+    // Force plan generation if this is the third call (after 2 clarification rounds)
+    if (assessClarifyCount >= 2) {
+      req.logger.info('Maximum clarification attempts reached, forcing plan generation', { 
+        sessionId, 
+        assessClarifyCount 
+      });
     }
     
-    // Build prompt
-    const prompt = buildAssessmentPrompt(profile, userMessage, mode);
+    // Build prompt (will be retry version if needed)
+    const prompt = buildAssessmentPrompt(profile, userMessage, mode, false);
     
     // Call API with retry logic
     let response;
@@ -225,8 +187,9 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     if (parsedResponse.clarify) {
       const { questions } = parsedResponse;
       
-      // Increment clarify count
-      session.clarifyCount += 1;
+      // Track assessment clarification count (reset when entering learning phase)
+      const assessClarifyCount = (session.meta.assessClarifyCount || 0) + 1;
+      session.meta.assessClarifyCount = assessClarifyCount;
       
       // Add assistant message with questions
       const assistantMessage = {
@@ -243,7 +206,7 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       req.logger.info('Assessment clarification returned', { 
         sessionId, 
         questionCount: questions.length,
-        clarifyCount: session.clarifyCount,
+        assessClarifyCount: session.meta.assessClarifyCount,
         duration: Date.now() - startTime 
       });
       
@@ -255,7 +218,7 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     }
     
     // Handle plan generation
-    const { topic, chatTitle, plan, nextPhase } = parsedResponse;
+    const { topic, chatTitle, rationale, plan, nextPhase } = parsedResponse;
     
     // Reset session if topic changed
     if (!session.topic || session.topic !== topic) {
@@ -273,13 +236,20 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       title: module.title,
       description: `Learn ${module.title.toLowerCase()}`,
       status: module.moduleId === '1' ? 'in_progress' : 'locked',
-      milestones: [`Understand ${module.title.toLowerCase()}`, `Practice ${module.title.toLowerCase()}`, `Apply ${module.title.toLowerCase()}`],
+      milestones: module.targets && module.targets.length > 0 
+        ? module.targets 
+        : [`Understand ${module.title.toLowerCase()}`, `Practice ${module.title.toLowerCase()}`, `Apply ${module.title.toLowerCase()}`],
       completedMilestones: [],
       points: module.points,
       difficulty: module.difficulty || 'core'
     }));
     session.activeModuleId = '1';
     session.phase = nextPhase;
+    
+    // Clear assessment clarification count when entering learning phase
+    if (nextPhase === 'learning') {
+      session.meta.assessClarifyCount = undefined;
+    }
     
     // Add user message
     const userMessageObj = {
@@ -311,8 +281,8 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       topic,
       modulesCount: plan.length,
       sumPoints: plan.reduce((sum, m) => sum + m.points, 0),
-      clarifyPathUsed: session.clarifyCount > 0,
-      clarifyCount: session.clarifyCount,
+      clarifyPathUsed: (session.meta.assessClarifyCount || 0) > 0,
+      assessClarifyCount: session.meta.assessClarifyCount || 0,
       retryCount,
       duration: Date.now() - startTime,
       latencyMs: Date.now() - startTime
@@ -323,6 +293,7 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       data: {
         topic,
         chatTitle,
+        rationale: rationale || 'Personalized learning path based on your profile and goals',
         plan,
         nextPhase
       }

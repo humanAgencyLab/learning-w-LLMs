@@ -53,9 +53,16 @@ const contextControl = async (req, res, next) => {
     const messages = session.messages;
     const turnsBefore = messages.length;
     
-    // Check if we need to summarize
-    const shouldSummarize = shouldTriggerSummarization(session, messages);
-    console.log('Should summarize:', shouldSummarize, 'Messages length:', messages.length, 'SUMMARIZE_EVERY_N_TURNS:', SUMMARIZE_EVERY_N_TURNS);
+    // Filter out general/admin messages when summarizing to maintain learning context
+    const learningMessages = messages.filter(msg => {
+      const intent = msg.metadata?.intent;
+      // Include learning messages and messages without intent metadata (legacy)
+      return intent === 'learning' || !intent;
+    });
+    
+    // Check if we need to summarize (using learning messages only)
+    const shouldSummarize = shouldTriggerSummarization(session, learningMessages);
+    console.log('Should summarize:', shouldSummarize, 'Learning messages length:', learningMessages.length, 'Total messages:', messages.length, 'SUMMARIZE_EVERY_N_TURNS:', SUMMARIZE_EVERY_N_TURNS);
     
     if (shouldSummarize) {
       logger.info({
@@ -66,12 +73,24 @@ const contextControl = async (req, res, next) => {
       }, 'Context control: Summarizing conversation');
 
       // Perform summarization
-      const summaryResult = await summarizeConversation(session, messages, requestId);
+      const summaryResult = await summarizeConversation(session, learningMessages, requestId);
       
       if (summaryResult.success) {
         console.log('Summarization successful, updating session...');
-        // Update session with summarized messages
-        session.messages = summaryResult.summarizedMessages;
+        // Combine summarized learning messages with non-learning messages
+        const generalMessages = messages.filter(msg => {
+          const intent = msg.metadata?.intent;
+          return intent === 'general' || intent === 'admin';
+        });
+        
+        // Build final message array: [summary, ...remaining learning messages, ...general messages in chronological order]
+        const remainingLearningMessages = learningMessages.slice(SUMMARIZE_CHUNK_SIZE);
+        session.messages = [
+          summaryResult.summarizedMessages[0], // The summary
+          ...remainingLearningMessages, // Remaining learning messages
+          ...generalMessages // General messages (preserve chronology)
+        ];
+        
         session.meta = session.meta || {};
         session.meta.summaryVersion = (session.meta.summaryVersion || 0) + 1;
         session.meta.summarizedUpToIndex = summaryResult.summarizedUpToIndex;

@@ -18,3 +18,4 @@ export MONGODB_TEST_URI=mongodb://localhost:27017/ai_edu_app_test
 npm test
 
 echo "✅ Tests completed!"
+

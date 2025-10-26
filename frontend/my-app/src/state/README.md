@@ -255,3 +255,4 @@ The store is designed to work with the new backend API endpoints:
 - `POST /v1/quiz/submit` - Submit quiz
 
 All API calls include proper error handling and loading states.
+

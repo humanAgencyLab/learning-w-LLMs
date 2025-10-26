@@ -312,3 +312,4 @@ module.exports = {
   assessmentOutputSchema,
   quizGenerationSchema
 };
+

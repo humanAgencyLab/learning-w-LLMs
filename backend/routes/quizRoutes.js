@@ -167,6 +167,22 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
       });
     }
     
+    // Enforce session boundaries - reject if in pre/assessing phase or plan is empty
+    if (['pre', 'assessing'].includes(session.phase) || !session.plan || session.plan.length === 0) {
+      req.logger.warn('Session not ready for quiz', { 
+        sessionId, 
+        phase: session.phase,
+        hasPlan: !!session.plan
+      });
+      return res.status(409).json({
+        success: false,
+        error: 'Session not ready for quiz',
+        code: 'ILLEGAL_PHASE',
+        currentPhase: session.phase,
+        hint: 'Please complete assessment first to create a learning plan'
+      });
+    }
+    
     // Phase guard
     if (!['learning', 'feedback'].includes(session.phase)) {
       req.logger.warn('Illegal phase for quiz start', { 
@@ -317,6 +333,21 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
       return res.status(404).json({
         success: false,
         error: 'Session not found'
+      });
+    }
+
+    // Enforce session boundaries
+    if (['pre', 'assessing'].includes(session.phase) || !session.plan || session.plan.length === 0) {
+      req.logger.warn('Session not ready for quiz submit', { 
+        sessionId, 
+        phase: session.phase,
+        hasPlan: !!session.plan
+      });
+      return res.status(409).json({
+        success: false,
+        error: 'Session not ready',
+        code: 'ILLEGAL_PHASE',
+        currentPhase: session.phase
       });
     }
 

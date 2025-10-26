@@ -40,3 +40,4 @@ export async function submitQuiz({ sessionId, moduleId, answers }) {
 
   return response.json();
 }
+

@@ -122,7 +122,10 @@ const SessionSchema = new mongoose.Schema({
     },
     metadata: {
       type: mongoose.Schema.Types.Mixed,
-      required: false
+      required: false,
+      // Includes fields like: intent, phaseAtSend, etc.
+      // intent: 'learning' | 'general' | 'admin'
+      // phaseAtSend: 'pre' | 'assessing' | 'learning' | 'quizzing' | 'feedback' | 'completed'
     }
   }],
   
@@ -279,6 +282,13 @@ const SessionSchema = new mongoose.Schema({
       type: Number,
       default: 0,
       min: 0
+    },
+    // Track assessment clarification attempts (resets when entering learning phase)
+    assessClarifyCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 2
     }
   }
 }, { 

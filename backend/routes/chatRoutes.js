@@ -6,6 +6,9 @@ const { chatRequestSchema } = require('../validation/chatValidation');
 const { validateInput } = require('../middleware/validationHardening');
 const { contextControl } = require('../middleware/contextControl');
 const { ERROR_RESPONSES } = require('../middleware/validationHardening');
+const { classifyIntent } = require('../utils/intentClassifier');
+const { buildTeacherPrompt } = require('../prompts/teacher_prompt');
+const { handleNeutralMessage } = require('../prompts/neutral_prompt');
 // const logger = require('../utils/logger'); // Not used
 
 // Groq client setup (lazy initialization to avoid test conflicts)
@@ -20,87 +23,7 @@ const getGroqClient = () => {
   return groq;
 };
 
-// Teacher prompt builder with cadence awareness
-const buildTeacherPrompt = (session, userMessage, isFollowUp = false) => {
-  const { topic, activeModuleId, plan, profile, phase } = session;
-  const activeModule = plan.find(m => m.id === activeModuleId);
-  
-  // Handle pre-phase (no specific topic yet)
-  if (phase === 'pre') {
-    return `You are an expert programming tutor. The student is just starting and hasn't chosen a specific topic yet.
-
-Student Profile:
-- Background: ${profile.background}
-- Goals: ${profile.goals.join(', ')}
-- Strengths: ${profile.strengths.join(', ')}
-- Knowledge Gaps: ${profile.gaps.join(', ')}
-- Preferred Style: ${profile.preferredStyle}
-- Time Available: ${profile.timePerDayMins} minutes/day
-
-Student's message: "${userMessage}"
-
-Teaching Guidelines:
-1. Respond naturally to what the student actually said
-2. If they greet you, greet them back warmly and ask what they'd like to learn about
-3. Be encouraging and supportive
-4. Keep it brief and friendly (aim for 100-150 words)
-5. Don't assume any specific topic - let them choose
-
-Ask them what programming concept or topic they'd like to explore today.`;
-  }
-  
-  const moduleContext = activeModule ? `
-Current Module: ${activeModule.title}
-Difficulty: ${activeModule.difficulty || 'core'}
-Module Points: ${activeModule.points}
-` : '';
-
-  const profileContext = `
-Student Profile:
-- Background: ${profile.background}
-- Goals: ${profile.goals.join(', ')}
-- Strengths: ${profile.strengths.join(', ')}
-- Knowledge Gaps: ${profile.gaps.join(', ')}
-- Preferred Style: ${profile.preferredStyle}
-- Time Available: ${profile.timePerDayMins} minutes/day
-`;
-
-  const cadenceContext = isFollowUp ? `
-IMPORTANT: The student hasn't answered your previous question yet. Follow up on this exact question: "${session.meta.outstandingCheck}"
-
-Don't introduce new material until they answer. Keep it brief and encouraging.
-` : `
-IMPORTANT: You must end your response with a concrete, content-specific question about the current concept.
-
-Examples of good questions:
-- "Which traversal explores level-by-level, BFS or DFS? Why?"
-- "If a queue backs BFS, what data structure backs DFS?"
-- "What's the time complexity of this algorithm and why?"
-
-Make it specific to what we just discussed. No generic CTAs like "Want a quick check now?"
-`;
-
-  return `You are an expert programming tutor. Respond naturally to the student's message and guide them toward learning.
-
-${profileContext}
-
-${moduleContext}
-
-Student's message: "${userMessage}"
-
-Teaching Guidelines:
-1. Respond naturally to what the student actually said
-2. If they greet you, greet them back and ask what they'd like to learn about
-3. Use examples-first approach (1 short example or code snippet if relevant)
-4. Avoid jargon; explain technical terms
-5. Highlight common misconceptions if they appear
-6. Stay concise but thorough (aim for 150-250 words, max 300)
-7. Be encouraging and supportive
-
-${cadenceContext}
-
-Respond with helpful teaching content followed by a specific question about the current concept.`;
-};
+// Teacher prompt now imported from teacher_prompt.js module
 
 // Check if user wants to start a quiz
 const hasQuizIntent = (message) => {
@@ -112,6 +35,8 @@ const hasQuizIntent = (message) => {
   const lowerMessage = message.toLowerCase();
   return quizKeywords.some(keyword => lowerMessage.includes(keyword));
 };
+
+// Neutral message handling now imported from neutral_prompt.js module
 
 // Check if user wants to continue from feedback phase
 const hasContinueIntent = (message) => {
@@ -203,13 +128,155 @@ router.post('/v1/chat', async (req, res) => {
       topic: session.topic 
     });
     
-    // Phase guard - allow pre phase for testing
+    // Enforce session boundaries - reject if in pre phase or plan is empty
+    if (session.phase === 'pre' || !session.plan || session.plan.length === 0) {
+      console.log('Session not ready for chat', { sessionId, phase: session.phase, hasPlan: !!session.plan });
+      return res.status(409).json({
+        success: false,
+        error: 'Session not ready for chat',
+        code: 'ILLEGAL_PHASE',
+        currentPhase: session.phase,
+        hint: 'Please complete assessment first to create a learning plan'
+      });
+    }
+    
+    // Classify message intent
+    const intent = classifyIntent(userMessage, session.phase);
+    console.log('Message intent classified:', { intent, phase: session.phase, messagePreview: userMessage.substring(0, 50) });
+    
+    // Phase guard - allow pre phase for testing, but restrict based on intent
     if (!['pre', 'learning', 'feedback'].includes(session.phase)) {
       return res.status(409).json({
         success: false,
         error: 'Chat not allowed in current phase',
         currentPhase: session.phase,
         allowedPhases: ['pre', 'learning', 'feedback']
+      });
+    }
+    
+    // Handle non-learning intents
+    if (intent === 'admin') {
+      const neutralResponse = handleNeutralMessage(session, userMessage, intent, session.phase);
+      
+      // Add user message with intent tracking
+      const userMessageObj = {
+        id: `msg_${Date.now()}`,
+        role: 'user',
+        content: userMessage,
+        timestamp: new Date(),
+        metadata: { 
+          type: 'chat', 
+          tokensIn: userMessage.length,
+          intent: 'admin',
+          phaseAtSend: session.phase
+        }
+      };
+      
+      // Add assistant message
+      const assistantMessage = {
+        id: `msg_${Date.now() + 1}`,
+        role: 'assistant',
+        content: neutralResponse.message,
+        timestamp: new Date(),
+        metadata: { 
+          type: 'chat', 
+          tokensOut: neutralResponse.message.length,
+          intent: 'admin',
+          phaseAtSend: session.phase,
+          hadCheckInReply: false,
+          followedUpOutstanding: false
+        }
+      };
+      
+      session.messages.push(userMessageObj, assistantMessage);
+      await session.save();
+      
+      return res.json({
+        success: true,
+        data: {
+          message: neutralResponse.message,
+          tokensIn: Math.ceil(userMessage.length / 4),
+          tokensOut: Math.ceil(neutralResponse.message.length / 4),
+          hadCheckInReply: false,
+          followedUpOutstanding: false,
+          phase: session.phase,
+          intent: 'admin'
+        }
+      });
+    }
+    
+    if (intent === 'general') {
+      const neutralResponse = handleNeutralMessage(session, userMessage, intent, session.phase);
+      
+      // Check if there's an outstanding check
+      if (session.meta.outstandingCheck && intent === 'general') {
+        // Don't force the check for general messages
+        // Keep it parked
+      } else {
+        // Normal general message handling
+      }
+      
+      // Add user message with intent tracking
+      const userMessageObj = {
+        id: `msg_${Date.now()}`,
+        role: 'user',
+        content: userMessage,
+        timestamp: new Date(),
+        metadata: { 
+          type: 'chat', 
+          tokensIn: userMessage.length,
+          intent: 'general',
+          phaseAtSend: session.phase
+        }
+      };
+      
+      // Add assistant message
+      const assistantMessage = {
+        id: `msg_${Date.now() + 1}`,
+        role: 'assistant',
+        content: neutralResponse.message,
+        timestamp: new Date(),
+        metadata: { 
+          type: 'chat', 
+          tokensOut: neutralResponse.message.length,
+          intent: 'general',
+          phaseAtSend: session.phase,
+          hadCheckInReply: false,
+          followedUpOutstanding: false
+        }
+      };
+      
+      session.messages.push(userMessageObj, assistantMessage);
+      await session.save();
+      
+      return res.json({
+        success: true,
+        data: {
+          message: neutralResponse.message,
+          tokensIn: Math.ceil(userMessage.length / 4),
+          tokensOut: Math.ceil(neutralResponse.message.length / 4),
+          hadCheckInReply: false,
+          followedUpOutstanding: false,
+          phase: session.phase,
+          intent: 'general'
+        }
+      });
+    }
+    
+    // Only learning intent gets teacher prompt below
+    if (intent !== 'learning') {
+      // This shouldn't happen after the above checks, but safety fallback
+      return res.json({
+        success: true,
+        data: {
+          message: "I'm here to help you learn. What would you like to know?",
+          tokensIn: Math.ceil(userMessage.length / 4),
+          tokensOut: 30,
+          hadCheckInReply: false,
+          followedUpOutstanding: false,
+          phase: session.phase,
+          intent: 'general'
+        }
       });
     }
     
@@ -273,10 +340,22 @@ router.post('/v1/chat', async (req, res) => {
       });
     }
     
+    // Learning intent: use teacher prompt
+    // Only proceed with teacher prompt for learning intent and learning/feedback phases
+    if (!['learning', 'feedback'].includes(session.phase)) {
+      // For pre phase with learning intent, wait for assessment
+      return res.status(409).json({
+        success: false,
+        error: 'Learning phase not started. Please complete assessment first.',
+        code: 'ILLEGAL_PHASE',
+        currentPhase: session.phase
+      });
+    }
+    
     // Determine if this is a follow-up to outstanding check
     const isFollowUp = session.meta.outstandingCheck && !wantsQuiz;
     
-    // Build teacher prompt
+    // Build teacher prompt (for learning intent only)
     const prompt = buildTeacherPrompt(session, userMessage, isFollowUp);
     
     // Call teacher API (with fallback for testing)
@@ -342,16 +421,21 @@ Let me know what interests you most and I'll dive deeper into that topic!`;
       console.log('No question in response', { sessionId, countSinceLastCheck: session.meta.countSinceLastCheck });
     }
     
-    // Add user message
+    // Add user message with intent and phase tracking
     const userMessageObj = {
       id: `msg_${Date.now()}`,
       role: 'user',
       content: userMessage,
       timestamp: new Date(),
-      metadata: { type: 'chat', tokensIn: userMessage.length }
+      metadata: { 
+        type: 'chat', 
+        tokensIn: userMessage.length,
+        intent: intent,
+        phaseAtSend: session.phase
+      }
     };
     
-    // Add assistant message
+    // Add assistant message with intent and phase tracking
     const assistantMessage = {
       id: `msg_${Date.now() + 1}`,
       role: 'assistant',
@@ -360,6 +444,8 @@ Let me know what interests you most and I'll dive deeper into that topic!`;
       metadata: { 
         type: 'chat', 
         tokensOut: assistantResponse.length,
+        intent: intent,
+        phaseAtSend: session.phase,
         hadCheckInReply,
         followedUpOutstanding,
         phaseChanged

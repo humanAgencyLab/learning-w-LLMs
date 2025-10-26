@@ -19,3 +19,4 @@ export async function sendMessage({ sessionId, userMessage }) {
 
   return response.json();
 }
+

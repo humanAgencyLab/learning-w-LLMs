@@ -60,3 +60,4 @@ module.exports = {
   quizGenerationSchema,
   quizSubmitResponseSchema
 };
+
