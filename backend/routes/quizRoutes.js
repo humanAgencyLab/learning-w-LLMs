@@ -163,7 +163,8 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
       req.logger.warn('Session not found', { sessionId });
       return res.status(404).json({
         success: false,
-        error: 'Session not found'
+        code: 'NOT_FOUND',
+        message: 'Session not found'
       });
     }
     
@@ -203,9 +204,13 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
     const moduleId = requestedModuleId || session.activeModuleId;
     if (!moduleId) {
       req.logger.warn('No module ID provided or active', { sessionId, requestedModuleId });
-      return res.status(409).json({
+      return res.status(400).json({
         success: false,
-        error: 'No module ID provided and no active module'
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          moduleId: ['Module ID is required']
+        }
       });
     }
     
@@ -213,9 +218,13 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
     const module = session.plan.find(m => m.id === moduleId);
     if (!module) {
       req.logger.warn('Module not found in plan', { sessionId, moduleId });
-      return res.status(409).json({
+      return res.status(404).json({
         success: false,
-        error: 'Module not found in session plan'
+        code: 'NOT_FOUND',
+        message: 'Module not found in session plan',
+        details: {
+          moduleId: ['Module not found in session plan']
+        }
       });
     }
     
@@ -335,7 +344,8 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
       req.logger.warn('Session not found', { sessionId });
       return res.status(404).json({
         success: false,
-        error: 'Session not found'
+        code: 'NOT_FOUND',
+        message: 'Session not found'
       });
     }
 

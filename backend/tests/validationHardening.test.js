@@ -27,9 +27,9 @@ describe('Validation Hardening', () => {
 
   beforeEach(async () => {
     // Create a test session
-    const session = new Session({
-      phase: 'learning',
-      mode: 'studying',
+      const session = new Session({
+        phase: 'pre',
+        mode: 'studying',
       topic: 'JavaScript Fundamentals',
       chatTitle: 'Learn JavaScript',
       plan: [
@@ -203,14 +203,14 @@ describe('Validation Hardening', () => {
 
       expect(response.status).toBe(404);
       expect(response.body.code).toBe('NOT_FOUND');
-      expect(response.body.fieldErrors.moduleId).toContain('Module not found in session plan');
+      expect(response.body.details.moduleId).toContain('Module not found in session plan');
     });
 
     it('should validate session exists for quiz routes', async () => {
       const response = await request(app)
         .post('/v1/quiz/start')
         .send({
-          sessionId: 'nonexistent-session-id',
+          sessionId: '507f1f77bcf86cd799439011',
           moduleId: '1'
         });
 

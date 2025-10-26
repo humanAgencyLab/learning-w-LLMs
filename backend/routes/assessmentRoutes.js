@@ -251,8 +251,8 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       });
       return res.status(502).json({
         success: false,
-        error: 'Invalid assessment response format',
         code: 'ASSESSMENT_JSON_INVALID',
+        message: 'Assessment response format invalid',
         details: validationError.errors
       });
     }
@@ -354,8 +354,8 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     if (error.message.includes('JSON_PARSE_FAILED')) {
       return res.status(502).json({
         success: false,
-        error: 'Assessment JSON invalid',
         code: 'ASSESSMENT_JSON_INVALID',
+        message: 'Assessment response format invalid',
         hint: 'Try rephrasing your topic'
       });
     }
