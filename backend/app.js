@@ -94,13 +94,13 @@ app.use(requestLogger);
 // Metrics tracking
 app.use(metricsTracker);
 
-// Rate limiting (replaces the old limiter)
-app.use(applyRateLimit);
-app.use(trackRateLimitMetrics);
-
-// Input validation and sanitization (must be before routes)
+// Input validation and sanitization (must be before rate limiting and routes)
 const { validateInput } = require('./middleware/validationHardening');
 app.use(validateInput);
+
+// Rate limiting (after validation, before routes)
+app.use(applyRateLimit);
+app.use(trackRateLimitMetrics);
 
 // Logging middleware
 if (process.env.NODE_ENV === 'production') {

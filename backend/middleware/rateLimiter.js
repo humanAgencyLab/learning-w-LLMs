@@ -51,8 +51,9 @@ function createRateLimiter(options) {
       });
     },
     skip: (req) => {
-      // Skip rate limiting in test environment
-      return process.env.NODE_ENV === 'test';
+      // Skip rate limiting only for test files that explicitly need it
+      // Tests will control rate limiting via jest.useFakeTimers()
+      return false; // Don't skip, let express-rate-limit handle it
     }
   });
 }
