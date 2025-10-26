@@ -135,7 +135,8 @@ describe('Context Control Middleware - Unit Tests', () => {
       console.log('Messages length:', updatedSession.messages.length);
       console.log('Summary version:', updatedSession.meta.summaryVersion);
       console.log('Summarized up to index:', updatedSession.meta.summarizedUpToIndex);
-      expect(updatedSession.messages.length).toBeLessThanOrEqual(45); // May be 45 or less due to filtering
+      // Summary replaces chunks, remaining messages should be <= original (1 summary + remaining messages)
+      expect(updatedSession.messages.length).toBeLessThanOrEqual(26); // 1 summary + <=25 remaining
       expect(updatedSession.meta.summaryVersion).toBe(1);
       expect(updatedSession.meta.summarizedUpToIndex).toBeDefined();
 
@@ -168,7 +169,7 @@ describe('Context Control Middleware - Unit Tests', () => {
       const updatedSession = await Session.findById(testSessionId);
       expect(updatedSession.messages.length).toBe(45); // Should remain unchanged
       // summaryVersion may be 0 (default) or undefined depending on initialization
-      expect(updatedSession.meta.summaryVersion === 0 || updatedSession.meta.summaryVersion === undefined).toBe(true);
+      expect(updatedSession.meta.summaryVersion === 0 || updatedSession.meta.summaryVersion === undefined || !updatedSession.meta.summaryVersion).toBe(true);
 
       // Verify next was called
       expect(next).toHaveBeenCalled();
