@@ -1,113 +1,137 @@
-// Rate limiting and queue management for token conservation
 const rateLimit = require('express-rate-limit');
-const Queue = require('bull');
-const Redis = require('ioredis');
+const logger = require('../utils/logger');
 
-// Redis connection for queue
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+// Environment-driven rate limits with defaults
+const RATE_LIMITS = {
+  assessment: parseInt(process.env.RL_ASSESSMENT) || 5, // per minute
+  chat: parseInt(process.env.RL_CHAT) || 12, // per minute
+  quizStart: parseInt(process.env.RL_QUIZ_START) || 6, // per minute
+  quizSubmit: parseInt(process.env.RL_QUIZ_SUBMIT) || 8, // per minute
+  general: parseInt(process.env.RL_GENERAL) || 30 // per minute
+};
 
-// Create queue for API requests
-const apiQueue = new Queue('api requests', {
-  redis: { host: 'localhost', port: 6379 },
-  defaultJobOptions: {
-    removeOnComplete: 100,
-    removeOnFail: 50,
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 2000,
-    },
-  },
-});
+// Store for tracking requests (in production, use Redis)
+const requestCounts = new Map();
 
-// Token budget management
-class TokenBudgetManager {
-  constructor(dailyLimit = 50000, hourlyLimit = 5000) {
-    this.dailyLimit = dailyLimit;
-    this.hourlyLimit = hourlyLimit;
-    this.dailyUsed = 0;
-    this.hourlyUsed = 0;
-    this.lastReset = Date.now();
-  }
-  
-  canMakeRequest(estimatedTokens) {
-    this.resetIfNeeded();
-    return (this.dailyUsed + estimatedTokens <= this.dailyLimit) && 
-           (this.hourlyUsed + estimatedTokens <= this.hourlyLimit);
-  }
-  
-  recordUsage(tokens) {
-    this.dailyUsed += tokens;
-    this.hourlyUsed += tokens;
-  }
-  
-  resetIfNeeded() {
-    const now = Date.now();
-    const hoursSinceReset = (now - this.lastReset) / (1000 * 60 * 60);
-    
-    if (hoursSinceReset >= 1) {
-      this.hourlyUsed = 0;
-      this.lastReset = now;
-    }
-    
-    if (hoursSinceReset >= 24) {
-      this.dailyUsed = 0;
-    }
-  }
-  
-  getStatus() {
-    this.resetIfNeeded();
-    return {
-      dailyUsed: this.dailyUsed,
-      dailyRemaining: this.dailyLimit - this.dailyUsed,
-      hourlyUsed: this.hourlyUsed,
-      hourlyRemaining: this.hourlyLimit - this.hourlyUsed
-    };
-  }
-}
-
-const tokenBudget = new TokenBudgetManager();
-
-// Rate limiting middleware
-const createRateLimit = (windowMs, max, message) => {
+/**
+ * Create a rate limiter with custom configuration
+ */
+function createRateLimiter(options) {
   return rateLimit({
-    windowMs,
-    max,
-    message: { error: message },
+    windowMs: 60 * 1000, // 1 minute
+    max: options.max,
+    message: {
+      success: false,
+      error: 'Too many requests',
+      code: 'RATE_LIMITED',
+      message: 'Too many requests. Please wait a bit.',
+      retryAfterSec: Math.ceil(options.windowMs / 1000)
+    },
     standardHeaders: true,
     legacyHeaders: false,
+    handler: (req, res) => {
+      const retryAfter = Math.ceil(options.windowMs / 1000);
+      
+      logger.warn({
+        requestId: req.requestId,
+        ip: req.ip,
+        userAgent: req.get('User-Agent'),
+        path: req.path,
+        method: req.method,
+        retryAfter
+      }, 'Rate limit exceeded');
+
+      res.set('Retry-After', retryAfter.toString());
+      res.status(429).json({
+        success: false,
+        error: 'Too many requests',
+        code: 'RATE_LIMITED',
+        message: 'Too many requests. Please wait a bit.',
+        retryAfterSec: retryAfter
+      });
+    },
+    skip: (req) => {
+      // Skip rate limiting in test environment
+      return process.env.NODE_ENV === 'test';
+    }
   });
-};
+}
 
-// Different limits for different user types
-const userRateLimits = {
-  free: createRateLimit(60 * 1000, 5, 'Too many requests, please wait'),
-  premium: createRateLimit(60 * 1000, 20, 'Premium rate limit exceeded'),
-  admin: createRateLimit(60 * 1000, 100, 'Admin rate limit exceeded')
-};
-
-// Queue processing
-apiQueue.process('groq-request', async (job) => {
-  const { sessionId, message, sessionData } = job.data;
-  
-  // Check token budget
-  const estimatedTokens = 1500; // Based on optimized prompt
-  if (!tokenBudget.canMakeRequest(estimatedTokens)) {
-    throw new Error('Token budget exceeded');
-  }
-  
-  // Make API call
-  // ... API call logic here ...
-  
-  // Record usage
-  tokenBudget.recordUsage(estimatedTokens);
-  
-  return { success: true, tokensUsed: estimatedTokens };
+// Create specific rate limiters for each endpoint
+const assessmentLimiter = createRateLimiter({
+  max: RATE_LIMITS.assessment,
+  windowMs: 60 * 1000
 });
 
+const chatLimiter = createRateLimiter({
+  max: RATE_LIMITS.chat,
+  windowMs: 60 * 1000
+});
+
+const quizStartLimiter = createRateLimiter({
+  max: RATE_LIMITS.quizStart,
+  windowMs: 60 * 1000
+});
+
+const quizSubmitLimiter = createRateLimiter({
+  max: RATE_LIMITS.quizSubmit,
+  windowMs: 60 * 1000
+});
+
+const generalLimiter = createRateLimiter({
+  max: RATE_LIMITS.general,
+  windowMs: 60 * 1000
+});
+
+/**
+ * Middleware to apply rate limiting based on route
+ */
+const applyRateLimit = (req, res, next) => {
+  const path = req.path;
+  
+  if (path.includes('/v1/assessment')) {
+    return assessmentLimiter(req, res, next);
+  } else if (path.includes('/v1/chat')) {
+    return chatLimiter(req, res, next);
+  } else if (path.includes('/v1/quiz/start')) {
+    return quizStartLimiter(req, res, next);
+  } else if (path.includes('/v1/quiz/submit')) {
+    return quizSubmitLimiter(req, res, next);
+  } else {
+    return generalLimiter(req, res, next);
+  }
+};
+
+/**
+ * Middleware to track rate limit metrics
+ */
+const trackRateLimitMetrics = (req, res, next) => {
+  const originalSend = res.send;
+  
+  res.send = function(data) {
+    // Track metrics
+    if (res.statusCode === 429) {
+      logger.info({
+        requestId: req.requestId,
+        route: req.path,
+        ip: req.ip,
+        rateLimited: true
+      }, 'Rate limit metrics');
+    }
+    
+    return originalSend.call(this, data);
+  };
+  
+  next();
+};
+
 module.exports = {
-  tokenBudget,
-  userRateLimits,
-  apiQueue,
-  TokenBudgetManager
+  applyRateLimit,
+  trackRateLimitMetrics,
+  assessmentLimiter,
+  chatLimiter,
+  quizStartLimiter,
+  quizSubmitLimiter,
+  generalLimiter,
+  RATE_LIMITS
 };

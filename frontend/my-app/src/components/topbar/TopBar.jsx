@@ -2,19 +2,19 @@ import React, { useState } from 'react';
 import useSessionStore from '../../state/sessionStore';
 
 function TopBar({ onStartNewChat }) {
-  const { phase, topic, sessionId, setDummyData } = useSessionStore();
+  const { phase, topic, sessionId } = useSessionStore();
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   
   const handleStartChat = async () => {
     if (sessionId) {
       if (!(await confirm("Start new chat? Current session will be saved."))) return;
     }
-    onStartNewChat();
+    await onStartNewChat();
   };
 
-  const handleConfirmNewChat = () => {
+  const handleConfirmNewChat = async () => {
     setShowConfirmDialog(false);
-    onStartNewChat();
+    await onStartNewChat();
   };
 
   const handleCancelNewChat = () => {
@@ -37,26 +37,6 @@ function TopBar({ onStartNewChat }) {
           ) : null}
         </div>
             <div className="flex items-center gap-3">
-              {phase === 'pre' && (
-                <button 
-                  onClick={setDummyData}
-                  className="bg-gray-500 flex gap-3 items-center justify-center px-5 py-3 rounded-[50px]"
-                >
-                  <p className="font-bold text-base leading-6 text-white tracking-[-0.25px]">
-                    Load Demo
-                  </p>
-                </button>
-              )}
-              {phase !== 'pre' && (
-                <button 
-                  onClick={onStartNewChat}
-                  className="bg-gray-500 flex gap-3 items-center justify-center px-5 py-3 rounded-[50px]"
-                >
-                  <p className="font-bold text-base leading-6 text-white tracking-[-0.25px]">
-                    Reset
-                  </p>
-                </button>
-              )}
               <button 
                 onClick={handleStartChat}
                 className="bg-[#4e81ee] flex gap-3 items-center justify-center px-5 py-3 rounded-[50px]"

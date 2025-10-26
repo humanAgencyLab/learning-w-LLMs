@@ -15,6 +15,7 @@ import {
   Sidebar,
   Topbar,
 } from '../components/ui';
+import SessionIntegration from '../components/SessionIntegration';
 
 const UIDemo = () => {
   const [modalOpen, setModalOpen] = useState(false);
@@ -46,6 +47,16 @@ const UIDemo = () => {
         <div>
           <h3>Tab 2 Content</h3>
           <p>This is the content for tab 2.</p>
+        </div>
+      ),
+    },
+    {
+      label: 'Session Store Demo',
+      content: (
+        <div>
+          <h3>Session Store Integration</h3>
+          <p>This demonstrates the new session store with backend integration.</p>
+          <SessionIntegration />
         </div>
       ),
     },

@@ -1,71 +1,91 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import * as sessionApi from '../lib/sessionApi';
+import * as assessmentApi from '../lib/assessmentApi';
+import * as chatApi from '../lib/chatApi';
+import * as quizApi from '../lib/quizApi';
+
+// Types (for reference - not enforced at runtime)
+const Phase = 'pre' | 'assessing' | 'learning' | 'quizzing' | 'feedback' | 'completed';
+const Mode = 'studying' | 'revision';
+const ModuleStatus = 'locked' | 'in_progress' | 'passed';
+const PreferredStyle = 'examples-first' | 'theory-first' | 'mixed';
 
 const initial = { 
+  // Core session fields
   sessionId: null, 
   phase: 'pre', 
-  learningStyle: 'studying', 
-  model: 'llama', 
-  topic: null, 
+  mode: 'studying', // Default to studying
+  topic: '',
   chatTitle: '', 
-  plan: null, 
-  progressPercent: 0, 
+  plan: [],
+  activeModuleId: null,
   points: 0, 
   gems: 0, 
+  progressPct: 0,
   isViewOnly: false, 
-  nextAction: 'start_assessment', 
-  messages: [] 
+  messages: [],
+  profile: {
+    source: 'dummy',
+    name: 'Alex',
+    background: '2nd-year CS undergrad',
+    goals: ['Pass Algorithms midterm', 'Understand graph traversal well enough to explain it'],
+    strengths: ['arrays', 'big-O basics', 'sorting fundamentals'],
+    gaps: ['graph traversal', 'BFS vs DFS tradeoffs', 'recurrence intuition'],
+    timePerDayMins: 30,
+    preferredStyle: 'examples-first',
+    lastUpdated: new Date().toISOString()
+  },
+  model: 'llama',
+  meta: {
+    countSinceLastCheck: 0,
+    outstandingCheck: null
+  },
+  // UI state
+  loading: false,
+  error: null,
+  // Quiz state (transient)
+  quizDraft: null
 };
 
-    const useSessionStore = create((set, get) => ({
+const useSessionStore = create(
+  persist(
+    (set, get) => ({
       // State
-      sessionId: null,
-      phase: 'pre', // 'pre' | 'assessing' | 'learning' | 'quizzing' | 'feedback' | 'completed'
-      learningStyle: 'studying', // 'studying' | 'revision' only
-      model: 'llama',
-      topic: null,
-      chatTitle: '',
-      plan: null,
-      progressPercent: 0,
+      ...initial,
+
+      // Actions - Pure reducers
+      applyAssessment: ({ topic, chatTitle, plan }) => {
+        const currentTopic = get().topic;
+        const topicChanged = currentTopic !== topic;
+        
+        set({
+          topic,
+          chatTitle,
+          plan: Array.isArray(plan) ? plan : [],
+          activeModuleId: plan && plan.length > 0 ? plan[0].id : null,
+          phase: 'learning',
       points: 0,
       gems: 0,
-      hasTrophy: false,
+          progressPct: 0,
       isViewOnly: false,
-      nextAction: 'start_assessment',
+          // Only clear messages if topic changed
+          messages: topicChanged ? [] : get().messages,
+          error: null
+        });
+      },
 
-  // Actions
-  reset: () => {
-    localStorage.removeItem('sessionId');
-    set({ ...initial });
-  },
-
-  setLearningStyle: (style) => {
-    if (style !== 'studying' && style !== 'revision') {
-      console.warn('Learning style must be either "studying" or "revision"');
-      return;
-    }
-    set({ learningStyle: style });
-  },
-
-  setModel: (model) => set({ model }),
-
-  hydrateFromSession: (sessionSnapshot) => {
-    if (!sessionSnapshot) return;
-    
-    set({
-      sessionId: sessionSnapshot.sessionId || null,
-      phase: sessionSnapshot.phase || 'pre',
-      learningStyle: sessionSnapshot.learningStyle || 'studying',
-      model: sessionSnapshot.model || 'llama',
-      topic: sessionSnapshot.topic || '',
-      chatTitle: sessionSnapshot.chatTitle || '',
-      plan: sessionSnapshot.plan || [],
-      progressPercent: sessionSnapshot.progressPercent || 0,
-      points: sessionSnapshot.points || 0,
-      gems: sessionSnapshot.gems || 0,
-      hasTrophy: sessionSnapshot.hasTrophy || false,
-      isViewOnly: sessionSnapshot.isViewOnly || false,
-      nextAction: sessionSnapshot.nextAction || null,
-    });
+      appendMessage: ({ role, content, ts, tokens }) => {
+        const newMessage = {
+          role,
+          content,
+          ts: ts || new Date().toISOString(),
+          tokens: tokens || 0
+        };
+        
+        set(state => ({
+          messages: [...state.messages, newMessage]
+        }));
   },
 
   setPhase: (phase) => {
@@ -74,30 +94,447 @@ const initial = {
       console.warn(`Invalid phase: ${phase}. Must be one of: ${validPhases.join(', ')}`);
       return;
     }
+
+        // Enforce legal transitions
+        const currentPhase = get().phase;
+        const validTransitions = {
+          'pre': ['assessing'],
+          'assessing': ['learning'],
+          'learning': ['quizzing', 'feedback'],
+          'quizzing': ['feedback'],
+          'feedback': ['learning', 'completed'],
+          'completed': []
+        };
+
+        if (!validTransitions[currentPhase]?.includes(phase) && phase !== 'assessing') {
+          console.warn(`Invalid phase transition: ${currentPhase} → ${phase}`);
+          return;
+        }
+
     set({ phase });
   },
 
-  setTopic: (topic) => set({ topic }),
-  setChatTitle: (title) => set({ chatTitle: title }),
-  setPlan: (plan) => set({ plan: Array.isArray(plan) ? plan : [] }),
-  setProgress: (percent) => set({ progressPercent: Math.max(0, Math.min(100, percent)) }),
-  setPoints: (points) => set({ 
-    points: Math.max(0, points),
-    gems: Math.floor(Math.max(0, points) / 20) // Auto-calculate gems
-  }),
-  setGems: (gems) => set({ gems: Math.max(0, gems) }),
-  setHasTrophy: (flag) => set({ hasTrophy: Boolean(flag) }),
-  setViewOnly: (flag) => set({ isViewOnly: Boolean(flag) }),
-  setNextAction: (action) => set({ nextAction: action }),
+      setMode: (mode) => {
+        const validModes = ['studying', 'revision'];
+        if (!validModes.includes(mode)) {
+          console.warn(`Invalid mode: ${mode}. Must be one of: ${validModes.join(', ')}`);
+          return;
+        }
+        set({ mode });
+      },
 
-  // Computed values
-  getLearningStyleDisplayName: () => {
-    const style = get().learningStyle;
-    return style === 'studying' ? 'Studying' : 'Revision';
-  },
+      setLearningStyle: (mode) => {
+        // Alias for setMode for backward compatibility
+        get().setMode(mode);
+      },
 
+      startQuiz: (moduleId) => {
+        const activeModuleId = moduleId || get().activeModuleId;
+        if (!activeModuleId) {
+          console.warn('No module ID provided for quiz start');
+          return;
+        }
+
+        set({
+          phase: 'quizzing',
+          activeModuleId,
+          error: null
+        });
+      },
+
+      finishQuiz: ({ passed, pointsEarned, nextModuleId }) => {
+        const state = get();
+        
+        // Update plan status optimistically
+        if (passed && state.activeModuleId) {
+          const updatedPlan = state.plan.map(module => 
+            module.id === state.activeModuleId 
+              ? { ...module, status: 'passed' }
+              : module
+          );
+          
+          set({
+            plan: updatedPlan,
+            activeModuleId: nextModuleId || null
+          });
+        }
+
+        set({
+          phase: 'feedback',
+          error: null
+        });
+      },
+
+      awardPoints: (points, gems) => {
+        const newPoints = Math.max(0, Math.min(100, points));
+        const newGems = Math.max(0, gems || Math.floor(newPoints / 20));
+        
+        set({
+          points: newPoints,
+          gems: newGems,
+          progressPct: newPoints
+        });
+      },
+
+      lockViewOnly: () => {
+        set({
+          isViewOnly: true,
+          phase: 'completed',
+          quizDraft: null // Clear any draft quiz state
+        });
+      },
+
+      resumeSession: (payload) => {
+        if (!payload) return;
+        
+        set({
+          sessionId: payload.sessionId || null,
+          phase: payload.phase || 'pre',
+          mode: payload.mode || 'studying',
+          topic: payload.topic || '',
+          chatTitle: payload.chatTitle || '',
+          plan: Array.isArray(payload.plan) ? payload.plan : [],
+          activeModuleId: payload.activeModuleId || null,
+          points: payload.points || 0,
+          gems: payload.gems || 0,
+          progressPct: payload.progressPct || 0,
+          isViewOnly: payload.isViewOnly || false,
+          messages: Array.isArray(payload.lastMessages) ? payload.lastMessages : [],
+          profile: payload.profile || initial.profile,
+          error: null
+        });
+      },
+
+      // Clear current session (for reset/start fresh)
+      clearSession: () => {
+        set({
+          sessionId: null,
+          phase: 'pre',
+          mode: 'studying',
+          topic: '',
+          chatTitle: '',
+          plan: [],
+          activeModuleId: null,
+          points: 0,
+          gems: 0,
+          progressPct: 0,
+          isViewOnly: false,
+          messages: [],
+          model: 'llama',
+          meta: {
+            countSinceLastCheck: 0,
+            outstandingCheck: null
+          },
+          loading: false,
+          error: null,
+          quizDraft: null
+        });
+      },
+
+      // API Actions (thunks)
+      createSession: async (profile) => {
+        console.log('Creating new session with profile:', profile);
+        set({ loading: true, error: null });
+        
+        try {
+          const response = await sessionApi.createSession(profile);
+          console.log('Session API response:', response);
+          
+          if (response.success) {
+            console.log('Setting new session data:', response.data);
+            set({
+              sessionId: response.data.id,
+              profile: response.data.profile,
+              phase: 'pre',
+              mode: 'studying',
+              topic: '',
+              chatTitle: '',
+              plan: [],
+              activeModuleId: null,
+              points: 0,
+              gems: 0,
+              progressPct: 0,
+              isViewOnly: false,
+              messages: [], // Reset messages for new session
+              model: 'llama',
+              meta: {
+                countSinceLastCheck: 0,
+                outstandingCheck: null
+              },
+              quizDraft: null,
+              loading: false
+            });
+            console.log('New session created with ID:', response.data.id);
+            return response.data;
+          } else {
+            throw new Error(response.error || 'Failed to create session');
+          }
+        } catch (error) {
+          console.error('Error creating session:', error);
+          set({ 
+            error: error.message, 
+            loading: false 
+          });
+          throw error;
+        }
+      },
+
+      startAssessment: async (userMessage, mode = 'studying') => {
+        const state = get();
+        if (!state.sessionId) {
+          throw new Error('No active session');
+        }
+
+        set({ 
+          phase: 'assessing', 
+          mode,
+          loading: true, 
+          error: null 
+        });
+
+        try {
+          const response = await assessmentApi.assess({
+            sessionId: state.sessionId,
+            userMessage,
+            mode,
+            profile: state.profile
+          });
+
+          if (response.clarify) {
+            // Handle clarifying questions
+            get().appendMessage({
+              role: 'assistant',
+              content: response.questions.join('\n\n'),
+              ts: new Date().toISOString()
+            });
+            // Stay in assessing phase
+          } else if (response.topic && response.plan) {
+            // Apply assessment results
+            get().applyAssessment({
+              topic: response.topic,
+              chatTitle: response.chatTitle,
+              plan: response.plan
+            });
+          }
+
+          set({ loading: false });
+          return response;
+        } catch (error) {
+          // Handle 409 errors by resuming session
+          if (error.message.includes('409') || error.message.includes('Illegal phase')) {
+            try {
+              await get().resumeSessionFromServer(state.sessionId);
+            } catch (resumeError) {
+              console.error('Failed to resume session after 409:', resumeError);
+            }
+          }
+          
+          set({ 
+            error: error.message, 
+            loading: false,
+            phase: 'pre' // Revert to pre on error
+          });
+          throw error;
+        }
+      },
+
+      sendChatMessage: async (userMessage) => {
+        const state = get();
+        console.log('sendChatMessage called with:', userMessage);
+        console.log('Current sessionId:', state.sessionId);
+        console.log('Current messages count:', state.messages.length);
+        
+        if (!state.sessionId) {
+          throw new Error('No active session');
+        }
+
+        // Add user message immediately
+        get().appendMessage({
+          role: 'user',
+          content: userMessage,
+          ts: new Date().toISOString()
+        });
+        
+        console.log('User message added. Messages count now:', get().messages.length);
+
+        set({ loading: true, error: null });
+
+        try {
+          console.log('Sending request to backend...');
+          const response = await chatApi.sendMessage({
+            sessionId: state.sessionId,
+            userMessage
+          });
+          
+          console.log('Backend response:', response);
+
+              // Add assistant response
+              get().appendMessage({
+                role: 'assistant',
+                content: response.data.message,
+                ts: new Date().toISOString(),
+                tokens: response.data.tokensOut
+              });
+              
+              console.log('Assistant message added. Messages count now:', get().messages.length);
+
+              // Update meta if provided
+              if (response.meta) {
+                set({ meta: { ...state.meta, ...response.meta } });
+              }
+
+              // Update phase if it changed (e.g., from 'pre' to 'learning')
+              if (response.data.phase && response.data.phase !== state.phase) {
+                console.log('Phase changed from', state.phase, 'to', response.data.phase);
+                set({ phase: response.data.phase });
+              }
+
+          // Check for quiz intent
+          if (response.nextAction === 'START_QUIZ') {
+            await get().startQuizFromChat(response.moduleId);
+          }
+
+          set({ loading: false });
+          return response;
+        } catch (error) {
+          console.error('Error in sendChatMessage:', error);
+          set({ 
+            error: error.message, 
+            loading: false 
+          });
+          throw error;
+        }
+      },
+
+      startQuizFromChat: async (moduleId) => {
+        const state = get();
+        if (!state.sessionId) {
+          throw new Error('No active session');
+        }
+
+        try {
+          const response = await quizApi.startQuiz({
+            sessionId: state.sessionId,
+            moduleId: moduleId || state.activeModuleId
+          });
+
+          // Store quiz draft
+          set({ 
+            quizDraft: response.questions,
+            loading: false 
+          });
+
+          // Start quiz
+          get().startQuiz(moduleId || state.activeModuleId);
+          return response;
+        } catch (error) {
+          set({ 
+            error: error.message, 
+            loading: false 
+          });
+          throw error;
+        }
+      },
+
+      submitQuiz: async (answers) => {
+        const state = get();
+        if (!state.sessionId || !state.activeModuleId) {
+          throw new Error('No active session or module');
+        }
+
+        set({ loading: true, error: null });
+
+        try {
+          const response = await quizApi.submitQuiz({
+            sessionId: state.sessionId,
+            moduleId: state.activeModuleId,
+            answers
+          });
+
+          // Update points and progress
+          get().awardPoints(
+            state.points + response.pointsEarned,
+            Math.floor((state.points + response.pointsEarned) / 20)
+          );
+
+          // Finish quiz with results
+          get().finishQuiz({
+            passed: response.passed,
+            pointsEarned: response.pointsEarned,
+            nextModuleId: response.nextModuleId
+          });
+
+          // Check if completed
+          if (response.completed) {
+            get().lockViewOnly();
+          }
+
+          set({ loading: false });
+          return response;
+        } catch (error) {
+          set({ 
+            error: error.message, 
+            loading: false 
+          });
+          throw error;
+        }
+      },
+
+      resumeSessionFromServer: async (sessionId) => {
+        set({ loading: true, error: null });
+
+        try {
+          const response = await sessionApi.resumeSession(sessionId);
+          if (response.success) {
+            get().resumeSession(response.data);
+            set({ sessionId, loading: false });
+            return response.data;
+          } else {
+            throw new Error(response.error || 'Failed to resume session');
+          }
+        } catch (error) {
+          set({ 
+            error: error.message, 
+            loading: false 
+          });
+          throw error;
+        }
+      },
+
+      // Utility methods
+      reset: async () => {
+        console.log('Resetting session...');
+        
+        // Clear local state first
+        set({ ...initial });
+        
+        // Clear persisted data from localStorage
+        localStorage.removeItem('session-storage');
+        
+        // Create a new session to ensure clean state
+        try {
+          console.log('Creating new session after reset...');
+          await get().createSession();
+          console.log('New session created successfully');
+        } catch (error) {
+          console.error('Failed to create new session after reset:', error);
+        }
+      },
+
+      clearError: () => set({ error: null }),
+
+      // Computed values
+      isPhase: (phase) => get().phase === phase,
+      isMode: (mode) => get().mode === mode,
+      hasProgress: () => get().progressPct > 0,
+      hasPlan: () => get().plan.length > 0,
+      isActive: () => get().sessionId !== null,
+      canChat: () => !get().isViewOnly && !get().isPhase('quizzing'),
+      canStartQuiz: () => get().isPhase('learning') || get().isPhase('feedback'),
+      isCompleted: () => get().isPhase('completed') || get().isViewOnly,
+
+      // Phase display names
   getPhaseDisplayName: () => {
-    const phase = get().phase;
     const phaseNames = {
       pre: 'Pre-Assessment',
       assessing: 'Assessing',
@@ -106,108 +543,29 @@ const initial = {
       feedback: 'Feedback',
       completed: 'Completed',
     };
-    return phaseNames[phase] || phase;
-  },
+        return phaseNames[get().phase] || get().phase;
+      },
 
-  // Utility methods
-  isPhase: (phase) => get().phase === phase,
-  isLearningStyle: (style) => get().learningStyle === style,
-  hasProgress: () => get().progressPercent > 0,
-  hasPlan: () => get().plan.length > 0,
-  isActive: () => get().sessionId !== null,
-
-  // AI/System controlled milestone completion
-  completeModuleMilestone: (moduleIndex, milestoneIndex) => {
-    const currentPlan = get().plan;
-    if (currentPlan && currentPlan[moduleIndex] && currentPlan[moduleIndex].milestones[milestoneIndex]) {
-      const updatedPlan = [...currentPlan];
-      updatedPlan[moduleIndex].milestones[milestoneIndex].completed = true;
-      
-      // Calculate new progress
-      const totalMilestones = updatedPlan.reduce((sum, module) => sum + module.milestones.length, 0);
-      const completedMilestones = updatedPlan.reduce((sum, module) => 
-        sum + module.milestones.filter(m => m.completed).length, 0);
-      const newProgress = Math.round((completedMilestones / totalMilestones) * 100);
-      
-      // Calculate new points (5 points per milestone)
-      const newPoints = completedMilestones * 5;
-      
-      set({ 
-        plan: updatedPlan, 
-        progressPercent: newProgress,
-        points: newPoints,
-        gems: Math.floor(newPoints / 20)
-      });
+    }),
+    {
+      name: 'session-storage',
+      partialize: (state) => ({
+        sessionId: state.sessionId,
+        phase: state.phase,
+        mode: state.mode,
+        topic: state.topic,
+        chatTitle: state.chatTitle,
+        plan: state.plan,
+        activeModuleId: state.activeModuleId,
+        points: state.points,
+        gems: state.gems,
+        progressPct: state.progressPct,
+        isViewOnly: state.isViewOnly,
+        profile: state.profile,
+        model: state.model
+      })
     }
-  },
-
-  // Debug/Testing methods
-  setDummyData: () => {
-    const dummyPlan = [
-      {
-        id: 'module-0',
-        title: 'Setup',
-        points: 20,
-        milestones: [
-          { text: 'Install python', completed: true },
-          { text: 'Basic syntax', completed: false },
-          { text: 'Control structure', completed: false },
-        ]
-      },
-      {
-        id: 'module-1', 
-        title: 'Data Structures',
-        points: 20,
-        milestones: [
-          { text: 'Lists and tuples', completed: false },
-          { text: 'Dictionaries and sets', completed: false },
-          { text: 'Working with data', completed: false },
-        ]
-      },
-      {
-        id: 'module-2',
-        title: 'File Input/Output',
-        points: 20,
-        milestones: [
-          { text: 'Reading files', completed: false },
-          { text: 'Writing files', completed: false },
-          { text: 'File handling', completed: false },
-        ]
-      },
-      {
-        id: 'module-3',
-        title: 'Functions & Modules',
-        points: 20,
-        milestones: [
-          { text: 'Function definition', completed: false },
-          { text: 'Function parameters', completed: false },
-          { text: 'Module imports', completed: false },
-        ]
-      },
-      {
-        id: 'module-4',
-        title: 'Advanced Topics',
-        points: 20,
-        milestones: [
-          { text: 'Object-oriented programming', completed: false },
-          { text: 'Error handling', completed: false },
-          { text: 'Testing and debugging', completed: false },
-        ]
-      }
-    ];
-
-    set({
-      sessionId: 'dummy-session-123',
-      phase: 'learning',
-      topic: 'Python Basic',
-      chatTitle: 'Learning Python Fundamentals',
-      plan: dummyPlan,
-      progressPercent: 7, // 1 out of 15 milestones completed
-      points: 5, // 1 milestone * 5 points
-      gems: 0,
-      isViewOnly: false,
-    });
-  },
-}));
+  )
+);
 
 export default useSessionStore;

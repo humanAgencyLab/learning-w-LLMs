@@ -1,5 +1,28 @@
 import { API_BASE } from '../config';
 
+export async function assess({ sessionId, userMessage, mode, profile }) {
+  const response = await fetch(`${API_BASE}/v1/assessment`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sessionId,
+      userMessage,
+      mode,
+      profile
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'Assessment failed');
+  }
+
+  return response.json();
+}
+
+// Legacy methods for backward compatibility
 export async function assessStage(
   message,
   topic = 'General Learning',

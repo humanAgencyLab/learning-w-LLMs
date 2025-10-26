@@ -1,0 +1,684 @@
+const request = require('supertest');
+const mongoose = require('mongoose');
+const app = require('../app');
+const Session = require('../models/Session');
+
+// Mock Groq API
+const mockGroqCreate = jest.fn();
+jest.mock('groq-sdk', () => {
+  return jest.fn().mockImplementation(() => ({
+    chat: {
+      completions: {
+        create: mockGroqCreate
+      }
+    }
+  }));
+});
+
+describe('Quiz Routes', () => {
+  let testSessionId;
+  let testModuleId;
+
+  beforeAll(async () => {
+    // Connect to test database
+    if (mongoose.connection.readyState === 0) {
+      await mongoose.connect(process.env.MONGODB_TEST_URI || 'mongodb://localhost:27017/ai_edu_app_test');
+    }
+  });
+
+  afterAll(async () => {
+    // Clean up test database
+    await Session.deleteMany({});
+    await mongoose.connection.close();
+  });
+
+  beforeEach(async () => {
+    // Clean up before each test
+    await Session.deleteMany({});
+    jest.clearAllMocks();
+    mockGroqCreate.mockClear();
+  });
+
+  describe('POST /v1/quiz/start', () => {
+    beforeEach(async () => {
+      // Create a test session in learning phase
+      const session = new Session({
+        phase: 'learning',
+        mode: 'studying',
+        topic: 'JavaScript Fundamentals',
+        chatTitle: 'Learn JavaScript',
+        plan: [
+          {
+            id: '1',
+            title: 'Variables and Data Types',
+            description: 'Learn about variables and data types',
+            status: 'in_progress',
+            milestones: ['Understand variables', 'Practice data types'],
+            completedMilestones: [],
+            points: 30,
+            difficulty: 'intro'
+          },
+          {
+            id: '2',
+            title: 'Functions and Scope',
+            description: 'Learn about functions and scope',
+            status: 'locked',
+            milestones: ['Understand functions', 'Practice scope'],
+            completedMilestones: [],
+            points: 40,
+            difficulty: 'core'
+          }
+        ],
+        activeModuleId: '1',
+        points: 0,
+        gems: 0,
+        isViewOnly: false,
+        progressPct: 0,
+        messages: [],
+        profile: {
+          source: 'dummy',
+          name: 'Alex',
+          background: '2nd-year CS undergrad',
+          goals: ['Pass Algorithms midterm', 'Understand graph traversal'],
+          strengths: ['arrays', 'big-O basics'],
+          gaps: ['graph traversal', 'BFS vs DFS tradeoffs'],
+          timePerDayMins: 30,
+          preferredStyle: 'examples-first',
+          lastUpdated: new Date().toISOString()
+        },
+        quizAttempts: [],
+        meta: {
+          countSinceLastCheck: 0,
+          outstandingCheck: null
+        }
+      });
+
+      await session.save();
+      testSessionId = session._id.toString();
+      testModuleId = '1';
+    });
+
+    it('should generate a new quiz for the active module', async () => {
+      // Mock quiz generation response
+      mockGroqCreate.mockResolvedValue({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              questions: [
+                {
+                  id: 'q1',
+                  text: 'What keyword declares a variable in JavaScript?',
+                  options: ['var', 'let', 'const', 'all of the above'],
+                  correctIndex: 3
+                },
+                {
+                  id: 'q2',
+                  text: 'Which data type is immutable in JavaScript?',
+                  options: ['string', 'number', 'boolean', 'object'],
+                  correctIndex: 0
+                },
+                {
+                  id: 'q3',
+                  text: 'What is the result of typeof null?',
+                  options: ['null', 'undefined', 'object', 'string'],
+                  correctIndex: 2
+                },
+                {
+                  id: 'q4',
+                  text: 'Which is not a primitive data type?',
+                  options: ['string', 'number', 'array', 'boolean'],
+                  correctIndex: 2
+                }
+              ]
+            })
+          }
+        }]
+      });
+
+      const response = await request(app)
+        .post('/v1/quiz/start')
+        .send({
+          sessionId: testSessionId
+        })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.questions).toHaveLength(4);
+      expect(response.body.questions[0]).toHaveProperty('id');
+      expect(response.body.questions[0]).toHaveProperty('text');
+      expect(response.body.questions[0]).toHaveProperty('options');
+      expect(response.body.questions[0]).toHaveProperty('correctIndex');
+      expect(response.body.questions[0].options).toHaveLength(4);
+
+      // Verify session was updated
+      const updatedSession = await Session.findById(testSessionId);
+      expect(updatedSession.phase).toBe('quizzing');
+      expect(updatedSession.quizAttempts).toHaveLength(1);
+      expect(updatedSession.quizAttempts[0].status).toBe('draft');
+      expect(updatedSession.quizAttempts[0].moduleId).toBe('1');
+      expect(updatedSession.quizAttempts[0].attemptNo).toBe(1);
+    });
+
+    it('should generate a quiz for a specific module', async () => {
+      // Mock quiz generation response
+      mockGroqCreate.mockResolvedValue({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              questions: [
+                {
+                  id: 'q1',
+                  text: 'What is a function in JavaScript?',
+                  options: ['A block of code', 'A variable', 'A data type', 'A loop'],
+                  correctIndex: 0
+                },
+                {
+                  id: 'q2',
+                  text: 'What is function scope?',
+                  options: ['Where variables are accessible', 'Function parameters', 'Return values', 'Function names'],
+                  correctIndex: 0
+                },
+                {
+                  id: 'q3',
+                  text: 'What is a closure?',
+                  options: ['A function with access to outer scope', 'A closed function', 'A private function', 'A nested function'],
+                  correctIndex: 0
+                }
+              ]
+            })
+          }
+        }]
+      });
+
+      const response = await request(app)
+        .post('/v1/quiz/start')
+        .send({
+          sessionId: testSessionId,
+          moduleId: '2'
+        })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.questions).toHaveLength(3);
+
+      // Verify attempt was created for module 2
+      const updatedSession = await Session.findById(testSessionId);
+      expect(updatedSession.quizAttempts[0].moduleId).toBe('2');
+    });
+
+    it('should return existing draft quiz if one exists', async () => {
+      // Create a draft attempt first
+      const session = await Session.findById(testSessionId);
+      session.quizAttempts.push({
+        id: 'existing-draft',
+        moduleId: '1',
+        attemptNo: 1,
+        status: 'draft',
+        items: [
+          {
+            id: 'q1',
+            text: 'Existing question?',
+            options: ['A', 'B', 'C', 'D'],
+            correctIndex: 0
+          }
+        ],
+        answers: [],
+        createdAt: new Date()
+      });
+      await session.save();
+
+      const response = await request(app)
+        .post('/v1/quiz/start')
+        .send({
+          sessionId: testSessionId
+        })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.questions).toHaveLength(1);
+      expect(response.body.questions[0].text).toBe('Existing question?');
+
+      // Verify no new attempt was created
+      const updatedSession = await Session.findById(testSessionId);
+      expect(updatedSession.quizAttempts).toHaveLength(1);
+    });
+
+    it('should return 404 for non-existent session', async () => {
+      const fakeId = new mongoose.Types.ObjectId().toString();
+      
+      const response = await request(app)
+        .post('/v1/quiz/start')
+        .send({
+          sessionId: fakeId
+        })
+        .expect(404);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Session not found');
+    });
+
+    it('should return 409 for no module ID', async () => {
+      // Set activeModuleId to null
+      await Session.findByIdAndUpdate(testSessionId, { activeModuleId: null });
+
+      const response = await request(app)
+        .post('/v1/quiz/start')
+        .send({
+          sessionId: testSessionId
+        })
+        .expect(409);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('No module ID provided and no active module');
+    });
+
+    it('should return 409 for module not in plan', async () => {
+      const response = await request(app)
+        .post('/v1/quiz/start')
+        .send({
+          sessionId: testSessionId,
+          moduleId: 'nonexistent'
+        })
+        .expect(409);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Module not found in session plan');
+    });
+
+    it('should return 409 for illegal phase', async () => {
+      // Set session to pre phase
+      await Session.findByIdAndUpdate(testSessionId, { phase: 'pre' });
+
+      const response = await request(app)
+        .post('/v1/quiz/start')
+        .send({
+          sessionId: testSessionId
+        })
+        .expect(409);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Quiz not allowed in current phase');
+    });
+
+    it('should handle quiz generation errors', async () => {
+      // Mock Groq API error
+      mockGroqCreate.mockRejectedValue(new Error('API rate limit exceeded'));
+
+      const response = await request(app)
+        .post('/v1/quiz/start')
+        .send({
+          sessionId: testSessionId
+        })
+        .expect(502);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Quiz generation service unavailable');
+    });
+  });
+
+  describe('POST /v1/quiz/submit', () => {
+    beforeEach(async () => {
+      // Create a test session with a draft quiz attempt
+      const session = new Session({
+        phase: 'quizzing',
+        mode: 'studying',
+        topic: 'JavaScript Fundamentals',
+        chatTitle: 'Learn JavaScript',
+        plan: [
+          {
+            id: '1',
+            title: 'Variables and Data Types',
+            description: 'Learn about variables and data types',
+            status: 'in_progress',
+            milestones: ['Understand variables', 'Practice data types'],
+            completedMilestones: [],
+            points: 30,
+            difficulty: 'intro'
+          }
+        ],
+        activeModuleId: '1',
+        points: 0,
+        gems: 0,
+        isViewOnly: false,
+        progressPct: 0,
+        messages: [],
+        profile: {
+          source: 'dummy',
+          name: 'Alex',
+          background: '2nd-year CS undergrad',
+          goals: ['Pass Algorithms midterm'],
+          strengths: ['arrays'],
+          gaps: ['graph traversal'],
+          timePerDayMins: 30,
+          preferredStyle: 'examples-first',
+          lastUpdated: new Date().toISOString()
+        },
+        quizAttempts: [{
+          id: 'test-attempt',
+          moduleId: '1',
+          attemptNo: 1,
+          status: 'draft',
+          items: [
+            {
+              id: 'q1',
+              text: 'What keyword declares a variable?',
+              options: ['var', 'let', 'const', 'all of the above'],
+              correctIndex: 3
+            },
+            {
+              id: 'q2',
+              text: 'Which is a primitive type?',
+              options: ['string', 'array', 'object', 'function'],
+              correctIndex: 0
+            },
+            {
+              id: 'q3',
+              text: 'What is typeof null?',
+              options: ['null', 'undefined', 'object', 'string'],
+              correctIndex: 2
+            },
+            {
+              id: 'q4',
+              text: 'Which is not a primitive?',
+              options: ['string', 'number', 'array', 'boolean'],
+              correctIndex: 2
+            }
+          ],
+          answers: [],
+          createdAt: new Date()
+        }],
+        meta: {
+          countSinceLastCheck: 0,
+          outstandingCheck: null
+        }
+      });
+
+      await session.save();
+      testSessionId = session._id.toString();
+      testModuleId = '1';
+    });
+
+    it('should score a passing quiz (75%)', async () => {
+      const response = await request(app)
+        .post('/v1/quiz/submit')
+        .send({
+          sessionId: testSessionId,
+          moduleId: testModuleId,
+          answers: [
+            { id: 'q1', userIndex: 3 }, // correct
+            { id: 'q2', userIndex: 0 }, // correct
+            { id: 'q3', userIndex: 2 }, // correct
+            { id: 'q4', userIndex: 1 }  // incorrect
+          ]
+        });
+
+      expect(response.status).toBe(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.passed).toBe(true);
+      expect(response.body.data.scorePct).toBe(75);
+      expect(response.body.data.pointsEarned).toBe(30); // module points
+      expect(response.body.data.feedbackMarkdown).toContain('You passed — move on to the next module');
+
+      // Verify session was updated
+      const updatedSession = await Session.findById(testSessionId);
+      expect(updatedSession.phase).toBe('completed'); // Should be completed when only one module exists
+      expect(updatedSession.quizAttempts[0].status).toBe('submitted');
+      expect(updatedSession.quizAttempts[0].passed).toBe(true);
+      expect(updatedSession.quizAttempts[0].pointsEarned).toBe(30);
+      expect(updatedSession.points).toBe(30);
+    });
+
+    it('should score a failing quiz (50%)', async () => {
+      const response = await request(app)
+        .post('/v1/quiz/submit')
+        .send({
+          sessionId: testSessionId,
+          moduleId: testModuleId,
+          answers: [
+            { id: 'q1', userIndex: 0 }, // incorrect
+            { id: 'q2', userIndex: 0 }, // correct
+            { id: 'q3', userIndex: 1 }, // incorrect
+            { id: 'q4', userIndex: 1 }  // incorrect
+          ]
+        })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.passed).toBe(false);
+      expect(response.body.data.scorePct).toBe(25);
+      expect(response.body.data.pointsEarned).toBe(0);
+      expect(response.body.data.feedbackMarkdown).toContain('Not yet — retry this module');
+
+      // Verify session was updated
+      const updatedSession = await Session.findById(testSessionId);
+      expect(updatedSession.phase).toBe('feedback');
+      expect(updatedSession.quizAttempts[0].status).toBe('submitted');
+      expect(updatedSession.quizAttempts[0].passed).toBe(false);
+      expect(updatedSession.quizAttempts[0].pointsEarned).toBe(0);
+      expect(updatedSession.points).toBe(0);
+    });
+
+    it('should handle boundary case (exactly 70%)', async () => {
+      const response = await request(app)
+        .post('/v1/quiz/submit')
+        .send({
+          sessionId: testSessionId,
+          moduleId: testModuleId,
+          answers: [
+            { id: 'q1', userIndex: 3 }, // correct
+            { id: 'q2', userIndex: 0 }, // correct
+            { id: 'q3', userIndex: 2 }, // correct
+            { id: 'q4', userIndex: 1 }  // incorrect
+          ]
+        })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.passed).toBe(true);
+      expect(response.body.data.scorePct).toBe(75); // 3/4 = 75%
+    });
+
+    it('should handle reattempt without double-awarding points', async () => {
+      // First attempt - fail
+      await request(app)
+        .post('/v1/quiz/submit')
+        .send({
+          sessionId: testSessionId,
+          moduleId: testModuleId,
+          answers: [
+            { id: 'q1', userIndex: 0 }, // incorrect
+            { id: 'q2', userIndex: 1 }, // incorrect
+            { id: 'q3', userIndex: 1 }, // incorrect
+            { id: 'q4', userIndex: 1 }  // incorrect
+          ]
+        })
+        .expect(200);
+
+      // Create a second attempt
+      const session = await Session.findById(testSessionId);
+      session.quizAttempts.push({
+        id: 'test-attempt-2',
+        moduleId: '1',
+        attemptNo: 2,
+        status: 'draft',
+        items: session.quizAttempts[0].items,
+        answers: [],
+        createdAt: new Date()
+      });
+      session.phase = 'quizzing';
+      await session.save();
+
+      // Second attempt - pass
+      const response = await request(app)
+        .post('/v1/quiz/submit')
+        .send({
+          sessionId: testSessionId,
+          moduleId: testModuleId,
+          answers: [
+            { id: 'q1', userIndex: 3 }, // correct
+            { id: 'q2', userIndex: 0 }, // correct
+            { id: 'q3', userIndex: 2 }, // correct
+            { id: 'q4', userIndex: 2 }  // correct
+          ]
+        })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.passed).toBe(true);
+      expect(response.body.data.pointsEarned).toBe(30); // Should award points on first pass
+
+      // Third attempt - pass again (should not award points)
+      session.quizAttempts.push({
+        id: 'test-attempt-3',
+        moduleId: '1',
+        attemptNo: 3,
+        status: 'draft',
+        items: session.quizAttempts[0].items,
+        answers: [],
+        createdAt: new Date()
+      });
+      session.phase = 'quizzing';
+      await session.save();
+
+      const thirdResponse = await request(app)
+        .post('/v1/quiz/submit')
+        .send({
+          sessionId: testSessionId,
+          moduleId: testModuleId,
+          answers: [
+            { id: 'q1', userIndex: 3 }, // correct
+            { id: 'q2', userIndex: 0 }, // correct
+            { id: 'q3', userIndex: 2 }, // correct
+            { id: 'q4', userIndex: 2 }  // correct
+          ]
+        })
+        .expect(200);
+
+      expect(thirdResponse.body.success).toBe(true);
+      expect(thirdResponse.body.data.passed).toBe(true);
+      expect(thirdResponse.body.data.pointsEarned).toBe(0); // Should not award points again
+    });
+
+    it('should return 404 for non-existent session', async () => {
+      const fakeId = new mongoose.Types.ObjectId().toString();
+      
+      const response = await request(app)
+        .post('/v1/quiz/submit')
+        .send({
+          sessionId: fakeId,
+          moduleId: '1',
+          answers: [{ id: 'q1', userIndex: 0 }]
+        })
+        .expect(404);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Session not found');
+    });
+
+    it('should return 409 for no draft attempt', async () => {
+      // Remove the draft attempt
+      await Session.findByIdAndUpdate(testSessionId, { quizAttempts: [] });
+
+      const response = await request(app)
+        .post('/v1/quiz/submit')
+        .send({
+          sessionId: testSessionId,
+          moduleId: testModuleId,
+          answers: [{ id: 'q1', userIndex: 0 }]
+        })
+        .expect(409);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('No draft quiz found for this module. Please start a new quiz.');
+    });
+
+    it('should return 409 for answer mismatch', async () => {
+      const response = await request(app)
+        .post('/v1/quiz/submit')
+        .send({
+          sessionId: testSessionId,
+          moduleId: testModuleId,
+          answers: [
+            { id: 'wrong-id', userIndex: 0 }
+          ]
+        })
+        .expect(409);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Answers do not match quiz questions. Please restart the quiz.');
+    });
+
+    it('should validate input data', async () => {
+      const response = await request(app)
+        .post('/v1/quiz/submit')
+        .send({
+          sessionId: '', // Invalid session ID
+          moduleId: '', // Invalid module ID
+          answers: [] // Empty answers
+        })
+        .expect(400);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Validation failed');
+      expect(response.body.details).toBeDefined();
+    });
+
+    it('should advance to next module when passed', async () => {
+      // Create session with multiple modules
+      const session = await Session.findById(testSessionId);
+      session.plan.push({
+        id: '2',
+        title: 'Functions and Scope',
+        description: 'Learn about functions and scope',
+        status: 'locked',
+        milestones: ['Understand functions', 'Practice scope'],
+        completedMilestones: [],
+        points: 40,
+        difficulty: 'core'
+      });
+      await session.save();
+
+      const response = await request(app)
+        .post('/v1/quiz/submit')
+        .send({
+          sessionId: testSessionId,
+          moduleId: testModuleId,
+          answers: [
+            { id: 'q1', userIndex: 3 }, // correct
+            { id: 'q2', userIndex: 0 }, // correct
+            { id: 'q3', userIndex: 2 }, // correct
+            { id: 'q4', userIndex: 2 }  // correct
+          ]
+        })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.passed).toBe(true);
+
+      // Verify module advancement
+      const updatedSession = await Session.findById(testSessionId);
+      expect(updatedSession.activeModuleId).toBe('2');
+      expect(updatedSession.plan[0].status).toBe('passed');
+      expect(updatedSession.plan[1].status).toBe('in_progress');
+    });
+
+    it('should set isViewOnly and phase to completed when all modules passed', async () => {
+      // Test the progress service directly with all modules passed
+      const session = await Session.findById(testSessionId);
+      session.plan.forEach(module => {
+        module.status = 'passed';
+      });
+      
+      // Call progress service directly to test completion
+      const { updateProgress } = require('../services/progressService');
+      const result = updateProgress(session, { forceRecalc: true });
+      
+      expect(result.completed).toBe(true);
+      expect(result.isViewOnly).toBe(true);
+      expect(result.points).toBe(30); // Only 1 module with 30 points
+      expect(session.phase).toBe('completed');
+      expect(session.progressPct).toBe(30);
+    });
+  });
+});

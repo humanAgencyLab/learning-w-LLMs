@@ -7,9 +7,9 @@ import useSessionStore from '../state/sessionStore';
 const AppShell = () => {
   const { reset } = useSessionStore();
 
-  const handleStartNewChat = () => {
+  const handleStartNewChat = async () => {
     // Reset the session to start fresh
-    reset();
+    await reset();
   };
 
       return (
