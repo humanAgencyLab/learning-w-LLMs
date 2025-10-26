@@ -23,10 +23,13 @@ describe('Rate Limiting', () => {
   let mockGroqClient;
 
   beforeAll(async () => {
+    // Enable rate limiting for these tests
+    process.env.RATE_LIMIT_ENABLED = 'true';
+    
     // Connect to test database
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/learning-w-llms-test');
   });
-
+  
   beforeEach(async () => {
     // Create a test session
     const session = new Session({
@@ -74,10 +77,6 @@ describe('Rate Limiting', () => {
     // Clean up test data
     await Session.deleteMany({});
     jest.clearAllMocks();
-  });
-
-  afterAll(async () => {
-    await mongoose.connection.close();
   });
 
   describe('Chat Rate Limiting', () => {
