@@ -39,6 +39,17 @@ const quizGenerationSchema = z.object({
       // Ensure all options are distinct within each question
       return questions.every(q => new Set(q.options).size === q.options.length);
     }, 'Options within each question must be distinct')
+    .refine(questions => {
+      // Reject forbidden options
+      const forbiddenPatterns = ['all of the above', 'none of the above'];
+      return !questions.some(q => 
+        q.options.some(opt => 
+          forbiddenPatterns.some(pattern => 
+            opt.toLowerCase().includes(pattern)
+          )
+        )
+      );
+    }, 'Questions cannot contain "All of the above" or "None of the above" options')
 });
 
 // Quiz submit response schema

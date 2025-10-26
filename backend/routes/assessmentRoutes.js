@@ -245,15 +245,14 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
         nextPhase
       });
     } catch (validationError) {
-      req.logger.error('Validation failed after backfill', {
+      req.logger.error('LLM output validation failed after backfill', {
         sessionId,
         error: validationError.message
       });
       return res.status(502).json({
         success: false,
-        code: 'ASSESSMENT_JSON_INVALID',
-        message: 'Assessment response format invalid',
-        details: validationError.errors
+        code: 'LLM_PROVIDER_ERROR',
+        message: 'Chat service unavailable'
       });
     }
     
@@ -351,19 +350,14 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       });
     }
     
-    if (error.message.includes('JSON_PARSE_FAILED')) {
+    // All LLM output/validation failures → 502 LLM_PROVIDER_ERROR
+    if (error.message.includes('JSON_PARSE_FAILED') || 
+        error.message.includes('GROQ_API_ERROR') ||
+        error.message.includes('JSON_PARSE_RETRY')) {
       return res.status(502).json({
         success: false,
-        code: 'ASSESSMENT_JSON_INVALID',
-        message: 'Assessment response format invalid',
-        hint: 'Try rephrasing your topic'
-      });
-    }
-    
-    if (error.message.includes('GROQ_API_ERROR')) {
-      return res.status(502).json({
-        success: false,
-        error: 'Assessment service unavailable'
+        code: 'LLM_PROVIDER_ERROR',
+        message: 'Chat service unavailable'
       });
     }
     

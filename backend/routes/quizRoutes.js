@@ -104,7 +104,8 @@ const generateQuiz = async (moduleTitle, difficulty, questionCount) => {
       return quizGenerationSchema.parse(parsed);
     } catch (parseError) {
       // Retry with stricter instructions
-      const retryPrompt = `Return ONLY valid JSON in this exact format. No prose, no explanations:
+      try {
+        const retryPrompt = `Return ONLY valid JSON in this exact format. No prose, no explanations:
 
 {
   "questions": [
@@ -119,29 +120,37 @@ const generateQuiz = async (moduleTitle, difficulty, questionCount) => {
 
 Generate ${questionCount} questions for "${moduleTitle}".`;
 
-      const retryResponse = await groqClient.chat.completions.create({
-        model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: 'Return only valid JSON. No prose, no explanations, no markdown.'
-          },
-          {
-            role: 'user',
-            content: retryPrompt
-          }
-        ],
-        temperature: 0.3,
-        top_p: 0.8,
-        max_tokens: 800
-      });
+        const retryResponse = await groqClient.chat.completions.create({
+          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: 'Return only valid JSON. No prose, no explanations, no markdown.'
+            },
+            {
+              role: 'user',
+              content: retryPrompt
+            }
+          ],
+          temperature: 0.3,
+          top_p: 0.8,
+          max_tokens: 800
+        });
 
-      const retryContent = retryResponse.choices[0].message.content;
-      const retryParsed = JSON.parse(retryContent);
-      return quizGenerationSchema.parse(retryParsed);
+        const retryContent = retryResponse.choices[0].message.content;
+        const retryParsed = JSON.parse(retryContent);
+        return quizGenerationSchema.parse(retryParsed);
+      } catch (retryError) {
+        // Schema validation or retry parse failed → treat as LLM output invalid
+        throw new Error(`QUIZ_LLM_OUTPUT_INVALID: ${retryError.message}`);
+      }
     }
   } catch (error) {
-    throw new Error(`QUIZ_GENERATION_ERROR: ${error.message}`);
+    // Re-throw LLM output errors, wrap API errors
+    if (error.message.includes('QUIZ_LLM_OUTPUT_INVALID')) {
+      throw error;
+    }
+    throw new Error(`QUIZ_API_ERROR: ${error.message}`);
   }
 };
 
@@ -312,10 +321,13 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
       });
     }
     
-    if (error.message.includes('QUIZ_GENERATION_ERROR')) {
+    // LLM output validation failures → 502 LLM_PROVIDER_ERROR
+    if (error.message.includes('QUIZ_LLM_OUTPUT_INVALID') || 
+        error.message.includes('QUIZ_API_ERROR')) {
       return res.status(502).json({
         success: false,
-        error: 'Quiz generation service unavailable'
+        code: 'LLM_PROVIDER_ERROR',
+        message: 'Chat service unavailable'
       });
     }
     
