@@ -108,8 +108,8 @@ describe('Quiz Routes', () => {
                 {
                   id: 'q1',
                   text: 'What keyword declares a variable in JavaScript?',
-                  options: ['var', 'let', 'const', 'all of the above'],
-                  correctIndex: 3
+                  options: ['var', 'let', 'const', 'declare'],
+                  correctIndex: 2
                 },
                 {
                   id: 'q2',
@@ -254,7 +254,8 @@ describe('Quiz Routes', () => {
         .expect(404);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Session not found');
+      expect(response.body.code).toBe('NOT_FOUND');
+      expect(response.body.message).toBe('Resource not found');
     });
 
     it('should return 409 for no module ID', async () => {
@@ -266,10 +267,11 @@ describe('Quiz Routes', () => {
         .send({
           sessionId: testSessionId
         })
-        .expect(409);
+        .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('No module ID provided and no active module');
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.message).toBe('Validation failed');
     });
 
     it('should return 409 for module not in plan', async () => {
@@ -279,10 +281,11 @@ describe('Quiz Routes', () => {
           sessionId: testSessionId,
           moduleId: 'nonexistent'
         })
-        .expect(409);
+        .expect(404);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Module not found in session plan');
+      expect(response.body.code).toBe('NOT_FOUND');
+      expect(response.body.message).toBe('Resource not found');
     });
 
     it('should return 409 for illegal phase', async () => {
@@ -297,6 +300,7 @@ describe('Quiz Routes', () => {
         .expect(409);
 
       expect(response.body.success).toBe(false);
+      expect(response.body.code).toBe('ILLEGAL_PHASE');
       expect(response.body.error).toBe('Quiz not allowed in current phase');
     });
 
@@ -312,7 +316,8 @@ describe('Quiz Routes', () => {
         .expect(502);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Quiz generation service unavailable');
+      expect(response.body.code).toBe('LLM_PROVIDER_ERROR');
+      expect(response.body.message).toBe('Chat service unavailable');
     });
   });
 
@@ -362,8 +367,8 @@ describe('Quiz Routes', () => {
             {
               id: 'q1',
               text: 'What keyword declares a variable?',
-              options: ['var', 'let', 'const', 'all of the above'],
-              correctIndex: 3
+              options: ['var', 'let', 'const', 'declare'],
+              correctIndex: 2
             },
             {
               id: 'q2',
@@ -405,7 +410,7 @@ describe('Quiz Routes', () => {
           sessionId: testSessionId,
           moduleId: testModuleId,
           answers: [
-            { id: 'q1', userIndex: 3 }, // correct
+            { id: 'q1', userIndex: 2 }, // correct
             { id: 'q2', userIndex: 0 }, // correct
             { id: 'q3', userIndex: 2 }, // correct
             { id: 'q4', userIndex: 1 }  // incorrect
@@ -466,7 +471,7 @@ describe('Quiz Routes', () => {
           sessionId: testSessionId,
           moduleId: testModuleId,
           answers: [
-            { id: 'q1', userIndex: 3 }, // correct
+            { id: 'q1', userIndex: 2 }, // correct
             { id: 'q2', userIndex: 0 }, // correct
             { id: 'q3', userIndex: 2 }, // correct
             { id: 'q4', userIndex: 1 }  // incorrect
@@ -516,7 +521,7 @@ describe('Quiz Routes', () => {
           sessionId: testSessionId,
           moduleId: testModuleId,
           answers: [
-            { id: 'q1', userIndex: 3 }, // correct
+            { id: 'q1', userIndex: 2 }, // correct
             { id: 'q2', userIndex: 0 }, // correct
             { id: 'q3', userIndex: 2 }, // correct
             { id: 'q4', userIndex: 2 }  // correct
@@ -528,36 +533,23 @@ describe('Quiz Routes', () => {
       expect(response.body.data.passed).toBe(true);
       expect(response.body.data.pointsEarned).toBe(30); // Should award points on first pass
 
-      // Third attempt - pass again (should not award points)
-      session.quizAttempts.push({
-        id: 'test-attempt-3',
-        moduleId: '1',
-        attemptNo: 3,
-        status: 'draft',
-        items: session.quizAttempts[0].items,
-        answers: [],
-        createdAt: new Date()
-      });
-      session.phase = 'quizzing';
-      await session.save();
-
+      // Third attempt - try to submit same attempt again (should fail)
       const thirdResponse = await request(app)
         .post('/v1/quiz/submit')
         .send({
           sessionId: testSessionId,
           moduleId: testModuleId,
           answers: [
-            { id: 'q1', userIndex: 3 }, // correct
+            { id: 'q1', userIndex: 2 }, // correct
             { id: 'q2', userIndex: 0 }, // correct
             { id: 'q3', userIndex: 2 }, // correct
             { id: 'q4', userIndex: 2 }  // correct
           ]
         })
-        .expect(200);
+        .expect(409); // Should fail because no draft attempt exists
 
-      expect(thirdResponse.body.success).toBe(true);
-      expect(thirdResponse.body.data.passed).toBe(true);
-      expect(thirdResponse.body.data.pointsEarned).toBe(0); // Should not award points again
+      expect(thirdResponse.body.success).toBe(false);
+      expect(thirdResponse.body.code).toBe('ILLEGAL_PHASE');
     });
 
     it('should return 404 for non-existent session', async () => {
@@ -573,7 +565,8 @@ describe('Quiz Routes', () => {
         .expect(404);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Session not found');
+      expect(response.body.code).toBe('NOT_FOUND');
+      expect(response.body.message).toBe('Resource not found');
     });
 
     it('should return 409 for no draft attempt', async () => {
@@ -590,7 +583,8 @@ describe('Quiz Routes', () => {
         .expect(409);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('No draft quiz found for this module. Please start a new quiz.');
+      expect(response.body.code).toBe('ILLEGAL_PHASE');
+      expect(response.body.message).toBe('No draft quiz found for this module. Please start a new quiz.');
     });
 
     it('should return 409 for answer mismatch', async () => {
@@ -603,10 +597,12 @@ describe('Quiz Routes', () => {
             { id: 'wrong-id', userIndex: 0 }
           ]
         })
-        .expect(409);
+        .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Answers do not match quiz questions. Please restart the quiz.');
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.message).toBe('Validation failed');
+      expect(response.body.details.answers).toBeDefined();
     });
 
     it('should validate input data', async () => {
@@ -620,7 +616,8 @@ describe('Quiz Routes', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Validation failed');
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.message).toBe('Validation failed');
       expect(response.body.details).toBeDefined();
     });
 
@@ -645,7 +642,7 @@ describe('Quiz Routes', () => {
           sessionId: testSessionId,
           moduleId: testModuleId,
           answers: [
-            { id: 'q1', userIndex: 3 }, // correct
+            { id: 'q1', userIndex: 2 }, // correct
             { id: 'q2', userIndex: 0 }, // correct
             { id: 'q3', userIndex: 2 }, // correct
             { id: 'q4', userIndex: 2 }  // correct

@@ -173,7 +173,7 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
       return res.status(404).json({
         success: false,
         code: 'NOT_FOUND',
-        message: 'Session not found'
+        message: 'Resource not found'
       });
     }
     
@@ -230,7 +230,7 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
       return res.status(404).json({
         success: false,
         code: 'NOT_FOUND',
-        message: 'Module not found in session plan',
+        message: 'Resource not found',
         details: {
           moduleId: ['Module not found in session plan']
         }
@@ -316,7 +316,8 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({
         success: false,
-        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
         details: error.errors
       });
     }
@@ -357,7 +358,7 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
       return res.status(404).json({
         success: false,
         code: 'NOT_FOUND',
-        message: 'Session not found'
+        message: 'Resource not found'
       });
     }
 
@@ -385,6 +386,7 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
       });
       return res.status(409).json({
         success: false,
+        code: 'ILLEGAL_PHASE',
         error: 'Quiz submit not allowed in current phase',
         currentPhase: session.phase,
         requiredPhase: 'quizzing'
@@ -400,7 +402,8 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
       req.logger.warn('No draft attempt found', { sessionId, moduleId });
       return res.status(409).json({
         success: false,
-        error: 'No draft quiz found for this module. Please start a new quiz.'
+        code: 'ILLEGAL_PHASE',
+        message: 'No draft quiz found for this module. Please start a new quiz.'
       });
     }
     
@@ -411,9 +414,13 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
     if (quizItemIds.length !== answerIds.length || 
         !quizItemIds.every(id => answerIds.includes(id))) {
       req.logger.warn('Answer mismatch with quiz items', { sessionId, moduleId });
-      return res.status(409).json({
+      return res.status(400).json({
         success: false,
-        error: 'Answers do not match quiz questions. Please restart the quiz.'
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          answers: ['Answers do not match quiz questions. Please restart the quiz.']
+        }
       });
     }
     
@@ -562,7 +569,8 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({
         success: false,
-        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
         details: error.errors
       });
     }
