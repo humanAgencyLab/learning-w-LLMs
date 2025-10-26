@@ -109,7 +109,9 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     
     // Validate request body
     const validatedData = assessmentRequestSchema.parse(req.body);
-    const { sessionId, userMessage, mode, profile: bodyProfile } = validatedData;
+    const { sessionId, mode, profile: bodyProfile } = validatedData;
+    // Use sanitized message if available, otherwise use original
+    const userMessage = req.sanitized?.message || validatedData.userMessage;
     
     // Load session
     const session = await Session.findById(sessionId);

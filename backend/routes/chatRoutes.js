@@ -110,8 +110,9 @@ router.post('/v1/chat', async (req, res) => {
   try {
     console.log('Chat request received', { body: req.body });
     
-    // Validate request body
-    const { sessionId, userMessage } = req.body;
+    // Read sanitized message if available, otherwise use body
+    const { sessionId } = req.body;
+    const userMessage = req.sanitized?.message || req.body.userMessage;
     
     // Load session
     const session = await Session.findById(sessionId);

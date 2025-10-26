@@ -30,67 +30,46 @@ function sanitizeHtml(input) {
  */
 const validateInput = (req, res, next) => {
   try {
+    req.sanitized = {};
+    const errors = {};
+
     // Sanitize userMessage if present
     if (req.body.userMessage !== undefined) {
-      const originalMessage = req.body.userMessage;
-      req.body.userMessage = sanitizeHtml(req.body.userMessage);
+      req.sanitized.message = sanitizeHtml(req.body.userMessage);
       
       // Check if message is empty after sanitization
-      if (!req.body.userMessage || req.body.userMessage.trim().length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: 'Validation failed',
-          code: 'VALIDATION_ERROR',
-          details: {
-            message: 'Message cannot be empty after sanitization'
-          }
-        });
+      if (!req.sanitized.message || req.sanitized.message.length === 0) {
+        errors.message = ['Message cannot be empty after sanitization'];
+      } else if (req.sanitized.message.length > 1000) {
+        errors.message = ['Message must be 1000 characters or less'];
       }
     }
     
     // Sanitize topic if present
     if (req.body.topic !== undefined) {
-      req.body.topic = sanitizeHtml(req.body.topic);
+      req.sanitized.topic = sanitizeHtml(req.body.topic);
       
       // Check if topic is empty after sanitization
-      if (!req.body.topic || req.body.topic.trim().length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: 'Validation failed',
-          code: 'VALIDATION_ERROR',
-          details: {
-            topic: 'Topic cannot be empty after sanitization'
-          }
-        });
-      }
-    }
-
-    // Validate userMessage length (after sanitization)
-    if (req.body.userMessage !== undefined) {
-      if (req.body.userMessage.length > 1000) {
-        return res.status(400).json({
-          success: false,
-          error: 'Validation failed',
-          code: 'VALIDATION_ERROR',
-          details: {
-            message: 'Message must be 1000 characters or less'
-          }
-        });
+      if (!req.sanitized.topic || req.sanitized.topic.length === 0) {
+        errors.topic = ['Topic cannot be empty after sanitization'];
       }
     }
 
     // Validate sessionId if present
     if (req.body.sessionId) {
       if (typeof req.body.sessionId !== 'string' || req.body.sessionId.length < 1) {
-        return res.status(400).json({
-          success: false,
-          error: 'Validation failed',
-          code: 'VALIDATION_ERROR',
-          details: {
-            sessionId: 'Session ID must be a non-empty string'
-          }
-        });
+        errors.sessionId = ['Session ID must be a non-empty string'];
       }
+    }
+
+    // If there are errors, return them
+    if (Object.keys(errors).length > 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: errors
+      });
     }
 
     next();
@@ -103,10 +82,10 @@ const validateInput = (req, res, next) => {
 
     res.status(400).json({
       success: false,
-      error: 'Validation failed',
       code: 'VALIDATION_ERROR',
+      message: 'Validation failed',
       details: {
-        general: 'Input validation failed'
+        general: ['Input validation failed']
       }
     });
   }
@@ -337,4 +316,3 @@ module.exports = {
   assessmentOutputSchema,
   quizGenerationSchema
 };
-

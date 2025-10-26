@@ -107,7 +107,8 @@ describe('Validation Hardening', () => {
       // Verify the message was sanitized in the database
       const updatedSession = await Session.findById(testSessionId);
       const lastMessage = updatedSession.messages[updatedSession.messages.length - 2]; // User message
-      // After sanitization: strip HTML tags and decode entities
+      // After sanitization: decode entities first, then strip HTML tags
+      // <script>alert("xss")</script>Hello <b>world</b>! -> decode -> strip -> "alert("xss")Hello world!"
       expect(lastMessage.content).toBe('alert("xss")Hello world!');
       expect(lastMessage.content).not.toContain('<script>');
       expect(lastMessage.content).not.toContain('<b>');
@@ -135,10 +136,13 @@ describe('Validation Hardening', () => {
 
       expect(response.status).toBe(200);
       
-      // Verify HTML entities were decoded (lt/gt become text, no tags to strip)
+      // Verify HTML entities were decoded: 'Hello &lt;world&gt; &amp; &quot;test&quot;'
+      // Step 1: Decode &lt; -> <, &gt; -> >, &quot; -> ", &amp; -> &
+      // Step 2: Strip <world> tags -> 'Hello  & "test"'
+      // Step 3: Trim and collapse spaces -> 'Hello & "test"'
       const updatedSession = await Session.findById(testSessionId);
       const lastMessage = updatedSession.messages[updatedSession.messages.length - 2];
-      expect(lastMessage.content).toBe('Hello & "test"'); // &lt;world&gt; decoded to <world>, but stripped by tag removal
+      expect(lastMessage.content).toBe('Hello & "test"');
     });
   });
 
@@ -153,7 +157,10 @@ describe('Validation Hardening', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.code).toBe('VALIDATION_ERROR');
-      expect(response.body.fieldErrors.message).toContain('cannot be empty');
+      expect(response.body.message).toBe('Validation failed');
+      expect(response.body.details.message).toBeDefined();
+      expect(Array.isArray(response.body.details.message)).toBe(true);
+      expect(response.body.details.message[0]).toContain('cannot be empty');
     });
 
     it('should reject messages that are too long', async () => {
@@ -168,7 +175,10 @@ describe('Validation Hardening', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.code).toBe('VALIDATION_ERROR');
-      expect(response.body.fieldErrors.message).toContain('1000 characters or less');
+      expect(response.body.message).toBe('Validation failed');
+      expect(response.body.details.message).toBeDefined();
+      expect(Array.isArray(response.body.details.message)).toBe(true);
+      expect(response.body.details.message[0]).toContain('1000 characters or less');
     });
 
     it('should reject invalid session IDs', async () => {
@@ -413,6 +423,8 @@ describe('Validation Hardening', () => {
 
       expect(response2.status).toBe(400);
       expect(response2.body.code).toBe('VALIDATION_ERROR');
+      expect(response2.body.message).toBe('Validation failed');
+      expect(response2.body.details).toBeDefined();
     });
   });
 });
