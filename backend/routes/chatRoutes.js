@@ -359,30 +359,8 @@ router.post('/v1/chat', async (req, res) => {
     // Build teacher prompt (for learning intent only)
     const prompt = buildTeacherPrompt(session, userMessage, isFollowUp);
     
-    // Call teacher API (with fallback for testing)
-    let assistantResponse;
-    try {
-      assistantResponse = await callTeacherAPI(prompt, req.maxTokens || 1100, session);
-    } catch (error) {
-      // Fallback response for testing when GROQ_API_KEY is not set
-      console.warn('LLM API failed, using fallback response', { error: error.message });
-      assistantResponse = `I'd be happy to help you learn JavaScript! 
-
-Based on your question "${userMessage}", let me explain the basics:
-
-JavaScript is a programming language that runs in web browsers and on servers. It's great for:
-- Making websites interactive
-- Building web applications
-- Creating games and animations
-
-What specific aspect of JavaScript would you like to explore first? Are you interested in:
-1. Basic syntax and variables?
-2. Functions and how they work?
-3. Working with the DOM (web page elements)?
-4. Something else?
-
-Let me know what interests you most and I'll dive deeper into that topic!`;
-    }
+    // Call teacher API - let errors propagate to error handler
+    const assistantResponse = await callTeacherAPI(prompt, req.maxTokens || 1100, session);
     
     // Extract question from response
     const extractedQuestion = extractQuestion(assistantResponse);

@@ -36,38 +36,25 @@ const classifyIntent = (userMessage, sessionPhase) => {
     return 'admin';
   }
   
-  // Check general/off-topic
+  // In learning/feedback phase, prioritize learning intent over general
+  if (['learning', 'feedback'].includes(sessionPhase)) {
+    // In learning phase, assume learning intent by default
+    // Only classify as 'general' if explicitly not learning-related
+    
+    // Check continue keywords - these are learning intent
+    if (continueKeywords.some(keyword => message.includes(keyword))) {
+      return 'learning';
+    }
+    
+    // Default to learning in learning phase (covers "Hello", etc.)
+    return 'learning';
+  }
+  
+  // Not in learning phase - use general classification
   if (generalKeywords.some(keyword => message.includes(keyword))) {
     return 'general';
   }
   
-  // Check continue keywords - these are learning intent if in appropriate phase
-  if (continueKeywords.some(keyword => message.includes(keyword))) {
-    if (['learning', 'feedback'].includes(sessionPhase)) {
-      return 'learning';
-    }
-    return 'general';
-  }
-  
-  // Default: learning intent (topic-related, progression acceptable)
-  // Messages that are content-related, questions about the topic, progress-related
-  const learningIndicators = [
-    'what', 'why', 'how', 'explain', 'understand', 'learn', 'study', 'practice',
-    'example', 'show', 'demonstrate', 'teach', 'understand', 'concept',
-    'algorithm', 'function', 'method', 'class', 'object', 'array', 'variable'
-  ];
-  
-  // If message contains learning indicators, it's learning intent
-  if (learningIndicators.some(indicator => message.includes(indicator))) {
-    return 'learning';
-  }
-  
-  // Default fallback: if in learning/feedback phase, assume learning
-  if (['learning', 'feedback'].includes(sessionPhase)) {
-    return 'learning';
-  }
-  
-  // Otherwise, return general for ambiguous messages
   return 'general';
 };
 

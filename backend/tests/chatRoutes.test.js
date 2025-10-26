@@ -319,7 +319,8 @@ describe('Chat Routes', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Validation failed');
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.message).toBe('Validation failed');
       expect(response.body.details).toBeDefined();
     });
 
