@@ -39,9 +39,9 @@ const validateInput = (req, res, next) => {
       if (!req.body.userMessage || req.body.userMessage.trim().length === 0) {
         return res.status(400).json({
           success: false,
-          error: 'User message cannot be empty',
+          error: 'Validation failed',
           code: 'VALIDATION_ERROR',
-          fieldErrors: {
+          details: {
             message: 'Message cannot be empty after sanitization'
           }
         });
@@ -56,9 +56,9 @@ const validateInput = (req, res, next) => {
       if (!req.body.topic || req.body.topic.trim().length === 0) {
         return res.status(400).json({
           success: false,
-          error: 'Topic cannot be empty',
+          error: 'Validation failed',
           code: 'VALIDATION_ERROR',
-          fieldErrors: {
+          details: {
             topic: 'Topic cannot be empty after sanitization'
           }
         });
@@ -70,9 +70,9 @@ const validateInput = (req, res, next) => {
       if (req.body.userMessage.length > 1000) {
         return res.status(400).json({
           success: false,
-          error: 'User message too long',
+          error: 'Validation failed',
           code: 'VALIDATION_ERROR',
-          fieldErrors: {
+          details: {
             message: 'Message must be 1000 characters or less'
           }
         });
@@ -84,9 +84,9 @@ const validateInput = (req, res, next) => {
       if (typeof req.body.sessionId !== 'string' || req.body.sessionId.length < 1) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid session ID',
+          error: 'Validation failed',
           code: 'VALIDATION_ERROR',
-          fieldErrors: {
+          details: {
             sessionId: 'Session ID must be a non-empty string'
           }
         });
@@ -103,9 +103,9 @@ const validateInput = (req, res, next) => {
 
     res.status(400).json({
       success: false,
-      error: 'Invalid input',
+      error: 'Validation failed',
       code: 'VALIDATION_ERROR',
-      fieldErrors: {
+      details: {
         general: 'Input validation failed'
       }
     });
@@ -322,7 +322,7 @@ const ERROR_RESPONSES = {
   NOT_FOUND: (resource = 'Resource') => createErrorResponse('NOT_FOUND', `${resource} not found`, null, 404),
   ILLEGAL_PHASE: (currentPhase, requiredPhase) => createErrorResponse('ILLEGAL_PHASE', `Cannot perform action in ${currentPhase} phase. Required: ${requiredPhase}`, null, 409),
   RATE_LIMITED: (retryAfter) => createErrorResponse('RATE_LIMITED', 'Too many requests. Please wait a bit.', null, 429),
-  LLM_PROVIDER_ERROR: (details) => createErrorResponse('LLM_PROVIDER_ERROR', 'Language model provider error', null, 502),
+  LLM_PROVIDER_ERROR: (details) => createErrorResponse('LLM_PROVIDER_ERROR', 'Chat service unavailable', null, 502),
   ASSESSMENT_JSON_INVALID: () => createErrorResponse('ASSESSMENT_JSON_INVALID', 'Assessment response format invalid', null, 502),
   CONTEXT_LIMIT: () => createErrorResponse('CONTEXT_LIMIT', 'Context limit exceeded. Try shorter messages or start a new session.', null, 507)
 };

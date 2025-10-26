@@ -128,8 +128,8 @@ router.post('/v1/chat', async (req, res) => {
       topic: session.topic 
     });
     
-    // Enforce session boundaries - reject if in pre phase or plan is empty
-    if (session.phase === 'pre' || !session.plan || session.plan.length === 0) {
+    // Enforce session boundaries - reject if in pre/assessing phase or plan is empty
+    if (['pre', 'assessing'].includes(session.phase) || !session.plan || session.plan.length === 0) {
       console.log('Session not ready for chat', { sessionId, phase: session.phase, hasPlan: !!session.plan });
       return res.status(409).json({
         success: false,
@@ -144,14 +144,14 @@ router.post('/v1/chat', async (req, res) => {
     const intent = classifyIntent(userMessage, session.phase);
     console.log('Message intent classified:', { intent, phase: session.phase, messagePreview: userMessage.substring(0, 50) });
     
-    // Phase guard - allow pre phase for testing, but restrict based on intent
-    if (!['pre', 'learning', 'feedback'].includes(session.phase)) {
+    // Phase guard - validate phase is allowed for chat
+    if (!['learning', 'feedback'].includes(session.phase)) {
       return res.status(409).json({
         success: false,
         error: 'Chat not allowed in current phase',
         code: 'ILLEGAL_PHASE',
         currentPhase: session.phase,
-        allowedPhases: ['pre', 'learning', 'feedback']
+        allowedPhases: ['learning', 'feedback']
       });
     }
     
