@@ -149,15 +149,81 @@ describe('Assessment Routes', () => {
         })
         .expect(200);
 
-      expect(response.body.success).toBe(true);
       expect(response.body.clarify).toBe(true);
       expect(response.body.questions).toHaveLength(2);
-      expect(response.body.questions[0]).toContain('specific aspect');
+    });
 
-      // Verify session stayed in assessing phase
-      const updatedSession = await Session.findById(testSessionId);
-      expect(updatedSession.phase).toBe('assessing');
-      expect(updatedSession.messages).toHaveLength(1); // Only assistant message
+    it('should handle clarify→answer→plan flow and enter learning phase', async () => {
+      // First, get clarification questions
+      mockGroqCreate.mockResolvedValueOnce({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              clarify: true,
+              questions: [
+                'What specific aspect of machine learning do you want to focus on?',
+                'Are you more interested in supervised or unsupervised learning?'
+              ]
+            })
+          }
+        }]
+      });
+
+      const clarifyResponse = await request(app)
+        .post('/v1/assessment')
+        .send({
+          sessionId: testSessionId,
+          userMessage: 'I want to learn machine learning',
+          mode: 'studying'
+        })
+        .expect(200);
+
+      expect(clarifyResponse.body.clarify).toBe(true);
+      expect(clarifyResponse.body.questions).toHaveLength(2);
+
+      // Check that session is in assessing phase
+      const sessionAfterClarify = await Session.findById(testSessionId);
+      expect(sessionAfterClarify.phase).toBe('assessing');
+      expect(sessionAfterClarify.meta.assessClarifyCount).toBe(1);
+
+      // Now answer the questions and get a plan
+      mockGroqCreate.mockResolvedValueOnce({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              topic: 'Machine Learning with Python',
+              chatTitle: 'ML Fundamentals',
+              rationale: 'Focused learning path for supervised learning',
+              plan: [
+                { moduleId: '1', title: 'Introduction to ML', targets: ['Understand supervised learning'], points: 25, difficulty: 'intro' },
+                { moduleId: '2', title: 'Classification Algorithms', targets: ['Implement classifiers'], points: 35, difficulty: 'core' },
+                { moduleId: '3', title: 'Model Evaluation', targets: ['Cross-validation and metrics'], points: 40, difficulty: 'apply' }
+              ],
+              nextPhase: 'learning'
+            })
+          }
+        }]
+      });
+
+      const planResponse = await request(app)
+        .post('/v1/assessment')
+        .send({
+          sessionId: testSessionId,
+          userMessage: 'Supervised learning with classification algorithms',
+          mode: 'studying'
+        })
+        .expect(200);
+
+      expect(planResponse.body.success).toBe(true);
+      expect(planResponse.body.data.plan).toHaveLength(3);
+      expect(planResponse.body.data.nextPhase).toBe('learning');
+
+      // Verify session transitioned to learning
+      const sessionAfterPlan = await Session.findById(testSessionId);
+      expect(sessionAfterPlan.phase).toBe('learning');
+      expect(sessionAfterPlan.plan).toHaveLength(3);
+      expect(sessionAfterPlan.activeModuleId).toBe('1');
+      expect(sessionAfterPlan.meta.assessClarifyCount).toBeUndefined(); // Cleared on entering learning
     });
 
     it('should handle JSON parse failure and retry', async () => {

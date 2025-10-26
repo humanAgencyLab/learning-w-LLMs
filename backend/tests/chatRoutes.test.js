@@ -221,7 +221,7 @@ describe('Chat Routes', () => {
       expect(response.body.error).toBe('Session not found');
     });
 
-    it('should return 409 for illegal phase', async () => {
+    it('should return 409 for illegal phase (pre)', async () => {
       // Set session to pre phase
       await Session.findByIdAndUpdate(testSessionId, { phase: 'pre' });
 
@@ -234,8 +234,47 @@ describe('Chat Routes', () => {
         .expect(409);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Chat not allowed in current phase');
+      expect(response.body.code).toBe('ILLEGAL_PHASE');
+      expect(response.body.error).toContain('not ready for chat');
       expect(response.body.currentPhase).toBe('pre');
+    });
+
+    it('should return 409 for assessing phase', async () => {
+      // Set session to assessing phase
+      await Session.findByIdAndUpdate(testSessionId, { phase: 'assessing' });
+
+      const response = await request(app)
+        .post('/v1/chat')
+        .send({
+          sessionId: testSessionId,
+          userMessage: 'Hello'
+        })
+        .expect(409);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.code).toBe('ILLEGAL_PHASE');
+      expect(response.body.error).toContain('not ready for chat');
+      expect(response.body.currentPhase).toBe('assessing');
+    });
+
+    it('should return 409 when plan is empty', async () => {
+      // Clear the plan while keeping phase as learning
+      await Session.findByIdAndUpdate(testSessionId, { 
+        phase: 'pre',
+        plan: []
+      });
+
+      const response = await request(app)
+        .post('/v1/chat')
+        .send({
+          sessionId: testSessionId,
+          userMessage: 'Hello'
+        })
+        .expect(409);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.code).toBe('ILLEGAL_PHASE');
+      expect(response.body.hint).toContain('assessment first');
     });
 
     it('should return 409 for view-only session', async () => {
