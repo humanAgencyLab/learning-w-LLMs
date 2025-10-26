@@ -149,8 +149,28 @@ router.post('/v1/chat', async (req, res) => {
       return res.status(409).json({
         success: false,
         error: 'Chat not allowed in current phase',
+        code: 'ILLEGAL_PHASE',
         currentPhase: session.phase,
         allowedPhases: ['pre', 'learning', 'feedback']
+      });
+    }
+    
+    // Check if session is view-only
+    if (session.isViewOnly) {
+      return res.status(409).json({
+        success: false,
+        error: 'Chat not allowed for view-only sessions',
+        code: 'ILLEGAL_PHASE'
+      });
+    }
+    
+    // Check if activeModuleId is null (only required for learning phase)
+    if (session.phase !== 'pre' && !session.activeModuleId) {
+      console.warn('No active module for chat', { sessionId });
+      return res.status(409).json({
+        success: false,
+        error: 'No active module. Please re-run assessment to set up learning plan.',
+        code: 'ILLEGAL_PHASE'
       });
     }
     
@@ -282,23 +302,6 @@ router.post('/v1/chat', async (req, res) => {
     
     // Keep session in 'pre' phase until user explicitly starts learning
     // No auto-transition - let the user choose what to learn about
-    
-    // Check if session is view-only
-    if (session.isViewOnly) {
-      return res.status(409).json({
-        success: false,
-        error: 'Chat not allowed for view-only sessions'
-      });
-    }
-    
-    // Check if activeModuleId is null (only required for learning phase)
-    if (session.phase !== 'pre' && !session.activeModuleId) {
-      console.warn('No active module for chat', { sessionId });
-      return res.status(409).json({
-        success: false,
-        error: 'No active module. Please re-run assessment to set up learning plan.'
-      });
-    }
     
     // Handle feedback phase continue intent
     let phaseChanged = false;

@@ -176,9 +176,10 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
       });
       return res.status(409).json({
         success: false,
-        error: 'Session not ready for quiz',
+        error: 'Quiz not allowed in current phase',
         code: 'ILLEGAL_PHASE',
         currentPhase: session.phase,
+        allowedPhases: ['learning', 'feedback'],
         hint: 'Please complete assessment first to create a learning plan'
       });
     }
@@ -192,6 +193,7 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
       return res.status(409).json({
         success: false,
         error: 'Quiz not allowed in current phase',
+        code: 'ILLEGAL_PHASE',
         currentPhase: session.phase,
         allowedPhases: ['learning', 'feedback']
       });
@@ -223,6 +225,7 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
       return res.status(409).json({
         success: false,
         error: 'Quiz not allowed in current phase',
+        code: 'ILLEGAL_PHASE',
         currentPhase: session.phase,
         allowedPhases: ['learning', 'feedback']
       });
@@ -345,9 +348,10 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
       });
       return res.status(409).json({
         success: false,
-        error: 'Session not ready',
+        error: 'Quiz not allowed in current phase',
         code: 'ILLEGAL_PHASE',
-        currentPhase: session.phase
+        currentPhase: session.phase,
+        allowedPhases: ['learning', 'feedback']
       });
     }
 
