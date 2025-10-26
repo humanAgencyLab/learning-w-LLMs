@@ -275,10 +275,11 @@ describe('Assessment Routes', () => {
             content: JSON.stringify({
               topic: 'React Basics',
               chatTitle: 'Learn React',
+              rationale: 'Structured React learning path',
               plan: [
-                { moduleId: '1', title: 'Components', points: 30 },
-                { moduleId: '2', title: 'State', points: 30 },
-                { moduleId: '3', title: 'Props', points: 30 }
+                { moduleId: '1', title: 'Components', points: 30, targets: ['Build components'] },
+                { moduleId: '2', title: 'State', points: 30, targets: ['Manage state'] },
+                { moduleId: '3', title: 'Props', points: 30, targets: ['Use props'] }
               ],
               nextPhase: 'learning'
             })
@@ -551,9 +552,10 @@ describe('Assessment Routes', () => {
             content: JSON.stringify({
               topic: 'New Topic',
               chatTitle: 'Learn New Topic',
+              rationale: 'Learning path for new topic',
               plan: [
-                { moduleId: '1', title: 'Introduction', points: 50 },
-                { moduleId: '2', title: 'Advanced', points: 50 }
+                { moduleId: '1', title: 'Introduction', points: 50, targets: ['Learn basics'] },
+                { moduleId: '2', title: 'Advanced', points: 50, targets: ['Master advanced concepts'] }
               ],
               nextPhase: 'learning'
             })
@@ -584,9 +586,10 @@ describe('Assessment Routes', () => {
             content: JSON.stringify({
               topic: 'Web Security Basics',
               chatTitle: 'Learn Web Security',
+              rationale: 'Security-focused learning path',
               plan: [
-                { moduleId: '1', title: 'XSS Prevention', points: 50 },
-                { moduleId: '2', title: 'CSRF Protection', points: 50 }
+                { moduleId: '1', title: 'XSS Prevention', points: 50, targets: ['Prevent XSS attacks'] },
+                { moduleId: '2', title: 'CSRF Protection', points: 50, targets: ['Implement CSRF protection'] }
               ],
               nextPhase: 'learning'
             })
