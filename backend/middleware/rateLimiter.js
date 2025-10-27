@@ -44,10 +44,8 @@ function createRateLimiter(options) {
       res.set('Retry-After', retryAfter.toString());
       res.status(429).json({
         success: false,
-        error: 'Too many requests',
         code: 'RATE_LIMITED',
-        message: 'Too many requests. Please wait a bit.',
-        retryAfterSec: retryAfter
+        message: 'Too many requests'
       });
     },
     skip: (req) => {

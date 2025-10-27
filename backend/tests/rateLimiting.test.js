@@ -4,23 +4,21 @@ const app = require('../app');
 const Session = require('../models/Session');
 
 // Mock Groq SDK
+const mockGroqCreate = jest.fn();
 jest.mock('groq-sdk', () => {
-  return {
-    Groq: jest.fn().mockImplementation(() => ({
-      chat: {
-        completions: {
-          create: jest.fn()
-        }
+  return jest.fn().mockImplementation(() => ({
+    chat: {
+      completions: {
+        create: mockGroqCreate
       }
-    }))
-  };
+    }
+  }));
 });
 
-const { Groq } = require('groq-sdk');
+const Groq = require('groq-sdk');
 
 describe('Rate Limiting', () => {
   let testSessionId;
-  let mockGroqClient;
 
   beforeAll(async () => {
     // Enable rate limiting for these tests
@@ -62,15 +60,8 @@ describe('Rate Limiting', () => {
     await session.save();
     testSessionId = session._id;
 
-    // Setup mock Groq client
-    mockGroqClient = {
-      chat: {
-        completions: {
-          create: jest.fn()
-        }
-      }
-    };
-    Groq.mockImplementation(() => mockGroqClient);
+    // Clear mocks
+    mockGroqCreate.mockClear();
   });
 
   afterEach(async () => {
@@ -82,7 +73,7 @@ describe('Rate Limiting', () => {
   describe('Chat Rate Limiting', () => {
     it('should allow requests within rate limit', async () => {
       // Mock successful chat response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: 'Hello! How can I help you learn?'
@@ -106,7 +97,7 @@ describe('Rate Limiting', () => {
 
     it('should rate limit chat requests', async () => {
       // Mock successful chat response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: 'Hello! How can I help you learn?'
@@ -136,7 +127,7 @@ describe('Rate Limiting', () => {
       const lastResponse = responses[responses.length - 1];
       expect(lastResponse.status).toBe(429);
       expect(lastResponse.body.code).toBe('RATE_LIMITED');
-      expect(lastResponse.body.message).toContain('Too many requests');
+      expect(lastResponse.body.message).toBe('Too many requests');
       expect(lastResponse.headers['retry-after']).toBeDefined();
     });
   });
@@ -299,7 +290,7 @@ describe('Rate Limiting', () => {
   describe('Rate Limit Headers', () => {
     it('should include Retry-After header in rate limit response', async () => {
       // Mock successful chat response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: 'Hello! How can I help you learn?'
