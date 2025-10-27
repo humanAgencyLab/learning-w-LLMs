@@ -78,8 +78,8 @@ function ChatInterface() {
     setInputValue('');
 
     try {
-      // If phase is 'pre', this is an assessment request
-      if (phase === 'pre') {
+      // If phase is 'pre' or 'assessing', handle as assessment/clarification
+      if (phase === 'pre' || phase === 'assessing') {
         await startAssessment(message, learningStyle);
       } else {
         // Otherwise, it's a normal chat message
@@ -527,7 +527,7 @@ function ChatInterface() {
       {error && (
         <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg shadow-soft">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-2 text-red-500">×</button>
+          <button onClick={clearError} className="ml-2 text-red-500">×</button>
         </div>
       )}
 
