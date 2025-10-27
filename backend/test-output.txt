@@ -1,0 +1,419 @@
+(node:84794) [MONGOOSE] Warning: Duplicate schema index on {"quizId":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(Use `node --trace-warnings ...` to show where the warning was created)
+FAIL tests/contextControl.test.js
+  ● Context Control Middleware › Summarization Trigger › should trigger summarization at 40+ turns
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 502
+
+      131 |
+      132 |       // The test should pass now with proper mocking
+    > 133 |       expect(response.status).toBe(200);
+          |                               ^
+      134 |       expect(response.body.data.summarized).toBe(true);
+      135 |       expect(response.body.data.summaryNote).toBe('Context compressed for continuity');
+      136 |
+
+      at Object.toBe (tests/contextControl.test.js:133:31)
+
+  ● Context Control Middleware › Summarization Trigger › should not summarize if outstandingCheck exists
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 502
+
+      168 |         });
+      169 |
+    > 170 |       expect(response.status).toBe(200);
+          |                               ^
+      171 |       expect(response.body.data.summarized).toBeUndefined();
+      172 |
+      173 |       // Verify no summarization occurred
+
+      at Object.toBe (tests/contextControl.test.js:170:31)
+
+  ● Context Control Middleware › Summarization Trigger › should handle summarization failure gracefully
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 502
+
+      200 |         });
+      201 |
+    > 202 |       expect(response.status).toBe(200);
+          |                               ^
+      203 |       expect(response.body.data.summarized).toBeUndefined();
+      204 |
+      205 |       // Verify session was not modified
+
+      at Object.toBe (tests/contextControl.test.js:202:31)
+
+  ● Context Control Middleware › Context Limits › should handle context limit exceeded
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 507
+    Received: 502
+
+      242 |         });
+      243 |
+    > 244 |       expect(response.status).toBe(507);
+          |                               ^
+      245 |       expect(response.body.code).toBe('CONTEXT_LIMIT');
+      246 |       expect(response.body.message).toBe('Context window exceeded');
+      247 |       expect(response.body.hint).toContain('Try starting a new session');
+
+      at Object.toBe (tests/contextControl.test.js:244:31)
+
+  ● Context Control Middleware › Idempotency › should not create multiple summaries for same conversation
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 502
+
+      283 |         });
+      284 |
+    > 285 |       expect(response1.status).toBe(200);
+          |                                ^
+      286 |       expect(response1.body.data.summarized).toBe(true);
+      287 |
+      288 |       // Second request should not trigger summarization again
+
+      at Object.toBe (tests/contextControl.test.js:285:32)
+
+  ● Context Control Middleware › Summary Content › should create proper summary format
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 502
+
+      324 |         });
+      325 |
+    > 326 |       expect(response.status).toBe(200);
+          |                               ^
+      327 |
+      328 |       // Verify summary message was created with proper schema
+      329 |       const updatedSession = await Session.findById(testSessionId);
+
+      at Object.toBe (tests/contextControl.test.js:326:31)
+
+[0mPOST /v1/chat [31m502[0m 8.601 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 1.748 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 1.474 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 3.781 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 1.570 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 1.311 ms - 80[0m
+(node:84794) [MONGOOSE] Warning: Duplicate schema index on {"quizId":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+FAIL tests/rateLimiting.test.js
+  ● Rate Limiting › Chat Rate Limiting › should allow requests within rate limit
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 502
+
+      101 |         });
+      102 |
+    > 103 |       expect(response.status).toBe(200);
+          |                               ^
+      104 |       expect(response.body.success).toBe(true);
+      105 |     });
+      106 |
+
+      at Object.toBe (tests/rateLimiting.test.js:103:31)
+
+(node:84794) [MONGOOSE] Warning: Duplicate schema index on {"quizId":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+[0mPOST /v1/chat [31m502[0m 3.171 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 3.146 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 3.140 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 3.219 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 3.356 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 4.006 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 4.115 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 4.292 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 2.507 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 3.454 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 7.851 ms - 80[0m
+[0mPOST /v1/chat [31m502[0m 8.433 ms - 80[0m
+[0mPOST /v1/assessment [33m409[0m 2.234 ms - 114[0m
+[0mPOST /v1/assessment [33m409[0m 2.448 ms - 114[0m
+[0mPOST /v1/assessment [33m409[0m 1.346 ms - 114[0m
+[0mPOST /v1/assessment [33m409[0m 1.387 ms - 114[0m
+[0mPOST /v1/assessment [33m409[0m 2.277 ms - 114[0m
+[0mPOST /v1/quiz/start [31m502[0m 4.127 ms - 82[0m
+[0mPOST /v1/quiz/start [31m502[0m 3.868 ms - 82[0m
+[0mPOST /v1/quiz/start [31m502[0m 3.861 ms - 82[0m
+[0mPOST /v1/quiz/start [31m502[0m 3.837 ms - 82[0m
+[0mPOST /v1/quiz/start [31m502[0m 3.907 ms - 82[0m
+[0mPOST /v1/quiz/start [31m502[0m 3.933 ms - 82[0m
+[0mPOST /v1/quiz/submit [33m409[0m 1.408 ms - 144[0m
+[0mPOST /v1/quiz/submit [33m409[0m 1.328 ms - 144[0m
+[0mPOST /v1/quiz/submit [33m409[0m 1.724 ms - 144[0m
+[0mPOST /v1/quiz/submit [33m409[0m 2.755 ms - 144[0m
+[0mPOST /v1/quiz/submit [33m409[0m 2.029 ms - 144[0m
+[0mPOST /v1/quiz/submit [33m409[0m 1.944 ms - 144[0m
+[0mPOST /v1/quiz/submit [33m409[0m 1.862 ms - 144[0m
+[0mPOST /v1/quiz/submit [33m409[0m 1.827 ms - 144[0m
+FAIL tests/assessmentRoutes.test.js
+  ● Assessment Routes › POST /v1/assessment › should reject invalid point sums
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "ASSESSMENT_JSON_INVALID"
+    Received: "LLM_PROVIDER_ERROR"
+
+      299 |
+      300 |       expect(response.body.success).toBe(false);
+    > 301 |       expect(response.body.code).toBe('ASSESSMENT_JSON_INVALID');
+          |                                  ^
+      302 |     });
+      303 |
+      304 |     it('should reject too many modules', async () => {
+
+      at Object.toBe (tests/assessmentRoutes.test.js:301:34)
+
+  ● Assessment Routes › POST /v1/assessment › should reject too many modules
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "ASSESSMENT_JSON_INVALID"
+    Received: "LLM_PROVIDER_ERROR"
+
+      333 |
+      334 |       expect(response.body.success).toBe(false);
+    > 335 |       expect(response.body.code).toBe('ASSESSMENT_JSON_INVALID');
+          |                                  ^
+      336 |     });
+      337 |
+      338 |     it('should reject duplicate module titles', async () => {
+
+      at Object.toBe (tests/assessmentRoutes.test.js:335:34)
+
+  ● Assessment Routes › POST /v1/assessment › should reject duplicate module titles
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "ASSESSMENT_JSON_INVALID"
+    Received: "LLM_PROVIDER_ERROR"
+
+      365 |
+      366 |       expect(response.body.success).toBe(false);
+    > 367 |       expect(response.body.code).toBe('ASSESSMENT_JSON_INVALID');
+          |                                  ^
+      368 |     });
+      369 |
+      370 |     it('should reject generic module titles', async () => {
+
+      at Object.toBe (tests/assessmentRoutes.test.js:367:34)
+
+  ● Assessment Routes › POST /v1/assessment › should reject generic module titles
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "ASSESSMENT_JSON_INVALID"
+    Received: "LLM_PROVIDER_ERROR"
+
+      397 |
+      398 |       expect(response.body.success).toBe(false);
+    > 399 |       expect(response.body.code).toBe('ASSESSMENT_JSON_INVALID');
+          |                                  ^
+      400 |     });
+      401 |
+      402 |     it('should reject non-contiguous module IDs', async () => {
+
+      at Object.toBe (tests/assessmentRoutes.test.js:399:34)
+
+  ● Assessment Routes › POST /v1/assessment › should reject non-contiguous module IDs
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "ASSESSMENT_JSON_INVALID"
+    Received: "LLM_PROVIDER_ERROR"
+
+      429 |
+      430 |       expect(response.body.success).toBe(false);
+    > 431 |       expect(response.body.code).toBe('ASSESSMENT_JSON_INVALID');
+          |                                  ^
+      432 |     });
+      433 |
+      434 |     it('should return 404 for non-existent session', async () => {
+
+      at Object.toBe (tests/assessmentRoutes.test.js:431:34)
+
+  ● Assessment Routes › POST /v1/assessment › should validate input data
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "Validation failed"
+    Received: undefined
+
+      522 |
+      523 |       expect(response.body.success).toBe(false);
+    > 524 |       expect(response.body.error).toBe('Validation failed');
+          |                                   ^
+      525 |       expect(response.body.details).toBeDefined();
+      526 |     });
+      527 |
+
+      at Object.toBe (tests/assessmentRoutes.test.js:524:35)
+
+  ● Assessment Routes › POST /v1/assessment › should handle Groq API errors
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "Assessment service unavailable"
+    Received: undefined
+
+      540 |
+      541 |       expect(response.body.success).toBe(false);
+    > 542 |       expect(response.body.error).toBe('Assessment service unavailable');
+          |                                   ^
+      543 |     });
+      544 |
+      545 |     it('should reset session when topic changes', async () => {
+
+      at Object.toBe (tests/assessmentRoutes.test.js:542:35)
+
+[0mPOST /v1/assessment [32m200[0m 5.298 ms - 623[0m
+[0mPOST /v1/assessment [32m200[0m 2.642 ms - 170[0m
+[0mPOST /v1/assessment [32m200[0m 2.167 ms - 179[0m
+[0mPOST /v1/assessment [32m200[0m 3.324 ms - 551[0m
+[0mPOST /v1/assessment [32m200[0m 8.646 ms - 311[0m
+[0mPOST /v1/assessment [31m502[0m 3.227 ms - 82[0m
+[0mPOST /v1/assessment [31m502[0m 1.554 ms - 82[0m
+[0mPOST /v1/assessment [31m502[0m 1.475 ms - 82[0m
+[0mPOST /v1/assessment [31m502[0m 1.299 ms - 82[0m
+[0mPOST /v1/assessment [31m502[0m 1.311 ms - 82[0m
+[0mPOST /v1/assessment [33m404[0m 0.432 ms - 45[0m
+[0mPOST /v1/assessment [33m400[0m 0.592 ms - 62[0m
+[0mPOST /v1/assessment [33m409[0m 0.538 ms - 114[0m
+[0mPOST /v1/assessment [31m502[0m 1.091 ms - 82[0m
+[0mPOST /v1/assessment [32m200[0m 2.935 ms - 315[0m
+[0mPOST /v1/assessment [32m200[0m 2.497 ms - 348[0m
+FAIL tests/contextControl.unit.test.js
+  ● Context Control Middleware - Unit Tests › Summarization Logic › should trigger summarization at 40+ turns
+
+    expect(received).toBeLessThanOrEqual(expected)
+
+    Expected: <= 26
+    Received:    45
+
+      156 |       console.log('Summarized up to index:', updatedSession.meta.summarizedUpToIndex);
+      157 |       // Summary replaces chunks, remaining messages should be <= original (1 summary + remaining messages)
+    > 158 |       expect(updatedSession.messages.length).toBeLessThanOrEqual(26); // 1 summary + <=25 remaining
+          |                                              ^
+      159 |       expect(updatedSession.meta.summaryVersion).toBe(1);
+      160 |       expect(updatedSession.meta.summarizedUpToIndex).toBeDefined();
+      161 |
+
+      at Object.toBeLessThanOrEqual (tests/contextControl.unit.test.js:158:46)
+
+(node:84794) [MONGOOSE] Warning: Duplicate schema index on {"quizId":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+PASS tests/quizRoutes.test.js
+(node:84794) [MONGOOSE] Warning: Duplicate schema index on {"quizId":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+[0mPOST /v1/quiz/start [32m200[0m 3.716 ms - 533[0m
+[0mPOST /v1/quiz/start [32m200[0m 2.071 ms - 500[0m
+[0mPOST /v1/quiz/start [32m200[0m 0.807 ms - 148[0m
+[0mPOST /v1/quiz/start [33m404[0m 0.517 ms - 67[0m
+[0mPOST /v1/quiz/start [33m400[0m 0.578 ms - 122[0m
+[0mPOST /v1/quiz/start [33m404[0m 0.602 ms - 127[0m
+[0mPOST /v1/quiz/start [33m409[0m 0.570 ms - 213[0m
+[0mPOST /v1/quiz/start [31m502[0m 2.465 ms - 82[0m
+[0mPOST /v1/quiz/submit [32m200[0m 2.956 ms - 231[0m
+[0mPOST /v1/quiz/submit [32m200[0m 2.316 ms - 407[0m
+[0mPOST /v1/quiz/submit [32m200[0m 2.214 ms - 231[0m
+[0mPOST /v1/quiz/submit [32m200[0m 2.125 ms - 499[0m
+[0mPOST /v1/quiz/submit [32m200[0m 2.592 ms - 140[0m
+[0mPOST /v1/quiz/submit [33m409[0m 0.833 ms - 145[0m
+[0mPOST /v1/quiz/submit [33m404[0m 0.384 ms - 67[0m
+[0mPOST /v1/quiz/submit [33m409[0m 0.562 ms - 114[0m
+[0mPOST /v1/quiz/submit [33m400[0m 0.697 ms - 161[0m
+[0mPOST /v1/quiz/submit [33m400[0m 0.984 ms - 497[0m
+[0mPOST /v1/quiz/submit [32m200[0m 2.346 ms - 140[0m
+[0mPOST /v1/chat [32m200[0m 2.811 ms - 343[0m
+[0mPOST /v1/chat [32m200[0m 2.004 ms - 286[0m
+[0mPOST /v1/chat [32m200[0m 1.547 ms - 213[0m
+[0mPOST /v1/chat [32m200[0m 2.402 ms - 226[0m
+[0mPOST /v1/chat [33m404[0m 0.376 ms - 66[0m
+[0mPOST /v1/chat [33m409[0m 0.572 ms - 166[0m
+[0mPOST /v1/chat [33m409[0m 0.552 ms - 172[0m
+[0mPOST /v1/chat [33m409[0m 0.473 ms - 166[0m
+[0mPOST /v1/chat [33m409[0m 0.538 ms - 90[0m
+[0mPOST /v1/chat [33m409[0m 0.747 ms - 118[0m
+[0mPOST /v1/chat [32m200[0m 1.585 ms - 187[0m
+[0mPOST /v1/chat [32m200[0m 1.656 ms - 246[0m
+[0mPOST /v1/chat [31m502[0m 2.323 ms - 80[0m
+[0mPOST /v1/chat [32m200[0m 1.486 ms - 212[0m
+[0mPOST /v1/chat [32m200[0m 1.338 ms - 213[0m
+[0mPOST /v1/chat [32m200[0m 1.322 ms - 213[0m
+[0mPOST /v1/chat [32m200[0m 1.374 ms - 212[0m
+[0mPOST /v1/chat [32m200[0m 1.377 ms - 212[0m
+[0mPOST /v1/chat [32m200[0m 1.547 ms - 213[0m
+[0mPOST /v1/chat [32m200[0m 1.523 ms - 213[0m
+[0mPOST /v1/chat [32m200[0m 1.527 ms - 213[0m
+[0mPOST /v1/chat [32m200[0m 1.576 ms - 213[0m
+[0mPOST /v1/chat [32m200[0m 1.944 ms - 182[0m
+[0mPOST /v1/chat [32m200[0m 1.468 ms - 181[0m
+[0mPOST /v1/chat [32m200[0m 1.517 ms - 181[0m
+[0mPOST /v1/chat [32m200[0m 1.511 ms - 181[0m
+[0mPOST /v1/chat [32m200[0m 1.626 ms - 181[0m
+[0mPOST /v1/chat [32m200[0m 1.808 ms - 181[0m
+PASS tests/chatRoutes.test.js
+(node:84794) [MONGOOSE] Warning: Duplicate schema index on {"quizId":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+[0mPOST /v1/chat [32m200[0m 1.752 ms - 181[0m
+[0mPOST /v1/chat [32m200[0m 1.793 ms - 181[0m
+[0mPOST /v1/chat [32m200[0m 2.035 ms - 181[0m
+[0mPOST /v1/chat [32m200[0m 1.369 ms - 193[0m
+[0mPOST /v1/chat [32m200[0m 1.474 ms - 212[0m
+PASS tests/sessionRoutes.test.js
+(node:84794) [MONGOOSE] Warning: Duplicate schema index on {"quizId":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+[0mPOST /v1/sessions [32m201[0m 2.342 ms - 696[0m
+[0mPOST /v1/sessions [32m201[0m 1.331 ms - 702[0m
+[0mPOST /v1/sessions [33m400[0m 1.861 ms - 247[0m
+[0mPOST /v1/sessions [32m201[0m 1.028 ms - 696[0m
+[0mPOST /v1/sessions [31m500[0m 0.351 ms - 49[0m
+[0mGET /v1/sessions/68fe94ac9d22ed1c140ce507 [32m200[0m 1.560 ms - 1628[0m
+[0mGET /v1/sessions/68fe94ac9d22ed1c140ce51f [33m404[0m 0.488 ms - 67[0m
+[0mGET /v1/sessions/invalid-id [33m404[0m 0.035 ms - 67[0m
+[0mPOST /v1/sessions/68fe94ac9d22ed1c140ce52b/resume [32m200[0m 1.304 ms - 3273[0m
+[0mPOST /v1/sessions/68fe94ac9d22ed1c140ce57f/resume [33m404[0m 0.877 ms - 67[0m
+[0mPOST /v1/sessions/invalid-id/resume [33m404[0m 0.046 ms - 67[0m
+[0mPOST /v1/sessions/68fe94ac9d22ed1c140ce5bb/resume [32m200[0m 0.705 ms - 1056[0m
+PASS tests/validationHardening.test.js
+(node:84794) [MONGOOSE] Warning: Duplicate schema index on {"quizId":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+[0mPOST /v1/chat [32m200[0m 3.218 ms - 169[0m
+[0mPOST /v1/chat [32m200[0m 1.919 ms - 169[0m
+[0mPOST /v1/chat [33m400[0m 0.343 ms - 128[0m
+[0mPOST /v1/quiz/start [33m404[0m 0.715 ms - 127[0m
+[0mPOST /v1/quiz/start [33m404[0m 0.389 ms - 67[0m
+[0mPOST /v1/assessment [31m502[0m 2.867 ms - 82[0m
+[0mPOST /v1/assessment [31m502[0m 1.213 ms - 82[0m
+[0mPOST /v1/assessment [31m502[0m 1.230 ms - 82[0m
+[0mPOST /v1/quiz/start [31m502[0m 2.459 ms - 82[0m
+[0mPOST /v1/quiz/start [31m502[0m 0.664 ms - 82[0m
+[0mPOST /v1/chat [33m404[0m 0.369 ms - 66[0m
+PASS tests/healthEndpoints.test.js
+PASS tests/progressService.test.js
+
+Test Suites: 4 failed, 6 passed, 10 total
+Tests:       15 failed, 105 passed, 120 total
+Snapshots:   0 total
+Time:        1.599 s, estimated 3 s
+[0mGET /v1/health [32m200[0m 0.277 ms - 245[0m
+[0mGET /v1/health [32m200[0m 0.108 ms - 245[0m
+[0mGET /v1/health [32m200[0m 0.046 ms - 245[0m
+[0mGET /v1/metrics [32m200[0m 0.087 ms - 538[0m
+[0mGET /v1/metrics [32m200[0m 0.050 ms - 538[0m
+[0mGET /v1/ready [32m200[0m 0.050 ms - 57[0m
+[0mGET /v1/live [32m200[0m 0.053 ms - 57[0m
+[0mGET /health [32m200[0m 0.048 ms - 11[0m
+[0mGET /v1/unknown-route [33m404[0m 0.080 ms - 62[0m
+Jest did not exit one second after the test run has completed.
+
+'This usually means that there are asynchronous operations that weren't stopped in your tests. Consider running Jest with `--detectOpenHandles` to troubleshoot this issue.

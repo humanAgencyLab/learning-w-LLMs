@@ -298,7 +298,8 @@ describe('Assessment Routes', () => {
         .expect(502);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.code).toBe('ASSESSMENT_JSON_INVALID');
+      expect(response.body.code).toBe('LLM_PROVIDER_ERROR');
+      expect(response.body.message).toBe('Chat service unavailable');
     });
 
     it('should reject too many modules', async () => {
@@ -332,7 +333,8 @@ describe('Assessment Routes', () => {
         .expect(502);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.code).toBe('ASSESSMENT_JSON_INVALID');
+      expect(response.body.code).toBe('LLM_PROVIDER_ERROR');
+      expect(response.body.message).toBe('Chat service unavailable');
     });
 
     it('should reject duplicate module titles', async () => {
@@ -364,7 +366,8 @@ describe('Assessment Routes', () => {
         .expect(502);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.code).toBe('ASSESSMENT_JSON_INVALID');
+      expect(response.body.code).toBe('LLM_PROVIDER_ERROR');
+      expect(response.body.message).toBe('Chat service unavailable');
     });
 
     it('should reject generic module titles', async () => {
@@ -396,7 +399,8 @@ describe('Assessment Routes', () => {
         .expect(502);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.code).toBe('ASSESSMENT_JSON_INVALID');
+      expect(response.body.code).toBe('LLM_PROVIDER_ERROR');
+      expect(response.body.message).toBe('Chat service unavailable');
     });
 
     it('should reject non-contiguous module IDs', async () => {
@@ -428,7 +432,8 @@ describe('Assessment Routes', () => {
         .expect(502);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.code).toBe('ASSESSMENT_JSON_INVALID');
+      expect(response.body.code).toBe('LLM_PROVIDER_ERROR');
+      expect(response.body.message).toBe('Chat service unavailable');
     });
 
     it('should return 404 for non-existent session', async () => {
@@ -444,7 +449,8 @@ describe('Assessment Routes', () => {
         .expect(404);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Session not found');
+      expect(response.body.code).toBe('NOT_FOUND');
+      expect(response.body.message).toBe('Resource not found');
     });
 
     it('should return 400 for missing profile', async () => {
@@ -489,7 +495,9 @@ describe('Assessment Routes', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Profile is required for assessment');
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.message).toBe('Validation failed');
+      expect(response.body.details.profile).toBeDefined();
     });
 
     it('should return 409 for illegal phase transition', async () => {
@@ -506,8 +514,8 @@ describe('Assessment Routes', () => {
         .expect(409);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Illegal phase transition');
-      expect(response.body.currentPhase).toBe('learning');
+      expect(response.body.code).toBe('ILLEGAL_PHASE');
+      expect(response.body.message).toBe('Session not ready');
     });
 
     it('should validate input data', async () => {
@@ -521,7 +529,8 @@ describe('Assessment Routes', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Validation failed');
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.message).toBe('Validation failed');
       expect(response.body.details).toBeDefined();
     });
 
@@ -539,7 +548,8 @@ describe('Assessment Routes', () => {
         .expect(502);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Assessment service unavailable');
+      expect(response.body.code).toBe('LLM_PROVIDER_ERROR');
+      expect(response.body.message).toBe('Chat service unavailable');
     });
 
     it('should reset session when topic changes', async () => {

@@ -119,7 +119,8 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       req.logger.warn('Session not found', { sessionId });
       return res.status(404).json({
         success: false,
-        error: 'Session not found'
+        code: 'NOT_FOUND',
+        message: 'Resource not found'
       });
     }
     
@@ -129,7 +130,11 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       req.logger.warn('Profile missing or empty', { sessionId });
       return res.status(400).json({
         success: false,
-        error: 'Profile is required for assessment'
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          profile: ['Profile is required for assessment']
+        }
       });
     }
     
@@ -141,9 +146,8 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       });
       return res.status(409).json({
         success: false,
-        error: 'Illegal phase transition',
-        currentPhase: session.phase,
-        allowedPhases: ['pre', 'assessing']
+        code: 'ILLEGAL_PHASE',
+        message: 'Session not ready'
       });
     }
     
@@ -345,7 +349,8 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     if (error instanceof z.ZodError) {
       return res.status(400).json({
         success: false,
-        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
         details: error.errors
       });
     }
