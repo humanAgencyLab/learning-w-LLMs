@@ -1,7 +1,11 @@
 import { API_BASE } from '../config';
 
 export async function createSession(profile) {
-  const response = await fetch(`${API_BASE}/v1/sessions`, {
+  const url = `${API_BASE}/v1/sessions`;
+  console.log('sessionApi.createSession - Making request to:', url);
+  console.log('Payload:', profile || {});
+  
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -9,12 +13,18 @@ export async function createSession(profile) {
     body: JSON.stringify(profile || {}),
   });
 
+  console.log('sessionApi.createSession - Response status:', response.status);
+  console.log('sessionApi.createSession - Response ok:', response.ok);
+
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to create session');
+    const errorData = await response.json().catch(() => ({ error: 'Network error' }));
+    console.error('sessionApi.createSession - Error response:', errorData);
+    throw new Error(errorData.error || errorData.message || 'Failed to create session');
   }
 
-  return response.json();
+  const data = await response.json();
+  console.log('sessionApi.createSession - Success response:', data);
+  return data;
 }
 
 export async function getSession(sessionId) {
