@@ -33,7 +33,9 @@ const SimpleTest = () => {
     
     try {
       addLog('Running assessment...');
-      const res = await fetch('/v1/assessment', {
+      
+      // First assessment call
+      let res = await fetch('/v1/assessment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -42,15 +44,49 @@ const SimpleTest = () => {
           mode: 'studying'
         })
       });
-      const data = await res.json();
+      let data = await res.json();
       setResponse(JSON.stringify(data, null, 2));
       
       if (data.clarify) {
-        addLog('Got clarification questions');
+        addLog('Got clarification questions. Answering them...');
+        
+        // Answer the clarification questions
+        res = await fetch('/v1/assessment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId,
+            userMessage: 'I want to learn useState and useEffect for form state and API calls',
+            mode: 'studying'
+          })
+        });
+        data = await res.json();
+        setResponse(JSON.stringify(data, null, 2));
+        
+        if (data.clarify) {
+          addLog('Still clarifying. Answering again...');
+          
+          // Second answer
+          res = await fetch('/v1/assessment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId,
+              userMessage: 'I need practical examples of building forms that use API calls with loading states and error handling',
+              mode: 'studying'
+            })
+          });
+          data = await res.json();
+          setResponse(JSON.stringify(data, null, 2));
+        }
+      }
+      
+      if (data.data?.plan) {
+        addLog('✅ Assessment complete! Plan generated. Session ready for chat.');
       } else if (data.plan) {
-        addLog('Assessment complete! Plan generated.');
+        addLog('✅ Assessment complete! Plan generated. Session ready for chat.');
       } else {
-        addLog('Assessment in progress...');
+        addLog('⚠️ Assessment returned unexpected response');
       }
     } catch (err) {
       addLog(`Error: ${err.message}`);
