@@ -2,25 +2,24 @@ const request = require('supertest');
 const mongoose = require('mongoose');
 const app = require('../app');
 const Session = require('../models/Session');
+const { resetGroqClient } = require('../middleware/contextControl');
 
 // Mock Groq SDK
+const mockGroqCreate = jest.fn();
 jest.mock('groq-sdk', () => {
   return {
     Groq: jest.fn().mockImplementation(() => ({
       chat: {
         completions: {
-          create: jest.fn()
+          create: mockGroqCreate
         }
       }
     }))
   };
 });
 
-const { Groq } = require('groq-sdk');
-
 describe('Context Control Middleware', () => {
   let testSessionId;
-  let mockGroqClient;
 
   beforeAll(async () => {
     // Connect to test database
@@ -56,34 +55,23 @@ describe('Context Control Middleware', () => {
       }
     });
 
-    // Add many messages to trigger summarization
+    // Add many messages to trigger summarization (all learning intent)
     for (let i = 0; i < 45; i++) {
       session.messages.push({
         id: `msg_${i + 1}`,
         role: i % 2 === 0 ? 'user' : 'assistant',
         content: `Message ${i + 1}`,
         timestamp: new Date(),
-        metadata: { tokens: 10 }
+        metadata: { tokens: 10, intent: 'learning' }
       });
     }
 
     await session.save();
     testSessionId = session._id;
 
-    // Setup mock Groq client
-    mockGroqClient = {
-      chat: {
-        completions: {
-          create: jest.fn()
-        }
-      }
-    };
-    
-    // Mock the Groq constructor globally
-    Groq.mockImplementation(() => mockGroqClient);
-    
-    // Reset mocks
-    mockGroqClient.chat.completions.create.mockReset();
+    // Reset groq client and clear mocks
+    resetGroqClient();
+    mockGroqCreate.mockClear();
   });
 
   afterEach(async () => {
@@ -99,7 +87,7 @@ describe('Context Control Middleware', () => {
   describe('Summarization Trigger', () => {
     it('should trigger summarization at 40+ turns', async () => {
       // Mock successful summarization response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValueOnce({
         choices: [{
           message: {
             content: '• Concepts mastered: Variables, functions\n• Misconceptions resolved: None\n• Open questions: How to use closures?\n• Next micro-goal: Learn about scope'
@@ -111,7 +99,7 @@ describe('Context Control Middleware', () => {
       });
 
       // Mock chat response
-      mockGroqClient.chat.completions.create.mockResolvedValueOnce({
+      mockGroqCreate.mockResolvedValueOnce({
         choices: [{
           message: {
             content: 'Great question about closures! Let me explain...'
@@ -149,7 +137,7 @@ describe('Context Control Middleware', () => {
       });
 
       // Mock chat response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: 'Great question about closures! Let me explain...'
@@ -178,10 +166,10 @@ describe('Context Control Middleware', () => {
 
     it('should handle summarization failure gracefully', async () => {
       // Mock failed summarization
-      mockGroqClient.chat.completions.create.mockRejectedValue(new Error('API Error'));
+      mockGroqCreate.mockRejectedValueOnce(new Error('API Error'));
 
       // Mock chat response
-      mockGroqClient.chat.completions.create.mockResolvedValueOnce({
+      mockGroqCreate.mockResolvedValueOnce({
         choices: [{
           message: {
             content: 'Great question about closures! Let me explain...'
@@ -251,7 +239,7 @@ describe('Context Control Middleware', () => {
   describe('Idempotency', () => {
     it('should not create multiple summaries for same conversation', async () => {
       // Mock successful summarization response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValueOnce({
         choices: [{
           message: {
             content: '• Concepts mastered: Variables\n• Misconceptions resolved: None\n• Open questions: None\n• Next micro-goal: Learn functions'
@@ -263,7 +251,7 @@ describe('Context Control Middleware', () => {
       });
 
       // Mock chat response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: 'Great question about closures! Let me explain...'
@@ -305,7 +293,7 @@ describe('Context Control Middleware', () => {
   describe('Summary Content', () => {
     it('should create proper summary format', async () => {
       // Mock summarization response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValueOnce({
         choices: [{
           message: {
             content: '• Concepts mastered: Variables, functions, scope\n• Misconceptions resolved: Variable hoisting\n• Open questions: How to use closures effectively?\n• Next micro-goal: Learn about closures'

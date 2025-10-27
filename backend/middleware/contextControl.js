@@ -237,7 +237,7 @@ async function summarizeConversation(session, messages, requestId) {
       throw new Error('Empty summary response from LLM');
     }
 
-    // Create system summary message with stable schema
+    // Create system summary message with deterministic schema
     const uuid = require('uuid');
     const summaryMessage = {
       id: uuid.v4(),
@@ -358,6 +358,7 @@ async function checkContextLimits(session, routePath, requestId) {
 
 module.exports = {
   contextControl,
+  getGroqClient,
   resetGroqClient,
   SUMMARIZE_EVERY_N_TURNS,
   SUMMARIZE_CHUNK_SIZE,

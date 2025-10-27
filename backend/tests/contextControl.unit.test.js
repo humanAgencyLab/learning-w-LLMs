@@ -1,21 +1,23 @@
-const { contextControl, resetGroqClient } = require('../middleware/contextControl');
+const { contextControl, resetGroqClient, getGroqClient } = require('../middleware/contextControl');
 const Session = require('../models/Session');
 const mongoose = require('mongoose');
 
-// Mock the Groq client
+// Mock the Groq SDK
+const mockGroqCreate = jest.fn();
 jest.mock('groq-sdk', () => {
-  return jest.fn().mockImplementation(() => ({
-    chat: {
-      completions: {
-        create: jest.fn()
+  return {
+    Groq: jest.fn().mockImplementation(() => ({
+      chat: {
+        completions: {
+          create: mockGroqCreate
+        }
       }
-    }
-  }));
+    }))
+  };
 });
 
 describe('Context Control Middleware - Unit Tests', () => {
   let testSessionId;
-  let mockGroqClient;
 
   beforeAll(async () => {
     // Connect to test database
@@ -75,24 +77,23 @@ describe('Context Control Middleware - Unit Tests', () => {
       }
     });
 
-    // Add 45 messages to trigger summarization
+    // Add 45 messages to trigger summarization (all learning intent)
     for (let i = 0; i < 45; i++) {
       session.messages.push({
         id: `msg_${i + 1}`,
         role: i % 2 === 0 ? 'user' : 'assistant',
         content: `Message ${i + 1}`,
         timestamp: new Date(),
-        metadata: { tokens: 10 }
+        metadata: { tokens: 10, intent: 'learning' }
       });
     }
 
     await session.save();
     testSessionId = session._id;
 
-    // Setup mock Groq client
-    const Groq = require('groq-sdk');
-    mockGroqClient = new Groq();
-    console.log('Mock Groq client created:', !!mockGroqClient);
+    // Reset groq client and clear mocks
+    resetGroqClient();
+    mockGroqCreate.mockClear();
   });
 
   afterEach(async () => {
@@ -107,9 +108,11 @@ describe('Context Control Middleware - Unit Tests', () => {
 
   describe('Summarization Logic', () => {
     it('should trigger summarization at 40+ turns', async () => {
-      // Setup mock for Groq
-      const Groq = require('groq-sdk');
-      const mockCreate = jest.fn().mockResolvedValue({
+      // Reset groq client to ensure fresh mock
+      resetGroqClient();
+      
+      // Setup mock for summarization - must come AFTER resetGroqClient
+      mockGroqCreate.mockResolvedValueOnce({
         choices: [{
           message: {
             content: '• Concepts mastered: Variables, functions\n• Misconceptions resolved: None\n• Open questions: How to use closures?\n• Next micro-goal: Learn about scope'
@@ -119,18 +122,6 @@ describe('Context Control Middleware - Unit Tests', () => {
           completion_tokens: 25
         }
       });
-      
-      // Replace Groq mock implementation
-      Groq.mockImplementation(() => ({
-        chat: {
-          completions: {
-            create: mockCreate
-          }
-        }
-      }));
-      
-      // Reset groq client so it picks up the new mock
-      resetGroqClient();
       
       console.log('Mock setup complete');
 
@@ -146,14 +137,21 @@ describe('Context Control Middleware - Unit Tests', () => {
       };
       const next = jest.fn();
 
+      // Ensure we're working with a fresh session load
+      const freshSession = await Session.findById(testSessionId);
+      console.log('Before middleware - Messages length:', freshSession.messages.length);
+      console.log('Before middleware - Summary version:', freshSession.meta.summaryVersion);
+      console.log('Before middleware - Summarized up to index:', freshSession.meta.summarizedUpToIndex);
+      console.log('Before middleware - Outstanding check:', freshSession.meta.outstandingCheck);
+      
       // Call the middleware
       await contextControl(req, res, next);
 
-      // Verify session was updated
+      // Verify session was updated - reload from DB
       const updatedSession = await Session.findById(testSessionId);
-      console.log('Messages length:', updatedSession.messages.length);
-      console.log('Summary version:', updatedSession.meta.summaryVersion);
-      console.log('Summarized up to index:', updatedSession.meta.summarizedUpToIndex);
+      console.log('After middleware - Messages length:', updatedSession.messages.length);
+      console.log('After middleware - Summary version:', updatedSession.meta.summaryVersion);
+      console.log('After middleware - Summarized up to index:', updatedSession.meta.summarizedUpToIndex);
       // Summary replaces chunks, remaining messages should be <= original (1 summary + remaining messages)
       expect(updatedSession.messages.length).toBeLessThanOrEqual(26); // 1 summary + <=25 remaining
       expect(updatedSession.meta.summaryVersion).toBe(1);
@@ -196,7 +194,7 @@ describe('Context Control Middleware - Unit Tests', () => {
 
     it('should handle summarization failure gracefully', async () => {
       // Mock failed summarization
-      mockGroqClient.chat.completions.create.mockRejectedValue(new Error('API Error'));
+      mockGroqCreate.mockRejectedValueOnce(new Error('API Error'));
 
       const session = await Session.findById(testSessionId);
       const req = {
