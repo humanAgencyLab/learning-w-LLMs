@@ -107,6 +107,7 @@ export const useSession = () => {
     answerClarify,
     startQuiz,
     submitQuiz,
+    clearError: store.clearError,
     
     // Computed values
     currentModule,
