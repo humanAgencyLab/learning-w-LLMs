@@ -223,8 +223,8 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       }
     }
     
-    // Handle clarifying questions
-    if (parsedResponse.clarify) {
+    // Handle clarifying questions (but not if we already did 2 rounds)
+    if (parsedResponse.clarify && assessClarifyCount < 2) {
       const { questions } = parsedResponse;
       
       // Track assessment clarification count (reset when entering learning phase)
