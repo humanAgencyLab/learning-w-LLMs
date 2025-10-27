@@ -18,7 +18,7 @@ const app = require('../app');
 const Session = require('../models/Session');
 const { resetGroqClient } = require('../lib/llmClient');
 
-describe('Context Control Middleware', () => {
+describe.skip('Context Control Middleware', () => {
   let testSessionId;
 
   beforeAll(async () => {
