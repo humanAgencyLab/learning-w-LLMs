@@ -1,13 +1,14 @@
 // Mock Groq SDK BEFORE requiring any modules
+const mockGroqCreate = jest.fn().mockResolvedValue({
+  choices: [{ message: { content: "ok" } }],
+  usage: { completion_tokens: 10 }
+});
+
 jest.mock('groq-sdk', () => {
-  const mockCreate = jest.fn().mockResolvedValue({
-    choices: [{ message: { content: "ok" } }],
-    usage: { completion_tokens: 10 }
-  });
   return {
     Groq: jest.fn().mockImplementation(() => ({
-      responses: { create: mockCreate },
-      chat: { completions: { create: mockCreate } },
+      responses: { create: mockGroqCreate },
+      chat: { completions: { create: mockGroqCreate } },
     })),
   };
 });
