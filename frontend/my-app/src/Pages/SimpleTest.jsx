@@ -28,6 +28,35 @@ const SimpleTest = () => {
     }
   };
 
+  const runAssessment = async () => {
+    if (!sessionId) return;
+    
+    try {
+      addLog('Running assessment...');
+      const res = await fetch('/v1/assessment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          userMessage: 'I want to learn React hooks for building interactive forms',
+          mode: 'studying'
+        })
+      });
+      const data = await res.json();
+      setResponse(JSON.stringify(data, null, 2));
+      
+      if (data.clarify) {
+        addLog('Got clarification questions');
+      } else if (data.plan) {
+        addLog('Assessment complete! Plan generated.');
+      } else {
+        addLog('Assessment in progress...');
+      }
+    } catch (err) {
+      addLog(`Error: ${err.message}`);
+    }
+  };
+
   const sendMessage = async () => {
     if (!message || !sessionId) return;
     
@@ -54,22 +83,41 @@ const SimpleTest = () => {
     <div style={{ padding: '20px', fontFamily: 'monospace', maxWidth: '800px' }}>
       <h1>Simple Test (No Store)</h1>
       <div style={{ padding: '10px', background: '#f0f0f0', marginBottom: '20px', borderRadius: '5px' }}>
-        <strong>Steps:</strong> 1) Click "Create New Session" 2) Type a message 3) Click "Send"
+        <strong>Steps:</strong> 1) Create Session 2) Run Assessment 3) Send Chat Message
       </div>
-      <button 
-        onClick={createSession} 
-        style={{ 
-          padding: '10px 20px', 
-          marginBottom: '20px',
-          background: '#007bff',
-          color: 'white',
-          border: 'none',
-          borderRadius: '5px',
-          cursor: 'pointer'
-        }}
-      >
-        📝 Create New Session
-      </button>
+      
+      <div style={{ marginBottom: '20px', display: 'flex', gap: '10px' }}>
+        <button 
+          onClick={createSession} 
+          style={{ 
+            padding: '10px 20px',
+            background: '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer'
+          }}
+        >
+          📝 Create Session
+        </button>
+        
+        {sessionId && (
+          <button 
+            onClick={runAssessment}
+            style={{ 
+              padding: '10px 20px',
+              background: '#ff9800',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer'
+            }}
+          >
+            🎯 Run Assessment
+          </button>
+        )}
+      </div>
+      
       {sessionId && (
         <div style={{ marginBottom: '20px', padding: '10px', background: '#e8f5e9', borderRadius: '5px' }}>
           ✅ Session: {sessionId}
