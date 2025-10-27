@@ -135,7 +135,7 @@ describe('Rate Limiting', () => {
   describe('Assessment Rate Limiting', () => {
     it('should rate limit assessment requests', async () => {
       // Mock successful assessment response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: JSON.stringify({
@@ -181,7 +181,7 @@ describe('Rate Limiting', () => {
   describe('Quiz Rate Limiting', () => {
     it('should rate limit quiz start requests', async () => {
       // Mock successful quiz generation response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: JSON.stringify({
@@ -253,7 +253,7 @@ describe('Rate Limiting', () => {
         });
 
       // Mock quiz submit response
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: 'Great job! You got 100% correct.'
