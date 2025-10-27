@@ -171,9 +171,9 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     if (assessClarifyCount >= 2) {
       req.logger.info('Skipping LLM call, creating default plan after 2 clarifications', { sessionId });
       parsedResponse = {
-        topic: userMessage || 'Learning Session',
+        topic: userMessage || profile.goals[0] || 'Learning Session',
         chatTitle: 'Your Learning Journey',
-        rationale: 'Personalized learning path based on your goals and preferences',
+        rationale: `Personalized learning path based on your goals (${profile.goals.join(', ')}) and preferred style (${profile.preferredStyle})`,
         plan: [
           {
             moduleId: "1",
@@ -227,9 +227,9 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     if (parsedResponse.clarify && assessClarifyCount < 2) {
       const { questions } = parsedResponse;
       
-      // Track assessment clarification count (reset when entering learning phase)
-      const assessClarifyCount = (session.meta.assessClarifyCount || 0) + 1;
-      session.meta.assessClarifyCount = assessClarifyCount;
+      // Track assessment clarification count (increment and save)
+      const newAssessClarifyCount = (session.meta.assessClarifyCount || 0) + 1;
+      session.meta.assessClarifyCount = newAssessClarifyCount;
       
       // Add assistant message with questions
       const assistantMessage = {
