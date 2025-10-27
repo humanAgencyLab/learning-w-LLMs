@@ -89,7 +89,12 @@ const SessionFlow = () => {
     if (!message) return;
     
     setInputMessage('');
-    await sendMessage(message);
+    try {
+      await sendMessage(message);
+    } catch (err) {
+      console.error('Error sending message:', err);
+      // Error is already set in the store by sendMessage
+    }
   };
 
   const handleQuizStart = async () => {
