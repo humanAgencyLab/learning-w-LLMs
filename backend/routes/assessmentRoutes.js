@@ -153,6 +153,12 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     
     // Set phase to assessing
     session.phase = 'assessing';
+    
+    // Initialize meta if undefined
+    if (!session.meta) {
+      session.meta = {};
+    }
+    
     await session.save();
     
     // Track clarification count for this assessment phase
