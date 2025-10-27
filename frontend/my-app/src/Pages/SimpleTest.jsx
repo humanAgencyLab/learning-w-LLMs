@@ -51,12 +51,30 @@ const SimpleTest = () => {
   };
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'monospace' }}>
+    <div style={{ padding: '20px', fontFamily: 'monospace', maxWidth: '800px' }}>
       <h1>Simple Test (No Store)</h1>
-      <button onClick={createSession} style={{ padding: '10px 20px', marginBottom: '20px' }}>
-        Create New Session
+      <div style={{ padding: '10px', background: '#f0f0f0', marginBottom: '20px', borderRadius: '5px' }}>
+        <strong>Steps:</strong> 1) Click "Create New Session" 2) Type a message 3) Click "Send"
+      </div>
+      <button 
+        onClick={createSession} 
+        style={{ 
+          padding: '10px 20px', 
+          marginBottom: '20px',
+          background: '#007bff',
+          color: 'white',
+          border: 'none',
+          borderRadius: '5px',
+          cursor: 'pointer'
+        }}
+      >
+        📝 Create New Session
       </button>
-      {sessionId && <div style={{ marginBottom: '20px' }}>Session: {sessionId}</div>}
+      {sessionId && (
+        <div style={{ marginBottom: '20px', padding: '10px', background: '#e8f5e9', borderRadius: '5px' }}>
+          ✅ Session: {sessionId}
+        </div>
+      )}
       
       <div style={{ marginBottom: '20px' }}>
         <input 
@@ -64,11 +82,30 @@ const SimpleTest = () => {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder="Type message..."
-          style={{ width: '400px', padding: '8px' }}
-          onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+          style={{ 
+            width: '400px', 
+            padding: '10px',
+            border: '1px solid #ccc',
+            borderRadius: '5px',
+            fontSize: '16px'
+          }}
+          onKeyPress={(e) => e.key === 'Enter' && sessionId && sendMessage()}
         />
-        <button onClick={sendMessage} disabled={!sessionId} style={{ padding: '8px 16px', marginLeft: '10px' }}>
-          Send
+        <button 
+          onClick={sendMessage} 
+          disabled={!sessionId || !message.trim()} 
+          style={{ 
+            padding: '10px 20px', 
+            marginLeft: '10px',
+            background: sessionId && message.trim() ? '#28a745' : '#ccc',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: sessionId && message.trim() ? 'pointer' : 'not-allowed',
+            fontSize: '16px'
+          }}
+        >
+          {sessionId ? '➤ Send' : '❌ No Session'}
         </button>
       </div>
 
