@@ -173,11 +173,20 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     let response;
     let parsedResponse;
     
+    // If we've already done 2 clarification rounds and LLM fails, create a default plan
+    let useDefaultPlan = false;
+    
     try {
       response = await callAssessmentAPI(prompt, false);
       parsedResponse = await parseAssessmentResponse(response, false);
     } catch (error) {
-      if (error.message === 'JSON_PARSE_RETRY') {
+      if (assessClarifyCount >= 2) {
+        req.logger.warn('LLM failed after 2 clarification rounds, using default plan', {
+          sessionId,
+          error: error.message
+        });
+        useDefaultPlan = true;
+      } else if (error.message === 'JSON_PARSE_RETRY') {
         req.logger.info('JSON parse failed, retrying with stricter instructions', { sessionId });
         retryCount = 1;
         
@@ -187,6 +196,39 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       } else {
         throw error;
       }
+    }
+    
+    // Generate default plan if LLM failed after 2 clarification rounds
+    if (useDefaultPlan) {
+      parsedResponse = {
+        topic: userMessage || 'Learning Session',
+        chatTitle: 'Your Learning Journey',
+        rationale: 'Personalized learning path based on your goals and preferences',
+        plan: [
+          {
+            moduleId: "1",
+            title: "Foundation Concepts",
+            targets: ["Understand core concepts", "Build solid foundation"],
+            points: 25,
+            difficulty: "intro"
+          },
+          {
+            moduleId: "2",
+            title: "Intermediate Skills",
+            targets: ["Apply concepts practically", "Solve real-world problems"],
+            points: 35,
+            difficulty: "core"
+          },
+          {
+            moduleId: "3",
+            title: "Advanced Applications",
+            targets: ["Master advanced topics", "Build complex projects"],
+            points: 40,
+            difficulty: "apply"
+          }
+        ],
+        nextPhase: "learning"
+      };
     }
     
     // Handle clarifying questions
