@@ -224,7 +224,7 @@ describe('Rate Limiting', () => {
 
     it('should rate limit quiz submit requests', async () => {
       // Mock successful quiz generation first
-      mockGroqClient.chat.completions.create.mockResolvedValue({
+      mockGroqCreate.mockResolvedValue({
         choices: [{
           message: {
             content: JSON.stringify({

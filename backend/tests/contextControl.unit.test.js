@@ -1,4 +1,5 @@
-const { contextControl, resetGroqClient, getGroqClient } = require('../middleware/contextControl');
+const { contextControl } = require('../middleware/contextControl');
+const { resetGroqClient } = require('../lib/llmClient');
 const Session = require('../models/Session');
 const mongoose = require('mongoose');
 

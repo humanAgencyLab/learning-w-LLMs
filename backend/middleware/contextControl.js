@@ -1,6 +1,6 @@
-const { Groq } = require('groq-sdk');
 const Session = require('../models/Session');
 const logger = require('../utils/logger');
+const { getGroqClient } = require('../lib/llmClient');
 
 // Environment-driven thresholds with sane defaults
 const SUMMARIZE_EVERY_N_TURNS = parseInt(process.env.SUMMARIZE_EVERY_N_TURNS) || 40;
@@ -8,26 +8,6 @@ const SUMMARIZE_CHUNK_SIZE = parseInt(process.env.SUMMARIZE_CHUNK_SIZE) || 20;
 const SUMMARY_MAX_TOKENS = parseInt(process.env.SUMMARY_MAX_TOKENS) || 200;
 const TEACHER_MAX_TOKENS = parseInt(process.env.TEACHER_MAX_TOKENS) || 1100;
 const ASSESSMENT_MAX_TOKENS = parseInt(process.env.ASSESSMENT_MAX_TOKENS) || 500;
-
-// Groq client setup (lazy initialization to avoid test conflicts)
-let groq;
-const getGroqClient = () => {
-  // Force reload in test environment to pick up new mocks
-  if (process.env.NODE_ENV === 'test') {
-    groq = undefined;
-  }
-  if (!groq) {
-    groq = new Groq({
-      apiKey: process.env.GROQ_API_KEY || 'test-key'
-    });
-  }
-  return groq;
-};
-
-// Export reset function for testing
-const resetGroqClient = () => {
-  groq = undefined;
-};
 
 /**
  * Context control middleware for chat endpoints
@@ -358,8 +338,6 @@ async function checkContextLimits(session, routePath, requestId) {
 
 module.exports = {
   contextControl,
-  getGroqClient,
-  resetGroqClient,
   SUMMARIZE_EVERY_N_TURNS,
   SUMMARIZE_CHUNK_SIZE,
   SUMMARY_MAX_TOKENS,

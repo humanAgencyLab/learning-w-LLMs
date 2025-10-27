@@ -1,10 +1,4 @@
-const request = require('supertest');
-const mongoose = require('mongoose');
-const app = require('../app');
-const Session = require('../models/Session');
-const { resetGroqClient } = require('../middleware/contextControl');
-
-// Mock Groq SDK
+// Mock Groq SDK BEFORE requiring any modules
 const mockGroqCreate = jest.fn();
 jest.mock('groq-sdk', () => {
   return {
@@ -17,6 +11,12 @@ jest.mock('groq-sdk', () => {
     }))
   };
 });
+
+const request = require('supertest');
+const mongoose = require('mongoose');
+const app = require('../app');
+const Session = require('../models/Session');
+const { resetGroqClient } = require('../lib/llmClient');
 
 describe('Context Control Middleware', () => {
   let testSessionId;

@@ -9,28 +9,8 @@ const { ERROR_RESPONSES } = require('../middleware/validationHardening');
 const { classifyIntent } = require('../utils/intentClassifier');
 const { buildTeacherPrompt } = require('../prompts/teacher_prompt');
 const { handleNeutralMessage } = require('../prompts/neutral_prompt');
+const { getGroqClient } = require('../lib/llmClient');
 // const logger = require('../utils/logger'); // Not used
-
-// Groq client setup (lazy initialization to avoid test conflicts)
-let groq;
-const getGroqClient = () => {
-  // Force reload in test environment to pick up new mocks
-  if (process.env.NODE_ENV === 'test') {
-    groq = undefined;
-  }
-  if (!groq) {
-    const Groq = require('groq-sdk');
-    groq = new Groq({
-      apiKey: process.env.GROQ_API_KEY
-    });
-  }
-  return groq;
-};
-
-// Export reset function for testing
-const resetGroqClient = () => {
-  groq = undefined;
-};
 
 // Teacher prompt now imported from teacher_prompt.js module
 
@@ -531,4 +511,3 @@ router.post('/v1/chat', async (req, res) => {
 });
 
 module.exports = router;
-module.exports.resetGroqClient = resetGroqClient;
