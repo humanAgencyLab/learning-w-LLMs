@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSession } from '../hooks/useSession';
 
 const QuickTest = () => {
-  const { sessionId, phase, topic, plan, messages, loading, error, sendMessage, startAssessment, clearError } = useSession();
+  const { sessionId, phase, topic, plan, messages, loading, error, sendMessage, startAssessment, clearError, startNewSession } = useSession();
   const [input, setInput] = useState('');
   const [logs, setLogs] = useState([]);
 
@@ -13,6 +13,18 @@ const QuickTest = () => {
   useEffect(() => {
     addLog(`Phase: ${phase}, Session ID: ${sessionId || 'None'}`);
   }, [phase, sessionId]);
+
+  // Force create a NEW session when component mounts
+  useEffect(() => {
+    const forceNewSession = async () => {
+      if (!sessionId) {
+        addLog('No session ID, creating new session...');
+        await startNewSession();
+        addLog('New session created');
+      }
+    };
+    forceNewSession();
+  }, []);
 
   const handleSend = async () => {
     if (!input.trim()) return;
