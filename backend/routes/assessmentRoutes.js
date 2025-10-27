@@ -166,40 +166,10 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       });
     }
     
-    // Build prompt (will be retry version if needed)
-    const prompt = buildAssessmentPrompt(profile, userMessage, mode, false);
-    
-    // Call API with retry logic
-    let response;
+    // If already did 2 rounds, skip LLM and create default plan
     let parsedResponse;
-    
-    // If we've already done 2 clarification rounds and LLM fails, create a default plan
-    let useDefaultPlan = false;
-    
-    try {
-      response = await callAssessmentAPI(prompt, false);
-      parsedResponse = await parseAssessmentResponse(response, false);
-    } catch (error) {
-      if (assessClarifyCount >= 2) {
-        req.logger.warn('LLM failed after 2 clarification rounds, using default plan', {
-          sessionId,
-          error: error.message
-        });
-        useDefaultPlan = true;
-      } else if (error.message === 'JSON_PARSE_RETRY') {
-        req.logger.info('JSON parse failed, retrying with stricter instructions', { sessionId });
-        retryCount = 1;
-        
-        const retryPrompt = buildAssessmentPrompt(profile, userMessage, mode, true);
-        response = await callAssessmentAPI(retryPrompt, true);
-        parsedResponse = await parseAssessmentResponse(response, true);
-      } else {
-        throw error;
-      }
-    }
-    
-    // Generate default plan if LLM failed after 2 clarification rounds
-    if (useDefaultPlan) {
+    if (assessClarifyCount >= 2) {
+      req.logger.info('Skipping LLM call, creating default plan after 2 clarifications', { sessionId });
       parsedResponse = {
         topic: userMessage || 'Learning Session',
         chatTitle: 'Your Learning Journey',
@@ -229,6 +199,28 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
         ],
         nextPhase: "learning"
       };
+    } else {
+      // Build prompt (will be retry version if needed)
+      const prompt = buildAssessmentPrompt(profile, userMessage, mode, false);
+      
+      // Call API with retry logic
+      let response;
+      
+      try {
+        response = await callAssessmentAPI(prompt, false);
+        parsedResponse = await parseAssessmentResponse(response, false);
+      } catch (error) {
+        if (error.message === 'JSON_PARSE_RETRY') {
+          req.logger.info('JSON parse failed, retrying with stricter instructions', { sessionId });
+          retryCount = 1;
+          
+          const retryPrompt = buildAssessmentPrompt(profile, userMessage, mode, true);
+          response = await callAssessmentAPI(retryPrompt, true);
+          parsedResponse = await parseAssessmentResponse(response, true);
+        } else {
+          throw error;
+        }
+      }
     }
     
     // Handle clarifying questions
