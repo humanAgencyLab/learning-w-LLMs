@@ -1,21 +1,22 @@
+// Mock Groq SDK BEFORE requiring any modules
+jest.mock('groq-sdk', () => {
+  const mockCreate = jest.fn().mockResolvedValue({
+    choices: [{ message: { content: "ok" } }],
+    usage: { completion_tokens: 10 }
+  });
+  return {
+    Groq: jest.fn().mockImplementation(() => ({
+      responses: { create: mockCreate },
+      chat: { completions: { create: mockCreate } },
+    })),
+  };
+});
+
 const request = require('supertest');
 const mongoose = require('mongoose');
 const app = require('../app');
 const Session = require('../models/Session');
-
-// Mock Groq SDK
-const mockGroqCreate = jest.fn();
-jest.mock('groq-sdk', () => {
-  return jest.fn().mockImplementation(() => ({
-    chat: {
-      completions: {
-        create: mockGroqCreate
-      }
-    }
-  }));
-});
-
-const Groq = require('groq-sdk');
+const { resetGroqClient } = require('../lib/llmClient');
 
 describe('Rate Limiting', () => {
   let testSessionId;
@@ -60,8 +61,8 @@ describe('Rate Limiting', () => {
     await session.save();
     testSessionId = session._id;
 
-    // Clear mocks
-    mockGroqCreate.mockClear();
+    // Reset groq client
+    resetGroqClient();
   });
 
   afterEach(async () => {
