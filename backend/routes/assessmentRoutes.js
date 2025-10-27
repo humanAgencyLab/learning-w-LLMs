@@ -169,7 +169,11 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
     // If already did 2 rounds, skip LLM and create default plan
     let parsedResponse;
     if (assessClarifyCount >= 2) {
-      req.logger.info('Skipping LLM call, creating default plan after 2 clarifications', { sessionId });
+      req.logger.info('Skipping LLM call, creating default plan after 2 clarifications', { 
+        sessionId,
+        assessClarifyCount,
+        userMessage 
+      });
       parsedResponse = {
         topic: userMessage || profile.goals[0] || 'Learning Session',
         chatTitle: 'Your Learning Journey',
@@ -377,7 +381,9 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
       error: error.message,
       stack: error.stack,
       retryCount,
-      duration: Date.now() - startTime
+      duration: Date.now() - startTime,
+      errorName: error.name,
+      assessClarifyCount: session?.meta?.assessClarifyCount
     });
     
     if (error instanceof z.ZodError) {
