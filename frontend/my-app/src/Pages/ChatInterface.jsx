@@ -23,7 +23,8 @@ function ChatInterface() {
     loading,
     error,
     createSession,
-    clearSession
+    clearSession,
+    clearError
   } = useSessionStore();
   const [inputValue, setInputValue] = useState('');
 
@@ -36,7 +37,8 @@ function ChatInterface() {
   
   // Determine UI state based on phase
   const isPreSurface = phase === 'pre';
-  const isActiveLearning = ['learning', 'quizzing', 'feedback', 'completed'].includes(phase);
+  const isAssessing = phase === 'assessing';
+  const isActiveLearning = ['assessing', 'learning', 'quizzing', 'feedback', 'completed'].includes(phase);
   const hasMessages = sessionMessages.length > 0;
   
   // Debug logging
