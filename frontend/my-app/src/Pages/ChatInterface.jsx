@@ -18,6 +18,7 @@ function ChatInterface() {
     setLearningStyle,
     setModel,
     sendChatMessage,
+    startAssessment,
     messages: sessionMessages,
     loading,
     error,
@@ -71,10 +72,17 @@ function ChatInterface() {
     e.preventDefault();
     if (!inputValue.trim() || loading) return;
 
+    const message = inputValue;
     setInputValue('');
 
     try {
-      await sendChatMessage(inputValue);
+      // If phase is 'pre', this is an assessment request
+      if (phase === 'pre') {
+        await startAssessment(message, learningStyle);
+      } else {
+        // Otherwise, it's a normal chat message
+        await sendChatMessage(message);
+      }
     } catch (err) {
       console.error('Error sending message:', err);
     }
