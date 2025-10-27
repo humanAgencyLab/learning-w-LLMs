@@ -292,6 +292,13 @@ const useSessionStore = create(
           throw new Error('No active session');
         }
 
+        // Add user message immediately
+        get().appendMessage({
+          role: 'user',
+          content: userMessage,
+          ts: new Date().toISOString()
+        });
+
         set({ 
           phase: 'assessing', 
           mode,
@@ -308,6 +315,14 @@ const useSessionStore = create(
           });
 
           if (response.clarify) {
+            // Add assistant message with clarification questions
+            const questionsText = response.questions.join('\n');
+            get().appendMessage({
+              role: 'assistant',
+              content: `I'd like to clarify a few things:\n\n${questionsText}`,
+              ts: new Date().toISOString()
+            });
+            
             // Handle clarifying questions
             set({
               meta: {
@@ -319,6 +334,13 @@ const useSessionStore = create(
             set({ loading: false });
             return response;
           } else if (response.data?.plan) {
+            // Add assistant message announcing the plan
+            get().appendMessage({
+              role: 'assistant',
+              content: `Great! I've created a learning plan for you. Let's start learning!`,
+              ts: new Date().toISOString()
+            });
+            
             // Apply assessment results
             get().applyAssessment({
               topic: response.data.topic,
