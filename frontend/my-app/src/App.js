@@ -12,6 +12,7 @@ import ChatInterfaceQUIZ from './Pages/ChatInterfaceQUIZ';
 import Favorites from './Pages/Favorites';
 import UIDemo from './Pages/UIDemo';
 import StateTest from './Pages/StateTest';
+import QuickTest from './Pages/QuickTest';
 import SessionFlow from './components/SessionFlow';
 import AppShell from './layouts/AppShell';
 
@@ -32,6 +33,7 @@ function App() {
           <Route path="/chatquiz" element={<ChatInterfaceQUIZ />} />
           <Route path="/ui-demo" element={<UIDemo />} />
           <Route path="/state-test" element={<StateTest />} />
+          <Route path="/quick-test" element={<QuickTest />} />
           <Route path="/session-flow" element={<SessionFlow />} />
           <Route path="/profile" element={<Profile />} />
           <Route index element={<Navigate to="/chat" />} />
