@@ -4,7 +4,11 @@ let _client = null;
 function getGroqClient() {
   if (_client) return _client;
   const { Groq } = require('groq-sdk');
-  _client = new Groq({ apiKey: process.env.GROQ_API_KEY || 'test-key' });
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error('GROQ_API_KEY is not configured');
+  }
+  _client = new Groq({ apiKey });
   return _client;
 }
 

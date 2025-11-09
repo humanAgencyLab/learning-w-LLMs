@@ -40,8 +40,8 @@ const validateInput = (req, res, next) => {
       // Check if message is empty after sanitization
       if (!req.sanitized.message || req.sanitized.message.length === 0) {
         errors.message = ['Message cannot be empty after sanitization'];
-      } else if (req.sanitized.message.length > 1000) {
-        errors.message = ['Message must be 1000 characters or less'];
+      } else if (req.sanitized.message.length > 5000) {
+        errors.message = ['Message must be 5000 characters or less'];
       }
     }
     

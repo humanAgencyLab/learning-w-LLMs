@@ -22,6 +22,12 @@ export async function sendMessage({ sessionId, userMessage }) {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: 'Network error' }));
     console.error('chatApi.sendMessage - Error response:', errorData);
+    
+    // Check for rate limit
+    if (response.status === 503 && errorData.code === 'RATE_LIMIT_EXCEEDED') {
+      throw new Error('API rate limit exceeded. Please try again in a few minutes.');
+    }
+    
     throw new Error(errorData.error || errorData.message || 'Failed to send message');
   }
 

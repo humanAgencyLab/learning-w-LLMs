@@ -14,31 +14,74 @@ function ChatInterface() {
     model,
     topic,
     phase,
+    plan,
     isViewOnly,
     setLearningStyle,
     setModel,
     sendChatMessage,
     startAssessment,
+    approvePlan,
+    modifyPlan,
     messages: sessionMessages,
     loading,
     error,
     createSession,
-    clearSession,
-    clearError
+    resumeSessionFromServer,
+    clearError,
+    appendMessage
   } = useSessionStore();
   const [inputValue, setInputValue] = useState('');
+  const [modificationRequest, setModificationRequest] = useState('');
 
   // Initialize session if none exists
   useEffect(() => {
-    if (!sessionId) {
-      createSession();
-    }
-  }, [sessionId, createSession]);
+    let isMounted = true;
+    
+    const initializeSession = async () => {
+      // Only create session if we don't have one and component is still mounted
+      if (!sessionId && isMounted) {
+        try {
+          console.log('Creating new session...');
+          await createSession();
+        } catch (error) {
+          console.error('Failed to create session:', error);
+          // Don't retry immediately to avoid rate limits
+        }
+      } else if (sessionId) {
+        console.log('Session already exists:', sessionId);
+        // Resume session from server to sync state
+        try {
+          console.log('Resuming session from server to sync state...');
+          await resumeSessionFromServer(sessionId);
+        } catch (error) {
+          console.error('Failed to resume session:', error);
+          // If resume fails, clear the session and create a new one
+          if (isMounted) {
+            console.log('Clearing failed session and creating new one...');
+            // Clear the sessionId from store to trigger new session creation
+            useSessionStore.setState({ sessionId: null });
+            try {
+              await createSession();
+            } catch (createError) {
+              console.error('Failed to create new session after resume failure:', createError);
+            }
+          }
+        }
+      }
+    };
+    
+    initializeSession();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, []); // Only run once on mount
   
   // Determine UI state based on phase
-  const isPreSurface = phase === 'pre';
+  const isPreSurface = phase === 'pre' && sessionMessages.length === 0; // Only show pre-surface when there are no messages
   const isAssessing = phase === 'assessing';
-  const isActiveLearning = ['assessing', 'learning', 'quizzing', 'feedback', 'completed'].includes(phase);
+  const isPlanning = phase === 'planning';
+  const isActiveLearning = ['assessing', 'planning', 'learning', 'quizzing', 'feedback', 'completed'].includes(phase) || (phase === 'pre' && sessionMessages.length > 0);
   const hasMessages = sessionMessages.length > 0;
   
   // Debug logging
@@ -70,6 +113,56 @@ function ChatInterface() {
     }
   }, [toast]);
 
+  // Helper function to intelligently determine intent based on conversation context
+  const hasLearningIntent = (message) => {
+    const lowerMsg = message.toLowerCase().trim();
+    const words = message.trim().split(/\s+/).length;
+    
+    // If already in conversation with messages, be smarter about intent
+    const hasPreviousMessages = sessionMessages.length > 0;
+    
+    // General greetings/keywords
+    const generalKeywords = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 
+      'good evening', 'how are you', 'whats up', "what's up", 'thanks', 'thank you', 'sorry', 'okay', 'ok'];
+    
+    // Learning keywords
+    const learningKeywords = ['learn', 'teach', 'study', 'want to', 'need to', 'show me', 
+      'explain', 'help me understand', 'i want to', 'i need', 'tutorial', 'guide', 'course', 
+      'training', 'master', 'practice', 'concept', 'how to', 'play guitar', 'play piano'];
+    
+    // If message is just one word
+    if (words === 1) {
+      // Single words that are greetings
+      if (generalKeywords.includes(lowerMsg)) {
+        return false;
+      }
+      // If in middle of conversation, single words are likely follow-ups (topics/subjects)
+      if (hasPreviousMessages) {
+        return true;
+      }
+      // At start, be cautious - only return true for known learning words
+      return false;
+    }
+    
+    // Check for learning keywords
+    if (learningKeywords.some(keyword => lowerMsg.includes(keyword))) {
+      return true;
+    }
+    
+    // If already in conversation with messages, more likely to be learning
+    if (hasPreviousMessages && words >= 3) {
+      return true;
+    }
+    
+    // Check for general keywords
+    if (generalKeywords.some(keyword => lowerMsg.includes(keyword))) {
+      return false;
+    }
+    
+    // Default: be conservative, don't trigger assessment for ambiguous messages
+    return false;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!inputValue.trim() || loading) return;
@@ -78,13 +171,15 @@ function ChatInterface() {
     setInputValue('');
 
     try {
-      // If phase is 'pre' or 'assessing', handle as assessment/clarification
-      if (phase === 'pre' || phase === 'assessing') {
-        await startAssessment(message, learningStyle);
-      } else {
-        // Otherwise, it's a normal chat message
-        await sendChatMessage(message);
+      // If no session exists, create one first
+      if (!sessionId) {
+        console.log('No session found, creating one...');
+        await createSession();
       }
+      
+      // Always use sendChatMessage - it handles shouldTriggerAssessment automatically
+      // The session store will detect learning intent and trigger assessment if needed
+      await sendChatMessage(message);
     } catch (err) {
       console.error('Error sending message:', err);
     }
@@ -107,6 +202,7 @@ function ChatInterface() {
     if (!lastUserMsg) return;
 
     try {
+      // Use sendChatMessage which handles shouldTriggerAssessment automatically
       await sendChatMessage(lastUserMsg.content);
     } catch (err) {
       console.error('Error retrying message:', err);
@@ -259,11 +355,101 @@ function ChatInterface() {
         )}
 
         {/* Active Learning State */}
-        {isActiveLearning && (
+        {isActiveLearning ? (
           <>
-            {hasMessages ? (
+            {/* Plan Approval UI - Show when in planning phase, takes full height */}
+            {isPlanning && plan && plan.length > 0 ? (
+              <div className="flex flex-col flex-1 min-h-0 bg-[#f7f8f8]">
+                {/* Scrollable Plan Review Section */}
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-4 custom-scrollbar">
+                  <div className="max-w-4xl mx-auto">
+                    <div className="bg-white rounded-xl sm:rounded-2xl p-5 sm:p-6 border border-[#e6e7e8] shadow-sm">
+                      <h3 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-[#030712]">Review Your Learning Plan</h3>
+                      {/* Scrollable plan container */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                        {plan.map((module, index) => (
+                          <div key={module.id} className="bg-gradient-to-br from-[#f7f8f8] to-white rounded-lg p-4 sm:p-5 border border-[#e6e7e8] hover:border-[#4e81ee] hover:shadow-md transition-all duration-200">
+                            <div className="flex items-center justify-between mb-3 sm:mb-4">
+                              <span className="font-semibold text-base sm:text-lg text-[#030712]">
+                                {index + 1}. {module.title}
+                              </span>
+                              <span className="text-xs sm:text-sm font-semibold text-[#4e81ee] bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-full">{module.points} pts</span>
+                            </div>
+                            {module.milestones && module.milestones.length > 0 && (
+                              <ul className="text-sm sm:text-base text-[#424855] space-y-2 sm:space-y-2.5">
+                                {module.milestones.map((milestone, mIndex) => (
+                                  <li key={mIndex} className="leading-relaxed flex items-start gap-2">
+                                    <span className="text-[#4e81ee] mt-1.5 flex-shrink-0">•</span>
+                                    <span className="flex-1">{typeof milestone === 'string' ? milestone : milestone.text}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Fixed Bottom Section - Approval and Modification */}
+                <div className="flex-shrink-0 bg-white border-t border-[#e6e7e8] shadow-lg px-4 sm:px-6 pt-4 pb-4 sm:pb-6">
+                  <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4">
+                    {/* Approve Plan Button */}
+                    <button
+                      onClick={async () => {
+                        try {
+                          await approvePlan();
+                          setToast({ message: 'Plan approved! Let\'s start learning.', type: 'success' });
+                        } catch (err) {
+                          setToast({ message: err.message || 'Failed to approve plan', type: 'error' });
+                        }
+                      }}
+                      disabled={loading}
+                      className="w-full bg-[#4e81ee] hover:bg-blue-600 active:bg-blue-700 text-white font-semibold text-base sm:text-lg px-6 py-3.5 sm:py-4 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md"
+                    >
+                      Approve Plan
+                    </button>
+                    
+                    {/* Modification Request Card - Fixed at bottom */}
+                    <div className="bg-[#f7f8f8] rounded-xl p-4 sm:p-5 border border-[#e6e7e8]">
+                      <h4 className="font-semibold text-sm sm:text-base mb-3 text-[#030712]">Request Modifications</h4>
+                      <div className="flex flex-col gap-3">
+                        <textarea
+                          placeholder="Tell me what you'd like to change..."
+                          className="w-full resize-none rounded-lg border border-[#e6e7e8] bg-white p-3 text-sm sm:text-base leading-[21px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.25px] focus:border-[#4e81ee] focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all"
+                          style={{ minHeight: "70px", maxHeight: "120px" }}
+                          value={modificationRequest}
+                          onChange={(e) => setModificationRequest(e.target.value)}
+                          disabled={loading}
+                        />
+                        <button
+                          onClick={async () => {
+                            if (!modificationRequest.trim()) {
+                              setToast({ message: 'Please enter a modification request', type: 'error' });
+                              return;
+                            }
+                            try {
+                              await modifyPlan(modificationRequest);
+                              setModificationRequest('');
+                              setToast({ message: 'Plan modification requested', type: 'success' });
+                            } catch (err) {
+                              setToast({ message: err.message || 'Failed to modify plan', type: 'error' });
+                            }
+                          }}
+                          disabled={loading || !modificationRequest.trim()}
+                          className="w-full sm:w-auto sm:self-start bg-[#ff9500] hover:bg-orange-600 active:bg-orange-700 text-white font-semibold text-sm sm:text-base px-5 sm:px-6 py-2.5 sm:py-3 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm"
+                        >
+                          Request Modification
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : hasMessages ? (
               <>
-                {/* Thread (scrolls) - Only show when there are messages */}
+                {/* Thread (scrolls) - Only show when there are messages and not in planning phase */}
                 <div id="message-list" className="min-h-0 flex-1 overflow-auto px-6 py-4">
                   <div className="flex flex-col gap-6">
                     {sessionMessages.map((message, index) => (
@@ -355,8 +541,8 @@ function ChatInterface() {
                   </div>
                 </div>
 
-                {/* Composer - Fixed at bottom when there are messages */}
-                {!isViewOnly && (
+                {/* Composer - Fixed at bottom when there are messages (hide in planning phase) */}
+                {!isViewOnly && !isPlanning && (
                   <div className="flex-shrink-0 bg-[#f7f8f8] p-6">
                     <div className="flex items-center gap-3 max-w-4xl mx-auto">
                       <div className="flex-1 relative">
@@ -408,119 +594,9 @@ function ChatInterface() {
                   </div>
                 )}
               </>
-            ) : (
-              /* No messages - Show centered composer */
-              <div className="flex-1 flex flex-col items-center justify-center px-6 py-8">
-                <div className="text-center mb-8">
-                  <h2 className="text-2xl font-bold text-[#030712] mb-2">Ready when you are.</h2>
-                  <p className="text-lg text-[#5b6470]">Start by asking me anything!</p>
-                </div>
-                
-                {/* Centered Composer */}
-                {!isViewOnly && (
-                  <div className="w-full max-w-2xl">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 relative">
-                        <textarea
-                          placeholder="Ask anything..."
-                          className="w-full resize-none rounded-[24px] border border-[#e6e7e8] bg-white p-4 pr-24 text-lg leading-[28px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.4px] focus:border-[#4e81ee] focus:outline-none"
-                          style={{ minHeight: "56px", maxHeight: "120px" }}
-                          value={inputValue}
-                          onChange={(e) => setInputValue(e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
-                          disabled={loading}
-                        />
-                        
-                        {/* Model Selector Dropdown - Inside textarea */}
-                        <div className="absolute bottom-[18px] right-[72px] flex items-center gap-1">
-                          <select 
-                            value={model}
-                            onChange={(e) => setModel(e.target.value)}
-                            className="bg-transparent border-none outline-none text-base leading-[21px] text-[#424855] tracking-[-0.25px] cursor-pointer appearance-none font-normal"
-                          >
-                            <option value="llama">Llama</option>
-                            <option value="gpt">ChatGPT</option>
-                          </select>
-                          <svg className="w-3 h-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </div>
-                        
-                        {/* Send Button - Inside textarea */}
-                        <button 
-                          className={`absolute bottom-[8px] right-[8px] flex h-12 w-12 items-center justify-center rounded-[50px] transition-all duration-200 ${
-                            inputValue.trim() && !loading
-                              ? 'bg-[#4e81ee] hover:bg-blue-600' 
-                              : 'bg-gray-300 cursor-not-allowed'
-                          }`}
-                          onClick={handleSubmit} 
-                          disabled={loading || !inputValue.trim()}
-                        >
-                          <img 
-                            src="/icons/send-arrow.svg" 
-                            alt="send" 
-                            className={`w-6 h-6 ${
-                              inputValue.trim() ? 'filter-none' : 'filter grayscale opacity-50'
-                            }`}
-                          />
-                        </button>
-                      </div>
-                    </div>
-                    
-                    {/* Learning Style Buttons - Below composer when no messages */}
-                    <div className="flex gap-3 mt-6 justify-center">
-                      <button
-                        onClick={() => setLearningStyle('studying')}
-                        className={`flex gap-3 items-center justify-center px-5 py-2.5 rounded-lg border bg-white transition-all duration-200 ${
-                          learningStyle === 'studying' 
-                            ? 'border-[#4e81ee] text-[#4e81ee]' 
-                            : 'border-[#e6e7e8] text-[#686d77]'
-                        }`}
-                      >
-                        <img 
-                          src="/icons/studying.svg" 
-                          alt="graduation cap" 
-                          className="w-6 h-6" 
-                          style={{ 
-                            filter: learningStyle === 'studying' ? 'none' : 'brightness(0) saturate(100%) invert(42%) sepia(7%) saturate(1459%) hue-rotate(184deg) brightness(92%) contrast(89%)'
-                          }}
-                        />
-                        <p className={`font-bold text-lg leading-7 tracking-[-0.4px] ${
-                          learningStyle === 'studying' ? 'text-[#4e81ee]' : 'text-[#686d77]'
-                        }`}>
-                          Studying
-                        </p>
-                      </button>
-                      
-                      <button
-                        onClick={() => setLearningStyle('revision')}
-                        className={`flex gap-3 items-center justify-center px-5 py-2.5 rounded-lg border bg-white transition-all duration-200 ${
-                          learningStyle === 'revision' 
-                            ? 'border-[#4e81ee] text-[#4e81ee]' 
-                            : 'border-[#e6e7e8] text-[#686d77]'
-                        }`}
-                      >
-                        <img 
-                          src="/icons/revision.svg" 
-                          alt="revision" 
-                          className="w-6 h-6" 
-                          style={{ 
-                            filter: learningStyle === 'revision' ? 'brightness(0) saturate(100%) invert(36%) sepia(85%) saturate(1369%) hue-rotate(210deg) brightness(98%) contrast(96%)' : 'none'
-                          }}
-                        />
-                        <p className={`font-bold text-lg leading-7 tracking-[-0.4px] ${
-                          learningStyle === 'revision' ? 'text-[#4e81ee]' : 'text-[#686d77]'
-                        }`}>
-                          Revision
-                        </p>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+            ) : null}
           </>
-        )}
+        ) : null}
       </div>
 
       {/* Error toast notification */}

@@ -5,7 +5,7 @@ const chatRequestSchema = z.object({
   sessionId: z.string().min(1, 'Session ID is required'),
   userMessage: z.string()
     .min(1, 'User message is required')
-    .max(1000, 'User message too long')
+    .max(5000, 'User message too long (max 5000 characters)') // Increased to allow code examples and detailed responses
     .transform(msg => msg.replace(/<[^>]*>/g, '')), // Strip HTML
 });
 

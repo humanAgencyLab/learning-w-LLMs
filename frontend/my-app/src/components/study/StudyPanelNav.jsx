@@ -68,7 +68,7 @@ function StudyPanelNav({
             const isLocked = moduleState === 'locked';
             
             return (
-              <li key={module.id} className={`rounded-lg p-3 shadow-sm backdrop-blur-sm ${
+              <li key={module.id || `module-${index}`} className={`rounded-lg p-3 shadow-sm backdrop-blur-sm ${
                 isActive ? 'bg-gradient-to-r from-orange-50 to-white border border-orange-200' : 
                 isCompleted ? 'bg-white border border-gray-200' :
                 isLocked ? 'bg-white border border-gray-200' :
@@ -84,7 +84,7 @@ function StudyPanelNav({
                       isLocked ? 'text-gray-400' :
                       'text-gray-800'
                     }`}>
-                      Module {index}
+                      Module {index + 1}
                     </span>
                     <div className={`flex items-center ${isLocked ? 'gap-1' : 'gap-2'}`}>
                       <span className={`text-xs ${

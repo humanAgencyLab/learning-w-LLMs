@@ -73,7 +73,7 @@ const assessmentPlanSchema = z.object({
       }
       return true;
     }, 'Module IDs must be contiguous sequence starting from 1'),
-  nextPhase: z.literal('learning')
+  nextPhase: z.literal('planning')
 });
 
 // Clarify response schema

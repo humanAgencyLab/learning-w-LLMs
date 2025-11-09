@@ -22,17 +22,32 @@ const addRequestId = (req, res, next) => {
   next();
 };
 
-// Default dummy profile for new sessions (Phase 2)
+// Enhanced dummy profile for new sessions (with onboarding flow data)
 const getDummyProfile = () => ({
   source: 'dummy',
   name: 'Alex',
-  background: '2nd-year CS undergrad',
-  goals: ['Pass Algorithms midterm', 'Understand graph traversal well enough to explain it'],
-  strengths: ['arrays', 'big-O basics', 'sorting fundamentals'],
-  gaps: ['graph traversal', 'BFS vs DFS tradeoffs', 'recurrence intuition'],
-  timePerDayMins: 30,
+  background: '2nd-year CS undergrad with basic programming experience',
+  goals: ['Master Python fundamentals', 'Build practical projects', 'Prepare for technical interviews'],
+  strengths: ['Basic programming concepts', 'Problem-solving mindset', 'Eager to learn'],
+  gaps: ['Advanced Python features', 'Data structures implementation', 'Algorithm optimization'],
+  timePerDayMins: 40,
   preferredStyle: 'examples-first',
-  lastUpdated: new Date().toISOString()
+  lastUpdated: new Date().toISOString(),
+  // Enhanced fields from onboarding flow
+  skillLevel: 'Beginner',
+  learningType: 'Visual',
+  major: 'Computer Science',
+  currentCourses: ['Python Basics', 'Data Structures'],
+  daysPerWeek: 3,
+  minutesPerSession: 40,
+  recentTopics: ['programming basics', 'algorithms'],
+  selfRating: 'Basic',
+  primaryGoal: 'Master Basics',
+  defaultMode: 'Studying',
+  explanationLength: 'Balanced',
+  examplesPreference: 'Many',
+  language: 'English',
+  codeLanguagePreference: 'Python'
 });
 
 // POST /v1/sessions - Create new session
@@ -167,6 +182,7 @@ router.get('/v1/sessions/:id', addRequestId, async (req, res) => {
         topic: session.topic,
         chatTitle: session.chatTitle,
         plan: session.plan,
+        planApproved: session.planApproved,
         activeModuleId: session.activeModuleId,
         points: session.points,
         gems: session.gems,
@@ -176,6 +192,7 @@ router.get('/v1/sessions/:id', addRequestId, async (req, res) => {
         profile: session.profile,
         quizAttempts: session.quizAttempts,
         userId: session.userId,
+        meta: session.meta,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt
       }

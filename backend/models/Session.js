@@ -8,6 +8,11 @@ const SessionSchema = new mongoose.Schema({
     required: true,
     default: 'pre'
   },
+  planApproved: {
+    type: Boolean,
+    required: false,
+    default: false
+  },
   clarifyCount: {
     type: Number,
     default: 0,
@@ -51,7 +56,15 @@ const SessionSchema = new mongoose.Schema({
       default: 'locked'
     },
     milestones: [{
-      type: String
+      text: {
+        type: String,
+        required: true
+      },
+      completed: {
+        type: Boolean,
+        required: true,
+        default: false
+      }
     }],
     completedMilestones: [{
       type: Number
@@ -178,6 +191,66 @@ const SessionSchema = new mongoose.Schema({
       type: Date,
       required: true,
       default: Date.now
+    },
+    // Enhanced profile fields (from onboarding flow)
+    skillLevel: {
+      type: String,
+      enum: ['Beginner', 'Intermediate', 'Advanced'],
+      required: false
+    },
+    learningType: {
+      type: String,
+      enum: ['Visual', 'Auditory', 'Reading/Writing', 'Kinesthetic'],
+      required: false
+    },
+    major: {
+      type: String,
+      enum: ['Computer Science', 'Mathematics', 'Data Science', 'Engineering', 'Other'],
+      required: false
+    },
+    currentCourses: [{
+      type: String
+    }],
+    daysPerWeek: {
+      type: Number,
+      min: 1,
+      max: 7
+    },
+    minutesPerSession: {
+      type: Number,
+      min: 10,
+      max: 120
+    },
+    recentTopics: [{
+      type: String
+    }],
+    selfRating: {
+      type: String,
+      enum: ['None', 'Basic', 'Intermediate', 'Advanced']
+    },
+    primaryGoal: {
+      type: String,
+      enum: ['Master Basics', 'Exam Prep', 'Revise Gaps', 'Project Help', 'Interview Prep']
+    },
+    defaultMode: {
+      type: String,
+      enum: ['Studying', 'Revision']
+    },
+    explanationLength: {
+      type: String,
+      enum: ['Concise', 'Balanced', 'Detailed']
+    },
+    examplesPreference: {
+      type: String,
+      enum: ['Few', 'Many']
+    },
+    language: {
+      type: String,
+      default: 'English'
+    },
+    codeLanguagePreference: {
+      type: String,
+      enum: ['Python', 'JavaScript', 'C++', 'None']
     }
   },
   
@@ -289,6 +362,33 @@ const SessionSchema = new mongoose.Schema({
       default: 0,
       min: 0,
       max: 2
+    },
+    // Structured context summary (JSON string)
+    contextSummary: {
+      type: String,
+      default: null
+    },
+    contextSummaryUpdated: {
+      type: Date,
+      default: null
+    },
+    // Milestone tracking
+    currentMilestoneIndex: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    milestoneBeingTaught: {
+      type: Boolean,
+      default: false
+    },
+    milestoneRetryCount: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {}
+    },
+    milestonesToReview: {
+      type: [Number],
+      default: []
     }
   }
 }, { 

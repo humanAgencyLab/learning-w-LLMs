@@ -28,13 +28,28 @@ const initial = {
   profile: {
     source: 'dummy',
     name: 'Alex',
-    background: '2nd-year CS undergrad',
-    goals: ['Pass Algorithms midterm', 'Understand graph traversal well enough to explain it'],
-    strengths: ['arrays', 'big-O basics', 'sorting fundamentals'],
-    gaps: ['graph traversal', 'BFS vs DFS tradeoffs', 'recurrence intuition'],
-    timePerDayMins: 30,
+    background: '2nd-year CS undergrad with basic programming experience',
+    goals: ['Master Python fundamentals', 'Build practical projects', 'Prepare for technical interviews'],
+    strengths: ['Basic programming concepts', 'Problem-solving mindset', 'Eager to learn'],
+    gaps: ['Advanced Python features', 'Data structures implementation', 'Algorithm optimization'],
+    timePerDayMins: 40,
     preferredStyle: 'examples-first',
-    lastUpdated: new Date().toISOString()
+    lastUpdated: new Date().toISOString(),
+    // Enhanced fields from onboarding flow
+    skillLevel: 'Beginner',
+    learningType: 'Visual',
+    major: 'Computer Science',
+    currentCourses: ['Python Basics', 'Data Structures'],
+    daysPerWeek: 3,
+    minutesPerSession: 40,
+    recentTopics: ['programming basics', 'algorithms'],
+    selfRating: 'Basic',
+    primaryGoal: 'Master Basics',
+    defaultMode: 'Studying',
+    explanationLength: 'Balanced',
+    examplesPreference: 'Many',
+    language: 'English',
+    codeLanguagePreference: 'Python'
   },
   model: 'llama',
   meta: {
@@ -70,8 +85,8 @@ const useSessionStore = create(
           gems: 0,
           progressPct: 0,
           isViewOnly: false,
-          // Only clear messages if topic changed
-          messages: topicChanged ? [] : get().messages,
+          // DON'T clear messages - backend already manages them
+          // messages will be reloaded from backend via resumeSessionFromServer
           error: null,
           // Clear assessClarifyCount when entering learning phase
           meta: {
@@ -79,6 +94,98 @@ const useSessionStore = create(
             assessClarifyCount: 0
           }
         });
+      },
+
+      // Approve plan and move to learning phase
+      approvePlan: async () => {
+        const state = get();
+        console.log('approvePlan called', { sessionId: state.sessionId, phase: state.phase });
+        if (!state.sessionId) {
+          throw new Error('No active session');
+        }
+
+        if (state.phase !== 'planning') {
+          throw new Error('Plan must be in planning phase to approve');
+        }
+
+        set({ loading: true, error: null });
+
+        try {
+          const response = await assessmentApi.approvePlan({
+            sessionId: state.sessionId
+          });
+          console.log('approvePlan response:', response);
+
+          // Apply approved plan and move to learning phase
+          get().applyAssessment({
+            topic: response.data.topic,
+            chatTitle: response.data.chatTitle,
+            plan: response.data.plan
+          });
+          
+          // Reload session to get backend messages (including approval message)
+          await get().resumeSessionFromServer(state.sessionId);
+          
+          set({ loading: false });
+          return response;
+        } catch (error) {
+          console.error('Error approving plan:', error);
+          set({ 
+            error: error.message, 
+            loading: false
+          });
+          throw error;
+        }
+      },
+
+      // Request plan modifications
+      modifyPlan: async (modificationRequest) => {
+        const state = get();
+        console.log('modifyPlan called', { sessionId: state.sessionId, modificationRequest, phase: state.phase });
+        if (!state.sessionId) {
+          throw new Error('No active session');
+        }
+
+        if (state.phase !== 'planning') {
+          throw new Error('Plan must be in planning phase to modify');
+        }
+
+        if (!modificationRequest || modificationRequest.trim() === '') {
+          throw new Error('Modification request required');
+        }
+
+        set({ loading: true, error: null });
+
+        try {
+          const response = await assessmentApi.modifyPlan({
+            sessionId: state.sessionId,
+            modificationRequest: modificationRequest.trim()
+          });
+          console.log('modifyPlan response:', response);
+
+          // Update plan with modified version (stay in planning phase)
+          set({
+            topic: response.data.topic,
+            chatTitle: response.data.chatTitle,
+            plan: Array.isArray(response.data.plan) ? response.data.plan : [],
+            phase: 'planning', // Stay in planning phase for re-approval
+            activeModuleId: null,
+            loading: false,
+            error: null
+          });
+          
+          // Reload session to get backend messages (including modification messages)
+          await get().resumeSessionFromServer(state.sessionId);
+          
+          return response;
+        } catch (error) {
+          console.error('Error modifying plan:', error);
+          set({ 
+            error: error.message, 
+            loading: false
+          });
+          throw error;
+        }
       },
 
       appendMessage: ({ role, content, ts, tokens }) => {
@@ -240,6 +347,14 @@ const useSessionStore = create(
 
       // API Actions (thunks)
       createSession: async (profile) => {
+        const state = get();
+        
+        // Prevent multiple simultaneous session creation calls
+        if (state.loading) {
+          console.log('Session creation already in progress, skipping...');
+          return;
+        }
+        
         console.log('Creating new session with profile:', profile);
         set({ loading: true, error: null });
         
@@ -249,20 +364,24 @@ const useSessionStore = create(
           
           if (response.success) {
             console.log('Setting new session data:', response.data);
+            
+            // IMPORTANT: Load the actual session state from backend, not assume 'pre'
+            const actualSession = response.data;
+            
             set({
-              sessionId: response.data.id,
-              profile: response.data.profile,
-              phase: 'pre',
-              mode: 'studying',
-              topic: '',
-              chatTitle: '',
-              plan: [],
-              activeModuleId: null,
-              points: 0,
-              gems: 0,
-              progressPct: 0,
-              isViewOnly: false,
-              messages: [], // Reset messages for new session
+              sessionId: actualSession.id,
+              profile: actualSession.profile,
+              phase: actualSession.phase || 'pre',  // Use actual phase from backend
+              mode: actualSession.mode || 'studying',
+              topic: actualSession.topic || '',
+              chatTitle: actualSession.chatTitle || '',
+              plan: Array.isArray(actualSession.plan) ? actualSession.plan : [],
+              activeModuleId: actualSession.activeModuleId || null,
+              points: actualSession.points || 0,
+              gems: actualSession.gems || 0,
+              progressPct: actualSession.progressPct || 0,
+              isViewOnly: actualSession.isViewOnly || false,
+              messages: Array.isArray(actualSession.messages) ? actualSession.messages : [],
               model: 'llama',
               meta: {
                 countSinceLastCheck: 0,
@@ -271,8 +390,8 @@ const useSessionStore = create(
               quizDraft: null,
               loading: false
             });
-            console.log('New session created with ID:', response.data.id);
-            return response.data;
+            console.log('New session created with ID:', actualSession.id, 'phase:', actualSession.phase);
+            return actualSession;
           } else {
             throw new Error(response.error || 'Failed to create session');
           }
@@ -288,16 +407,13 @@ const useSessionStore = create(
 
       startAssessment: async (userMessage, mode = 'studying') => {
         const state = get();
+        console.log('startAssessment called', { userMessage, mode, currentPhase: state.phase, sessionId: state.sessionId });
         if (!state.sessionId) {
           throw new Error('No active session');
         }
 
-        // Add user message immediately
-        get().appendMessage({
-          role: 'user',
-          content: userMessage,
-          ts: new Date().toISOString()
-        });
+        // DON'T add user message here - backend will add it to avoid duplicates
+        // The backend already added it when shouldTriggerAssessment was true
 
         set({ 
           phase: 'assessing', 
@@ -307,52 +423,42 @@ const useSessionStore = create(
         });
 
         try {
+          console.log('Calling assessmentApi.assess with:', { sessionId: state.sessionId, userMessage, mode });
           const response = await assessmentApi.assess({
             sessionId: state.sessionId,
             userMessage,
             mode,
             profile: state.profile
           });
+          console.log('assessmentApi.assess response:', response);
 
-          if (response.clarify) {
-            // Add assistant message with clarification questions
-            const questionsText = response.questions.join('\n');
-            get().appendMessage({
-              role: 'assistant',
-              content: `I'd like to clarify a few things:\n\n${questionsText}`,
-              ts: new Date().toISOString()
-            });
+          // Always expect a plan (no clarification questions anymore)
+          if (response.data?.plan) {
+            // Backend already added the assistant plan announcement message
+            // Apply the plan data but stay in planning phase (not learning)
             
-            // Handle clarifying questions
+            // Update plan data but keep phase as 'planning' for approval
             set({
-              meta: {
-                ...state.meta,
-                assessClarifyCount: (state.meta.assessClarifyCount || 0) + 1
-              }
-            });
-            // Stay in assessing phase, return questions for UI
-            set({ loading: false });
-            return response;
-          } else if (response.data?.plan) {
-            // Add assistant message announcing the plan
-            get().appendMessage({
-              role: 'assistant',
-              content: `Great! I've created a learning plan for you. Let's start learning!`,
-              ts: new Date().toISOString()
-            });
-            
-            // Apply assessment results
-            get().applyAssessment({
               topic: response.data.topic,
               chatTitle: response.data.chatTitle,
-              plan: response.data.plan
+              plan: Array.isArray(response.data.plan) ? response.data.plan : [],
+              phase: 'planning', // Stay in planning phase until approved
+              activeModuleId: null, // No active module until approved
+              loading: false,
+              error: null,
+              meta: {
+                ...state.meta,
+                assessClarifyCount: 0
+              }
             });
-            set({ loading: false });
+            
+            // Reload session to get backend messages
+            await get().resumeSessionFromServer(state.sessionId);
+            
             return response;
+          } else {
+            throw new Error('Unexpected assessment response - expected plan');
           }
-
-          set({ loading: false });
-          return response;
         } catch (error) {
           // Handle 409 errors by resuming session
           if (error.message.includes('409') || error.message.includes('Illegal phase')) {
@@ -423,10 +529,18 @@ const useSessionStore = create(
         const state = get();
         console.log('sendChatMessage called with:', userMessage);
         console.log('Current sessionId:', state.sessionId);
+        console.log('Current phase:', state.phase);
         console.log('Current messages count:', state.messages.length);
         
         if (!state.sessionId) {
           throw new Error('No active session');
+        }
+
+        // If in assessing phase, don't try to send to chat - assessment is already being handled
+        if (state.phase === 'assessing') {
+          console.log('Session is already in assessing phase, waiting for assessment to complete');
+          set({ loading: false });
+          return;
         }
 
         // Add user message immediately
@@ -449,7 +563,22 @@ const useSessionStore = create(
           
           console.log('Backend response:', response);
 
-              // Add assistant response
+              // Check if we should trigger assessment
+              if (response.data?.shouldTriggerAssessment) {
+                console.log('shouldTriggerAssessment detected, starting assessment with:', response.data.originalMessage);
+                
+                // Update phase immediately if backend set it
+                if (response.data.phase && response.data.phase !== state.phase) {
+                  set({ phase: response.data.phase });
+                }
+                
+                // Automatically start assessment (don't add intermediate message - let assessment API handle messages)
+                const assessmentMessage = response.data.originalMessage || userMessage;
+                await get().startAssessment(assessmentMessage, state.mode);
+                return response;
+              }
+
+              // Add assistant response for normal chat
               get().appendMessage({
                 role: 'assistant',
                 content: response.data.message,
@@ -468,6 +597,37 @@ const useSessionStore = create(
               if (response.data?.phase && response.data.phase !== state.phase) {
                 console.log('Phase changed from', state.phase, 'to', response.data.phase);
                 set({ phase: response.data.phase });
+              }
+              
+              // Update plan and progress from backend response (for milestone completion sync)
+              if (response.data?.plan) {
+                console.log('Updating plan from backend response', response.data.plan);
+                set({ plan: response.data.plan });
+              }
+              
+              if (response.data?.activeModuleId !== undefined) {
+                set({ activeModuleId: response.data.activeModuleId });
+              }
+              
+              if (response.data?.progressPct !== undefined) {
+                set({ progressPct: response.data.progressPct });
+              }
+              
+              if (response.data?.points !== undefined) {
+                set({ points: response.data.points });
+              }
+              
+              // Update milestone completion status
+              if (response.data?.milestoneCompleted) {
+                console.log('Milestone completed, syncing state', {
+                  currentMilestoneIndex: response.data.currentMilestoneIndex,
+                  totalMilestones: response.data.totalMilestones
+                });
+                // The plan update above should handle milestone completion
+                // Force a refresh to ensure UI updates
+                if (state.sessionId) {
+                  await get().resumeSessionFromServer(state.sessionId);
+                }
               }
 
               // Only update points/gems for learning intent
@@ -493,6 +653,25 @@ const useSessionStore = create(
           return response;
         } catch (error) {
           console.error('Error in sendChatMessage:', error);
+          
+          // Handle 409 ILLEGAL_PHASE - session state mismatch
+          if (error.message.includes('409') || error.message.includes('ILLEGAL_PHASE') || error.message.includes('Please complete assessment first')) {
+            console.log('Session phase mismatch detected, resuming from server...');
+            try {
+              await get().resumeSessionFromServer(state.sessionId);
+              console.log('Session resumed successfully, retrying message...');
+              // Retry the message after resuming
+              return await get().sendChatMessage(userMessage);
+            } catch (resumeError) {
+              console.error('Failed to resume session:', resumeError);
+              set({ 
+                error: 'Session state error. Please refresh the page.', 
+                loading: false 
+              });
+              throw new Error('Session state error. Please refresh the page.');
+            }
+          }
+          
           set({ 
             error: error.message, 
             loading: false 

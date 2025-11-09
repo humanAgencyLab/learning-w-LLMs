@@ -16,12 +16,77 @@ export async function assess({ sessionId, userMessage, mode, profile }) {
 
   if (!response.ok) {
     const errorData = await response.json();
-    throw new Error(errorData.error || 'Assessment failed');
+    
+    // Check for rate limit
+    if (response.status === 503 && errorData.code === 'RATE_LIMIT_EXCEEDED') {
+      throw new Error('API rate limit exceeded. Please try again in a few minutes.');
+    }
+    
+    throw new Error(errorData.error || errorData.message || 'Assessment failed');
   }
 
   return response.json();
 }
 
+export async function approvePlan({ sessionId }) {
+  const response = await fetch(`${API_BASE}/v1/assessment/approve`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sessionId
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    
+    // Check for rate limit
+    if (response.status === 503 && errorData.code === 'RATE_LIMIT_EXCEEDED') {
+      throw new Error('API rate limit exceeded. Please try again in a few minutes.');
+    }
+    
+    throw new Error(errorData.error || errorData.message || 'Failed to approve plan');
+  }
+
+  return response.json();
+}
+
+export async function modifyPlan({ sessionId, modificationRequest }) {
+  const response = await fetch(`${API_BASE}/v1/assessment/modify`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sessionId,
+      modificationRequest
+    }),
+  });
+
+  if (!response.ok) {
+    let errorData;
+    try {
+      errorData = await response.json();
+    } catch (parseError) {
+      // If JSON parsing fails, read as text
+      const textError = await response.text();
+      throw new Error(textError || 'Failed to modify plan');
+    }
+    
+    // Check for rate limit
+    if (response.status === 503 && errorData.code === 'RATE_LIMIT_EXCEEDED') {
+      throw new Error('API rate limit exceeded. Please try again in a few minutes.');
+    }
+    
+    throw new Error(errorData.error || errorData.message || 'Failed to modify plan');
+  }
+
+  return response.json();
+}
+
+// Legacy method for backward compatibility (no longer used but kept for reference)
 export async function answerClarify(sessionId, answers) {
   const response = await fetch(`${API_BASE}/v1/assessment`, {
     method: 'POST',
@@ -37,7 +102,13 @@ export async function answerClarify(sessionId, answers) {
 
   if (!response.ok) {
     const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to answer clarification');
+    
+    // Check for rate limit
+    if (response.status === 503 && errorData.code === 'RATE_LIMIT_EXCEEDED') {
+      throw new Error('API rate limit exceeded. Please try again in a few minutes.');
+    }
+    
+    throw new Error(errorData.error || errorData.message || 'Failed to answer clarification');
   }
 
   return response.json();

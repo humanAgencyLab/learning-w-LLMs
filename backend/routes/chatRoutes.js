@@ -6,90 +6,22 @@ const { chatRequestSchema } = require('../validation/chatValidation');
 const { validateInput } = require('../middleware/validationHardening');
 const { contextControl } = require('../middleware/contextControl');
 const { ERROR_RESPONSES } = require('../middleware/validationHardening');
-const { classifyIntent } = require('../utils/intentClassifier');
 const { buildTeacherPrompt } = require('../prompts/teacher_prompt');
-const { handleNeutralMessage } = require('../prompts/neutral_prompt');
 const { getGroqClient } = require('../lib/llmClient');
-// const logger = require('../utils/logger'); // Not used
-
-// Teacher prompt now imported from teacher_prompt.js module
-
-// Check if user wants to start a quiz
-const hasQuizIntent = (message) => {
-  const quizKeywords = [
-    'quiz me', 'start test', 'short check', 'test me', 'quiz', 'assessment',
-    'check my knowledge', 'test my understanding', 'give me a quiz'
-  ];
-  
-  const lowerMessage = message.toLowerCase();
-  return quizKeywords.some(keyword => lowerMessage.includes(keyword));
-};
-
-// Neutral message handling now imported from neutral_prompt.js module
-
-// Check if user wants to continue from feedback phase
-const hasContinueIntent = (message) => {
-  const continueKeywords = [
-    'continue', 'keep going', 'next', 'proceed', 'let\'s continue',
-    'move on', 'go ahead', 'yes', 'sure'
-  ];
-  
-  const lowerMessage = message.toLowerCase();
-  return continueKeywords.some(keyword => lowerMessage.includes(keyword));
-};
+const { buildIntentAnalysisPrompt } = require('../prompts/intent_analyzer');
+const { buildAssessmentAnalysisPrompt } = require('../prompts/assessment_analyzer');
+const { buildConversationDecisionPrompt } = require('../prompts/conversation_manager');
+const { updateContextSummary } = require('../prompts/context_summarizer');
+const { updateProgress } = require('../services/progressService');
+const { callTeacherAPI } = require('../services/teacherService');
 
 // Extract question from assistant response
 const extractQuestion = (response) => {
-  // Simple regex to find any question mark followed by optional text
   const questionMatch = response.match(/([^.!?]*\?[^.!?]*)/);
   if (questionMatch) {
     return questionMatch[1].trim();
   }
-  
   return null;
-};
-
-// Call Groq API for teacher response
-const callTeacherAPI = async (prompt, maxTokens = 1100, session = null) => {
-  try {
-    const groqClient = getGroqClient();
-    
-    // Build messages array with conversation history
-    const messages = [
-      {
-        role: 'system',
-        content: 'You are an expert programming tutor. Provide clear, helpful explanations with specific questions. Be encouraging and concise.'
-      }
-    ];
-    
-    // Add conversation history if session has messages
-    if (session.messages && session.messages.length > 0) {
-      // Convert session messages to LLM format
-      const conversationHistory = session.messages.map(msg => ({
-        role: msg.role,
-        content: msg.content
-      }));
-      messages.push(...conversationHistory);
-    } else {
-      // No conversation history - use the prompt as user message
-      messages.push({
-        role: 'user',
-        content: prompt
-      });
-    }
-    
-    const response = await groqClient.chat.completions.create({
-      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-      messages: messages,
-      temperature: 0.7,
-      top_p: 0.9,
-      max_tokens: maxTokens
-    });
-
-    return response.choices[0].message.content;
-  } catch (error) {
-    throw new Error(`GROQ_API_ERROR: ${error.message}`);
-  }
 };
 
 // POST /v1/chat - Teacher chat endpoint
@@ -133,34 +65,238 @@ router.post('/v1/chat', async (req, res) => {
       topic: session.topic 
     });
     
-    // Enforce session boundaries - reject if in pre/assessing phase or plan is empty
-    if (['pre', 'assessing'].includes(session.phase) || !session.plan || session.plan.length === 0) {
-      console.log('Session not ready for chat', { sessionId, phase: session.phase, hasPlan: !!session.plan });
+    // Handle 'pre' phase - LLM analyzes intent and decides action
+        if (session.phase === 'pre') {
+        // If we've already entered quizzing or the user explicitly asks to start the quiz
+        const wantsQuiz = typeof userMessage === 'string' && /start\s+quiz/i.test(userMessage);
+        if ((session.phase === 'quizzing' || session.phase === 'quiz') && (wantsQuiz || !session.meta?.milestoneBeingTaught)) {
+          const userMessageObj = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: userMessage,
+            timestamp: new Date(),
+            metadata: { type: 'chat', tokensIn: userMessage.length, intent: 'requesting_quiz', phaseAtSend: session.phase }
+          };
+
+          session.messages.push(userMessageObj);
+          session.meta.milestoneBeingTaught = false;
+          session.meta.outstandingCheck = null;
+          session.meta.countSinceLastCheck = 0;
+          session.phase = 'quizzing';
+          await session.save();
+
+          return res.json({
+            success: true,
+            data: {
+              message: "Great! Let's test your understanding of this module.",
+              nextAction: 'START_QUIZ',
+              moduleId: session.activeModuleId,
+              tokensIn: userMessage.length,
+              tokensOut: 0,
+              hadCheckInReply: false,
+              followedUpOutstanding: false
+            }
+          });
+        }
+
+      console.log('Handling pre-phase chat with LLM intent analysis', { sessionId, userMessage });
+      
+      const groqClient = getGroqClient();
+      
+      // Build LLM prompt for intent analysis - include outstanding question context
+      const intentPrompt = buildIntentAnalysisPrompt(userMessage, {
+        phase: session.phase,
+        messages: session.messages,
+        profile: session.profile,
+        meta: session.meta // Include meta to pass outstanding question
+      });
+      
+      try {
+        // Call LLM to analyze intent and decide action
+        const intentResponse = await groqClient.chat.completions.create({
+      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an intelligent learning assistant. Analyze user messages and return ONLY valid JSON matching the required schema. No markdown, no code fences, no explanations outside the JSON.'
+            },
+            {
+              role: 'user',
+              content: intentPrompt
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 300,
+          response_format: { type: "json_object" }
+        });
+
+        let intentAnalysis;
+        try {
+          const responseText = intentResponse.choices[0].message.content.trim();
+          intentAnalysis = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('Failed to parse LLM intent analysis:', parseError);
+          // Fallback: treat as learning intent if message contains common topics
+          const lowerMsg = userMessage.toLowerCase();
+          const hasCommonTopic = ['piano', 'guitar', 'python', 'javascript', 'data', 'structure', 'algorithm', 'react', 'piano', 'music'].some(topic => lowerMsg.includes(topic));
+          intentAnalysis = {
+            intent: hasCommonTopic ? 'learning' : 'general',
+            action: hasCommonTopic ? 'trigger_assessment' : 'respond_naturally',
+            topic: hasCommonTopic ? userMessage : '',
+            confidence: 'low',
+            isFollowUpToOutstanding: false, // Default to false in fallback
+            response: hasCommonTopic ? '' : "Hi! I'm here to help you learn. What would you like to learn about today?"
+          };
+        }
+
+        console.log('LLM Intent Analysis:', intentAnalysis);
+
+        // Handle based on LLM's decision
+        if (intentAnalysis.intent === 'learning' && intentAnalysis.action === 'trigger_assessment') {
+          console.log('LLM detected learning intent, triggering assessment', { topic: intentAnalysis.topic });
+          
+          // Add user message to session
+          const userMsg = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: userMessage,
+            timestamp: new Date(),
+            metadata: { intent: 'learning', phaseAtSend: 'pre', llmAnalyzed: true }
+          };
+          session.messages.push(userMsg);
+          
+          // Update phase and save
+          session.phase = 'assessing';
+          await session.save();
+          
+          // Return signal to frontend to call assessment
+          return res.json({
+            success: true,
+            data: {
+              message: "I'll create a personalized learning plan for you right away!",
+              intent: 'triggers_assessment',
+              phase: 'assessing',
+              shouldTriggerAssessment: true,
+              originalMessage: intentAnalysis.topic || userMessage // Use LLM-extracted topic if available
+            }
+          });
+        }
+        
+        // Handle other intents (greeting, general, unclear)
+        let assistantMessage = intentAnalysis.response || '';
+        
+        // If LLM didn't provide a response, generate one based on intent
+        if (!assistantMessage || assistantMessage.trim() === '') {
+          if (intentAnalysis.intent === 'greeting') {
+            assistantMessage = "Hello! I'm here to help you learn. What would you like to learn about today?";
+          } else if (intentAnalysis.intent === 'general') {
+            assistantMessage = "I'm an AI learning assistant. I can help you create personalized learning plans and guide you through your studies. What would you like to learn?";
+          } else if (intentAnalysis.intent === 'unclear') {
+            assistantMessage = "I'd be happy to help you learn! Could you tell me what topic or subject you're interested in?";
+          } else {
+            assistantMessage = "Hi! I'm here to help you learn. What would you like to learn about today?";
+          }
+        }
+
+        // Add messages to session
+        const userMsg = {
+          id: `msg_${Date.now()}`,
+          role: 'user',
+          content: userMessage,
+          timestamp: new Date(),
+          metadata: { intent: intentAnalysis.intent, phaseAtSend: 'pre', llmAnalyzed: true }
+        };
+        
+        const assistantMsg = {
+          id: `msg_${Date.now() + 1}`,
+          role: 'assistant',
+          content: assistantMessage,
+          timestamp: new Date(),
+          metadata: { intent: intentAnalysis.action, phaseAtSend: 'pre', llmAnalyzed: true }
+        };
+
+        session.messages.push(userMsg, assistantMsg);
+        await session.save();
+
+        return res.json({
+          success: true,
+          data: {
+            message: assistantMessage,
+            intent: intentAnalysis.action,
+            phase: 'pre'
+          }
+        });
+
+      } catch (error) {
+        console.error('Pre-phase LLM intent analysis error:', error);
+        
+        // Check for rate limit
+        if (error.status === 429 || error.message?.includes('rate_limit')) {
+          return res.status(503).json({
+            success: false,
+            code: 'RATE_LIMIT_EXCEEDED',
+            message: 'API rate limit exceeded. Please try again in a few minutes.',
+            retryAfter: 60
+          });
+        }
+        
+        // Fallback: treat as learning intent if message seems like a topic
+        const lowerMsg = userMessage.toLowerCase();
+        const mightBeLearning = lowerMsg.length < 50 && 
+          !lowerMsg.includes('?') && 
+          !['hello', 'hi', 'hey', 'what', 'how', 'why'].some(word => lowerMsg.includes(word));
+        
+        if (mightBeLearning) {
+          console.log('Fallback: treating as learning intent due to LLM error');
+          
+          const userMsg = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: userMessage,
+            timestamp: new Date(),
+            metadata: { intent: 'learning', phaseAtSend: 'pre', llmFallback: true }
+          };
+          session.messages.push(userMsg);
+          session.phase = 'assessing';
+          await session.save();
+          
+          return res.json({
+            success: true,
+            data: {
+              message: "I'll create a personalized learning plan for you right away!",
+              intent: 'triggers_assessment',
+              phase: 'assessing',
+              shouldTriggerAssessment: true,
+              originalMessage: userMessage
+            }
+          });
+        }
+        
+        // Fallback response for other errors
+        return res.json({
+          success: true,
+          data: {
+            message: "Hi! I'm here to help you learn. What would you like to learn about today?",
+            intent: 'pre_response',
+            phase: 'pre'
+          }
+        });
+      }
+    }
+
+    // Reject 'assessing' phase - use assessment endpoint for that
+    if (session.phase === 'assessing') {
+      console.log('Session in assessing phase, redirect to assessment', { sessionId });
       return res.status(409).json({
         success: false,
-        error: 'Session not ready for chat',
+        error: 'Please complete assessment first',
         code: 'ILLEGAL_PHASE',
-        currentPhase: session.phase,
-        hint: 'Please complete assessment first to create a learning plan'
+        currentPhase: 'assessing',
+        hint: 'Use the assessment endpoint to answer clarification questions'
       });
     }
     
-    // Classify message intent
-    const intent = classifyIntent(userMessage, session.phase);
-    console.log('Message intent classified:', { intent, phase: session.phase, messagePreview: userMessage.substring(0, 50) });
-    
-    // Phase guard - validate phase is allowed for chat
-    if (!['learning', 'feedback'].includes(session.phase)) {
-      return res.status(409).json({
-        success: false,
-        error: 'Chat not allowed in current phase',
-        code: 'ILLEGAL_PHASE',
-        currentPhase: session.phase,
-        allowedPhases: ['learning', 'feedback']
-      });
-    }
-    
-    // Check if session is view-only
+    // Check if session is view-only (only hardcoded check we keep)
     if (session.isViewOnly) {
       return res.status(409).json({
         success: false,
@@ -169,312 +305,731 @@ router.post('/v1/chat', async (req, res) => {
       });
     }
     
-    // Check if activeModuleId is null (only required for learning phase)
-    if (session.phase !== 'pre' && !session.activeModuleId) {
-      console.warn('No active module for chat', { sessionId });
-      return res.status(409).json({
-        success: false,
-        error: 'No active module. Please re-run assessment to set up learning plan.',
-        code: 'ILLEGAL_PHASE'
-      });
-    }
-    
-    // Handle feedback phase continue intent
-    let phaseChanged = false;
-    if (session.phase === 'feedback' && hasContinueIntent(userMessage)) {
-      session.phase = 'learning';
-      phaseChanged = true;
-      await session.save();
-      console.log('Phase changed from feedback to learning', { sessionId });
-    }
-    
-    // Check for quiz intent (highest priority after phase guards)
-    const wantsQuiz = hasQuizIntent(userMessage);
-    if (wantsQuiz) {
-      console.log('Quiz intent detected', { sessionId, activeModuleId: session.activeModuleId });
-      
-      // Add user message
-      const userMessageObj = {
-        id: `msg_${Date.now()}`,
-        role: 'user',
-        content: userMessage,
-        timestamp: new Date(),
-        metadata: { type: 'chat', tokensIn: userMessage.length, intent: 'learning', phaseAtSend: session.phase }
-      };
-      
-      session.messages.push(userMessageObj);
-      await session.save();
-      
-      return res.json({
-        success: true,
-        data: {
-          message: "Great! Let's test your understanding of this module.",
-          nextAction: "START_QUIZ",
-          moduleId: session.activeModuleId,
-          tokensIn: userMessage.length,
-          tokensOut: 0,
-          hadCheckInReply: false,
-          followedUpOutstanding: false
-        }
-      });
-    }
-    
-    // Handle non-learning intents
-    if (intent === 'admin') {
-      const neutralResponse = handleNeutralMessage(session, userMessage, intent, session.phase);
-      
-      // Add user message with intent tracking
-      const userMessageObj = {
-        id: `msg_${Date.now()}`,
-        role: 'user',
-        content: userMessage,
-        timestamp: new Date(),
-        metadata: { 
-          type: 'chat', 
-          tokensIn: userMessage.length,
-          intent: 'admin',
-          phaseAtSend: session.phase
-        }
-      };
-      
-      // Add assistant message
-      const assistantMessage = {
-        id: `msg_${Date.now() + 1}`,
-        role: 'assistant',
-        content: neutralResponse.message,
-        timestamp: new Date(),
-        metadata: { 
-          type: 'chat', 
-          tokensOut: neutralResponse.message.length,
-          intent: 'admin',
-          phaseAtSend: session.phase,
-          hadCheckInReply: false,
-          followedUpOutstanding: false
-        }
-      };
-      
-      session.messages.push(userMessageObj, assistantMessage);
-      await session.save();
-      
-      return res.json({
-        success: true,
-        data: {
-          message: neutralResponse.message,
-          tokensIn: Math.ceil(userMessage.length / 4),
-          tokensOut: Math.ceil(neutralResponse.message.length / 4),
-          hadCheckInReply: false,
-          followedUpOutstanding: false,
-          phase: session.phase,
-          intent: 'admin'
-        }
-      });
-    }
-    
-    if (intent === 'general') {
-      const neutralResponse = handleNeutralMessage(session, userMessage, intent, session.phase);
-      
-      // Check if there's an outstanding check
-      if (session.meta.outstandingCheck && intent === 'general') {
-        // Don't force the check for general messages
-        // Keep it parked
-      } else {
-        // Normal general message handling
+    // For learning/feedback phases: Use LLM conversation manager to decide everything
+    if (['learning', 'feedback'].includes(session.phase)) {
+      // Initialize meta if not exists
+      if (!session.meta) {
+        session.meta = {};
       }
       
-      // Add user message with intent tracking
-      const userMessageObj = {
-        id: `msg_${Date.now()}`,
-        role: 'user',
-        content: userMessage,
-        timestamp: new Date(),
-        metadata: { 
-          type: 'chat', 
-          tokensIn: userMessage.length,
-          intent: 'general',
-          phaseAtSend: session.phase
-        }
-      };
-      
-      // Add assistant message
-      const assistantMessage = {
-        id: `msg_${Date.now() + 1}`,
-        role: 'assistant',
-        content: neutralResponse.message,
-        timestamp: new Date(),
-        metadata: { 
-          type: 'chat', 
-          tokensOut: neutralResponse.message.length,
-          intent: 'general',
-          phaseAtSend: session.phase,
-          hadCheckInReply: false,
-          followedUpOutstanding: false
-        }
-      };
-      
-      session.messages.push(userMessageObj, assistantMessage);
-      await session.save();
-      
-      return res.json({
-        success: true,
-        data: {
-          message: neutralResponse.message,
-          tokensIn: Math.ceil(userMessage.length / 4),
-          tokensOut: Math.ceil(neutralResponse.message.length / 4),
-          hadCheckInReply: false,
-          followedUpOutstanding: false,
-          phase: session.phase,
-          intent: 'general'
-        }
-      });
-    }
-    
-    // Only learning intent gets teacher prompt below
-    if (intent !== 'learning') {
-      // This shouldn't happen after the above checks, but safety fallback
-      return res.json({
-        success: true,
-        data: {
-          message: "I'm here to help you learn. What would you like to know?",
-          tokensIn: Math.ceil(userMessage.length / 4),
-          tokensOut: 30,
-          hadCheckInReply: false,
-          followedUpOutstanding: false,
-          phase: session.phase,
-          intent: 'general'
-        }
-      });
-    }
-    
-    // Learning intent: use teacher prompt
-    // Only proceed with teacher prompt for learning intent and learning/feedback phases
-    if (!['learning', 'feedback'].includes(session.phase)) {
-      // For pre phase with learning intent, wait for assessment
-      return res.status(409).json({
-        success: false,
-        error: 'Learning phase not started. Please complete assessment first.',
-        code: 'ILLEGAL_PHASE',
-        currentPhase: session.phase
-      });
-    }
-    
-    // Determine if this is a follow-up to outstanding check
-    const isFollowUp = session.meta.outstandingCheck && !wantsQuiz;
-    
-    // Build teacher prompt (for learning intent only)
-    const prompt = buildTeacherPrompt(session, userMessage, isFollowUp);
-    
-    // Call teacher API - let errors propagate to error handler
-    const assistantResponse = await callTeacherAPI(prompt, req.maxTokens || 1100, session);
-    
-    // Extract question from response
-    const extractedQuestion = extractQuestion(assistantResponse);
-    const hadCheckInReply = !!extractedQuestion;
-    
-    // Debug logging
-    console.log('Question extraction debug', {
-      sessionId,
-      response: assistantResponse,
-      extractedQuestion,
-      hadCheckInReply
-    });
-    
-    // Update cadence tracking
-    let followedUpOutstanding = false;
-    
-    if (isFollowUp) {
-      // User answered the outstanding question
-      session.meta.outstandingCheck = null;
-      session.meta.countSinceLastCheck = 0;
-      followedUpOutstanding = true;
-      console.log('Outstanding question answered', { sessionId });
-      
-      // If assistant asked a new question, set it as outstanding
-      if (hadCheckInReply) {
-        session.meta.outstandingCheck = extractedQuestion;
-        console.log('New question asked after follow-up', { sessionId, question: extractedQuestion });
+      // Initialize milestone tracking if not exists
+      if (!session.meta.currentMilestoneIndex && session.activeModuleId) {
+        session.meta.currentMilestoneIndex = 0;
       }
-    } else if (hadCheckInReply) {
-      // Assistant asked a new question
-      session.meta.outstandingCheck = extractedQuestion;
-      session.meta.countSinceLastCheck = 0;
-      console.log('New question asked', { sessionId, question: extractedQuestion });
-    } else {
-      // No question in this response, increment counter
-      session.meta.countSinceLastCheck += 1;
-      console.log('No question in response', { sessionId, countSinceLastCheck: session.meta.countSinceLastCheck });
-    }
-    
-    // Add user message with intent and phase tracking
-    const userMessageObj = {
-      id: `msg_${Date.now()}`,
-      role: 'user',
-      content: userMessage,
-      timestamp: new Date(),
-      metadata: { 
-        type: 'chat', 
-        tokensIn: userMessage.length,
-        intent: intent,
-        phaseAtSend: session.phase
-      }
-    };
-    
-    // Add assistant message with intent and phase tracking
-    const assistantMessage = {
-      id: `msg_${Date.now() + 1}`,
-      role: 'assistant',
-      content: assistantResponse,
-      timestamp: new Date(),
-      metadata: { 
-        type: 'chat', 
-        tokensOut: assistantResponse.length,
-        intent: intent,
-        phaseAtSend: session.phase,
-        hadCheckInReply,
-        followedUpOutstanding,
-        phaseChanged
-      }
-    };
-    
-    session.messages.push(userMessageObj, assistantMessage);
-    await session.save();
-    
-    // Calculate tokens (rough estimation)
-    const tokensIn = Math.ceil(userMessage.length / 4);
-    const tokensOut = Math.ceil(assistantResponse.length / 4);
-    
-    console.log('Chat response generated', {
-      sessionId,
-      activeModuleId: session.activeModuleId,
-      hadCheckInReply,
-      followedUpOutstanding,
-      tokensIn,
-      tokensOut,
-      latencyMs: Date.now() - startTime,
-      phaseChanged
-    });
-    
-    // Prepare response data
-    const responseData = {
-      message: assistantResponse,
-      tokensIn,
-      tokensOut,
-      hadCheckInReply,
-      followedUpOutstanding,
-      phase: session.phase // Include current phase
-    };
+      
+      // Capture state at turn start for safety checks later
+      const hadOutstandingQuestionAtTurnStart = !!session.meta?.outstandingCheck;
+      const wasMilestoneInProgressAtTurnStart = !!session.meta?.milestoneBeingTaught;
+      
+      // Use LLM to analyze the full context and decide what to do
+      const groqClient = getGroqClient();
+      const decisionPrompt = buildConversationDecisionPrompt(session, userMessage);
+      
+      try {
+        const decisionResponse = await groqClient.chat.completions.create({
+          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an intelligent learning assistant. Analyze the conversation and return ONLY valid JSON matching the required schema. No markdown, no code fences, no explanations outside the JSON.'
+            },
+            {
+              role: 'user',
+              content: decisionPrompt
+            }
+          ],
+          temperature: 0.3,
+          top_p: 0.9,
+          max_tokens: 600,
+          response_format: { type: "json_object" }
+        });
+        
+        let llmDecision;
+        try {
+          const responseText = decisionResponse.choices[0].message.content.trim();
+          // Extract JSON if wrapped in markdown
+          let jsonText = responseText;
+          const jsonMatch = jsonText.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+          if (jsonMatch) {
+            jsonText = jsonMatch[1];
+          } else {
+            const braceMatch = jsonText.match(/\{[\s\S]*\}/);
+            if (braceMatch) {
+              jsonText = braceMatch[0];
+            }
+          }
+          llmDecision = JSON.parse(jsonText);
+        } catch (parseError) {
+          console.error('Failed to parse LLM decision JSON:', parseError);
+          // Fallback: use teacher prompt for learning
+          llmDecision = {
+            intent: 'learning',
+            action: 'teach',
+            response: 'I apologize, but I encountered an issue processing your message. Please try again.',
+            shouldAskQuestion: false,
+            markMilestoneComplete: false,
+            moveToNextMilestone: false,
+            shouldStartQuiz: false,
+            phaseChange: null
+          };
+        }
+        
+        console.log('LLM Conversation Decision:', {
+          action: llmDecision.action,
+          intent: llmDecision.intent,
+          shouldAskQuestion: llmDecision.shouldAskQuestion,
+          isFollowUpToOutstanding: llmDecision.isFollowUpToOutstanding,
+          responseLength: llmDecision.response?.length || 0
+        });
 
-    // Add context summary if available
-    if (req.contextSummary) {
-      responseData.summarized = req.contextSummary.summarized;
-      responseData.summaryNote = req.contextSummary.summaryNote;
-    }
+        const hasOutstandingQuestion = !!session.meta?.outstandingCheck;
+        const isMilestoneInProgress = !!session.meta?.milestoneBeingTaught;
+        const shouldForceFollowUp =
+          userMessage?.trim().length &&
+          (hasOutstandingQuestion || isMilestoneInProgress || hadOutstandingQuestionAtTurnStart || wasMilestoneInProgressAtTurnStart);
+        
+        if (shouldForceFollowUp || ['teach', 'respond_naturally', 'provide_guidance'].includes(llmDecision.action)) {
+          if (!llmDecision.isFollowUpToOutstanding) {
+            console.warn('Forcing milestone follow-up handling', {
+              sessionId,
+              userMessagePreview: userMessage.substring(0, 200),
+              previousDecision: {
+                intent: llmDecision.intent,
+                action: llmDecision.action,
+                hasOutstandingQuestion,
+                isMilestoneInProgress,
+                hadOutstandingQuestionAtTurnStart,
+                wasMilestoneInProgressAtTurnStart
+              }
+            });
+            llmDecision.isFollowUpToOutstanding = true;
+          }
+          
+          if (llmDecision.intent === 'learning' || llmDecision.intent === 'asking_for_help' || llmDecision.intent === 'general') {
+            llmDecision.intent = 'answering_question';
+          }
+          
+          if (!['assess', 'clarify'].includes(llmDecision.action)) {
+            llmDecision.action = hasOutstandingQuestion ? 'assess' : 'clarify';
+          }
+          
+          llmDecision.shouldAskQuestion = false;
+          llmDecision.questionToAsk = llmDecision.action === 'clarify' ? '' : llmDecision.questionToAsk || '';
+        }
+        
+        // Handle quiz start request
+        if (llmDecision.shouldStartQuiz || llmDecision.action === 'start_quiz') {
+          const userMessageObj = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: userMessage,
+            timestamp: new Date(),
+            metadata: { type: 'chat', tokensIn: userMessage.length, intent: llmDecision.intent, phaseAtSend: session.phase }
+          };
+          
+          session.messages.push(userMessageObj);
+          await session.save();
+          
+          return res.json({
+            success: true,
+            data: {
+              message: llmDecision.response || "Great! Let's test your understanding of this module.",
+              nextAction: "START_QUIZ",
+              moduleId: session.activeModuleId,
+              tokensIn: userMessage.length,
+              tokensOut: 0,
+              hadCheckInReply: false,
+              followedUpOutstanding: false
+            }
+          });
+        }
+        
+        // Handle phase change
+        if (llmDecision.phaseChange && llmDecision.phaseChange !== session.phase) {
+          session.phase = llmDecision.phaseChange;
+          console.log('Phase changed by LLM', { sessionId, from: session.phase, to: llmDecision.phaseChange });
+        }
+        
+        // Get active module and current milestone info (needed for assessment analysis)
+        const activeModule = session.plan.find(m => m.id === session.activeModuleId);
+        let moduleJustCompleted = false;
+        
+        // CRITICAL: Ensure activeModuleId is set after plan approval
+        // If plan is approved but activeModuleId is not set, use first module
+        if (session.planApproved && !session.activeModuleId && session.plan && session.plan.length > 0) {
+          session.activeModuleId = session.plan[0].id;
+          session.meta.currentMilestoneIndex = 0;
+          session.meta.milestoneBeingTaught = false;
+          console.log('Set activeModuleId to first module after plan approval', { 
+            sessionId, 
+            activeModuleId: session.activeModuleId,
+            moduleTitle: session.plan[0].title 
+          });
+        }
+        
+        // CRITICAL: Ensure currentMilestoneIndex is valid and within bounds
+        const currentMilestoneIndex = session.meta.currentMilestoneIndex ?? 0;
+        const activeModuleForMilestone = session.plan.find(m => m.id === session.activeModuleId);
+        const totalMilestones = activeModuleForMilestone?.milestones?.length || 0;
+        
+        // Enforce milestone bounds - prevent invalid indices
+        const validMilestoneIndex = Math.max(0, Math.min(currentMilestoneIndex, totalMilestones - 1));
+        if (validMilestoneIndex !== currentMilestoneIndex) {
+          console.warn('Milestone index out of bounds, correcting', {
+            sessionId,
+            currentMilestoneIndex,
+            validMilestoneIndex,
+            totalMilestones
+          });
+          session.meta.currentMilestoneIndex = validMilestoneIndex;
+        }
+        
+        const currentMilestone = activeModuleForMilestone?.milestones?.[validMilestoneIndex];
+        
+        // CRITICAL: If no current milestone, we should be at index 0
+        if (!currentMilestone && totalMilestones > 0) {
+          session.meta.currentMilestoneIndex = 0;
+          console.log('No current milestone found, resetting to index 0', {
+            sessionId,
+            activeModuleId: session.activeModuleId,
+            totalMilestones
+          });
+        }
+        
+        // NOTE: Milestone completion handler moved to AFTER assessment analysis
+        // because assessment analysis sets markMilestoneComplete
+        
+        // CRITICAL: DO NOT move milestone here - wait until after assessment analysis confirms it
+        // The LLM decision might suggest moving, but we need to verify via assessment first
+        // Store the decision for later processing after assessment
+        
+        // Store previous outstanding check BEFORE assessment analysis (might clear it)
+        const previousOutstandingCheck = session.meta?.outstandingCheck || null;
+        
+        // Handle follow-up to outstanding question
+        // CRITICAL: Use the CURRENT milestone (before any progression) for assessment
+        if (llmDecision.isFollowUpToOutstanding && session.meta?.outstandingCheck) {
+          // Use assessment analysis for follow-ups
+          // CRITICAL: Use validMilestoneIndex (current milestone) for retry count, not the potentially incremented one
+          const milestoneRetryCount = session.meta?.milestoneRetryCount?.[validMilestoneIndex] || 0;
+          const assessmentPrompt = buildAssessmentAnalysisPrompt(
+            session.meta.outstandingCheck,
+            userMessage,
+            currentMilestone, // This is the milestone the question was about
+            milestoneRetryCount
+          );
+          
+          try {
+            const assessmentResponse = await groqClient.chat.completions.create({
+              model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+              messages: [
+                {
+                  role: 'system',
+                  content: 'You are an expert educational assessment AI. Return ONLY valid JSON matching the schema. No prose, no markdown blocks, no explanations outside the JSON.'
+                },
+                {
+                  role: 'user',
+                  content: assessmentPrompt
+                }
+              ],
+              temperature: 0.3,
+              top_p: 0.9,
+              max_tokens: 400,
+              response_format: { type: "json_object" }
+            });
+            
+            const assessmentContent = assessmentResponse.choices[0].message.content.trim();
+            let assessmentJson = assessmentContent;
+            const jsonMatch = assessmentJson.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+            if (jsonMatch) {
+              assessmentJson = jsonMatch[1];
+            } else {
+              const braceMatch = assessmentJson.match(/\{[\s\S]*\}/);
+              if (braceMatch) {
+                assessmentJson = braceMatch[0];
+              }
+            }
+            
+            const assessmentData = JSON.parse(assessmentJson);
+            const understood = assessmentData.understood === true || 
+                              (milestoneRetryCount >= 1 && assessmentData.recommendation === 'move_forward_anyway');
+            
+            // Store assessment result for teacher prompt to structure response
+            llmDecision.assessmentResult = {
+              understood,
+              confidence: assessmentData.confidence || 'medium',
+              recommendation: assessmentData.recommendation || 'move_forward',
+              reasoning: assessmentData.reasoning || '',
+              milestoneRetryCount
+            };
+            
+            if (understood) {
+              // Check if recommendation is to clarify or move forward
+              const needsMoreClarification = assessmentData.recommendation === 'clarify_again';
+              
+              if (needsMoreClarification) {
+                // Correct but needs more - don't move milestone yet
+                llmDecision.markMilestoneComplete = false;
+                llmDecision.moveToNextMilestone = false;
+                llmDecision.assessmentResult.needsMoreClarification = true;
+              } else {
+                // Correct and milestone achieved - move forward
+                llmDecision.markMilestoneComplete = true;
+                llmDecision.moveToNextMilestone = true;
+                session.meta.milestoneBeingTaught = false;
+                session.meta.outstandingCheck = null;
+              }
+            } else {
+              // Negative assessment - check retry count
+              if (milestoneRetryCount < 1) {
+                if (!session.meta.milestoneRetryCount) {
+                  session.meta.milestoneRetryCount = {};
+                }
+                // CRITICAL: Use validMilestoneIndex (the milestone being assessed)
+                session.meta.milestoneRetryCount[validMilestoneIndex] = (session.meta.milestoneRetryCount[validMilestoneIndex] || 0) + 1;
+                llmDecision.assessmentResult.isFirstIncorrect = true;
+                // LLM will handle clarification in response
+              } else {
+                // Already retried - move forward anyway
+                llmDecision.markMilestoneComplete = true;
+                llmDecision.moveToNextMilestone = true;
+                llmDecision.assessmentResult.isSecondIncorrect = true;
+              }
+            }
+          } catch (assessmentError) {
+            console.error('Assessment analysis failed', { sessionId, error: assessmentError.message });
+            // Continue with LLM's response
+          }
+        }
+        
+        // CRITICAL: Handle milestone completion AFTER assessment analysis
+        // (Assessment analysis sets markMilestoneComplete)
+        // ONLY move milestone AFTER we've confirmed it should be marked complete
+        // AND BEFORE generating the teacher response (so teacher knows which milestone to teach)
+        if (llmDecision.markMilestoneComplete && currentMilestone && activeModule) {
+          // Mark current milestone as completed
+          currentMilestone.completed = true;
+          if (!activeModule.completedMilestones) {
+            activeModule.completedMilestones = [];
+          }
+          if (!activeModule.completedMilestones.includes(validMilestoneIndex)) {
+            activeModule.completedMilestones.push(validMilestoneIndex);
+          }
+          
+          console.log('Milestone marked as complete', {
+            sessionId,
+            milestoneIndex: validMilestoneIndex,
+            milestoneText: currentMilestone.text,
+            moveToNextMilestone: llmDecision.moveToNextMilestone
+          });
+          
+          // CRITICAL: Only move to next milestone AFTER marking current as complete
+          // AND only if moveToNextMilestone is true
+          // This happens BEFORE teacher prompt generation, so teacher knows which milestone to teach
+          if (llmDecision.moveToNextMilestone && activeModule) {
+            const nextIndex = validMilestoneIndex + 1;
+            if (nextIndex < (activeModule.milestones?.length || 0)) {
+              // CRITICAL: Ensure sequential progression (next milestone must be current + 1)
+              const expectedNextIndex = validMilestoneIndex + 1;
+              if (nextIndex !== expectedNextIndex) {
+                console.warn('Milestone progression violation', {
+                  sessionId,
+                  currentMilestoneIndex: validMilestoneIndex,
+                  nextIndex,
+                  expectedNextIndex,
+                  activeModule: activeModule.title
+                });
+                // Force sequential progression
+                session.meta.currentMilestoneIndex = expectedNextIndex;
+              } else {
+                session.meta.currentMilestoneIndex = nextIndex;
+              }
+              session.meta.milestoneBeingTaught = false;
+              console.log('Moved to next milestone AFTER completion confirmed (BEFORE teacher prompt)', { 
+                sessionId, 
+                from: validMilestoneIndex, 
+                to: session.meta.currentMilestoneIndex,
+                completedMilestone: currentMilestone.text,
+                nextMilestoneText: activeModule.milestones[session.meta.currentMilestoneIndex]?.text,
+                note: 'Teacher prompt will now use the NEW milestone index'
+              });
+            } else {
+              console.log('Cannot move to next milestone - already at last milestone', {
+                sessionId,
+                currentMilestoneIndex: validMilestoneIndex,
+                totalMilestones: activeModule.milestones?.length
+              });
+              // Mark milestone teaching state as complete and prepare for quiz transition
+              session.meta.milestoneBeingTaught = false;
+              session.meta.currentMilestoneIndex = validMilestoneIndex;
+              session.meta.outstandingCheck = null;
+              session.meta.countSinceLastCheck = 0;
+              if (!llmDecision.response) {
+                llmDecision.response = `Outstanding work! You've completed every milestone in ${activeModule.title}. Let me queue up a quick quiz to lock it in.`;
+              }
+              llmDecision.action = 'start_quiz';
+              llmDecision.moveToNextMilestone = false;
+              llmDecision.shouldStartQuiz = true;
+              moduleJustCompleted = true;
+            }
+          }
+          
+          // Check if all milestones done
+          const allMilestonesDone = activeModule.milestones.every(m => m.completed);
+          if (allMilestonesDone) {
+            llmDecision.shouldStartQuiz = true;
+            session.phase = 'quizzing';
+            moduleJustCompleted = true;
+          }
+        }
+        
+        // CRITICAL: ALWAYS recalculate progress based on actual milestone completion status
+        // This ensures progress is always up-to-date, regardless of how milestone was marked
+        const recalculateProgress = () => {
+          try {
+            if (!session.plan || session.plan.length === 0) {
+              return;
+            }
+            
+            // Calculate overall progress across all modules based on completed milestones
+            let totalMilestonesInPlan = 0;
+            let totalCompletedMilestones = 0;
+            
+            session.plan.forEach(module => {
+              if (module.milestones && Array.isArray(module.milestones)) {
+                totalMilestonesInPlan += module.milestones.length;
+                totalCompletedMilestones += module.milestones.filter(m => m.completed === true).length;
+              }
+            });
+            
+            const overallProgressPct = totalMilestonesInPlan > 0 
+              ? Math.round((totalCompletedMilestones / totalMilestonesInPlan) * 100) 
+              : 0;
+            
+            // Update session progress
+            session.progressPct = overallProgressPct;
+            
+            // Calculate points based on module progress (milestone completion)
+            // Each module contributes points proportionally to its milestone completion
+            let calculatedPoints = 0;
+            session.plan.forEach(module => {
+              if (module.milestones && Array.isArray(module.milestones) && module.milestones.length > 0) {
+                const moduleCompleted = module.milestones.filter(m => m.completed === true).length;
+                const moduleProgress = moduleCompleted / module.milestones.length;
+                calculatedPoints += Math.round((module.points || 0) * moduleProgress);
+              }
+            });
+            
+            session.points = Math.min(100, Math.max(0, calculatedPoints));
+            session.gems = Math.floor(session.points / 20);
+            
+            console.log('Progress recalculated', {
+              sessionId,
+              totalMilestonesInPlan,
+              totalCompletedMilestones,
+              overallProgressPct,
+              calculatedPoints: session.points,
+              gems: session.gems,
+              activeModuleId: session.activeModuleId,
+              currentMilestoneIndex: session.meta?.currentMilestoneIndex ?? 0
+            });
+          } catch (progressError) {
+            console.error('Failed to recalculate progress', { sessionId, error: progressError.message, stack: progressError.stack });
+            // Continue anyway - don't fail the request
+          }
+        };
+        
+        // Recalculate progress after milestone completion check
+        recalculateProgress();
+        
+        // Generate response using teacher prompt if needed
+        let assistantResponse = '';
+        let extractedQuestion = null;
 
-    console.log('Sending response data:', responseData);
-    
-    res.json({
-      success: true,
-      data: responseData
-    });
+        // If milestone completion finished the module, transition to quiz without re-teaching
+        if (moduleJustCompleted && !assistantResponse) {
+          const quizMessage = `Fantastic work finishing every milestone in ${activeModule?.title || 'this module'}! When you're ready, say “start quiz” and I'll launch a quick mastery check for this module.`;
+          assistantResponse = quizMessage;
+          llmDecision.response = quizMessage;
+          // Clear outstanding state since we're moving away from milestone teaching
+          if (session.meta) {
+            session.meta.outstandingCheck = null;
+            session.meta.milestoneBeingTaught = false;
+          }
+        }
+        
+        // CRITICAL: For teaching actions, ALWAYS use teacher prompt, ignore llmDecision.response
+        // The teacher prompt enforces the complete structure (introduction + teaching + assessment)
+        if (!assistantResponse && (llmDecision.action === 'teach' || llmDecision.action === 'assess' || llmDecision.action === 'clarify')) {
+          // CRITICAL: Get current milestone info AFTER potential progression
+          // If we just moved to next milestone (moveToNextMilestone), the index has been updated
+          // So we need to use the NEW milestone index (the one we're teaching now)
+          const activeModuleForTeacher = session.plan.find(m => m.id === session.activeModuleId);
+          // Use the CURRENT milestone index (which may have been updated if we moved)
+          const milestoneIndexForTeacher = session.meta.currentMilestoneIndex ?? 0;
+          const milestoneForTeacher = activeModuleForTeacher?.milestones?.[milestoneIndexForTeacher];
+          
+          // CRITICAL: If we just moved to next milestone, milestoneForTeacher is the NEW milestone
+          // If we're still on the same milestone, milestoneForTeacher is the current one
+          const milestoneInfo = {
+            moveToNextMilestone: llmDecision.moveToNextMilestone,
+            markMilestoneComplete: llmDecision.markMilestoneComplete
+          };
+          console.log('Teacher Prompt - Milestone Context:', {
+            milestoneIndexForTeacher,
+            milestoneText: milestoneForTeacher?.text,
+            justMoved: milestoneInfo.moveToNextMilestone && milestoneInfo.markMilestoneComplete,
+            isFollowUp: llmDecision.isFollowUpToOutstanding
+          });
+          
+          // Pass assessment result to teacher prompt for structured responses
+          const assessmentResult = llmDecision.assessmentResult || null;
+          const teacherPrompt = buildTeacherPrompt(session, userMessage, llmDecision.isFollowUpToOutstanding, assessmentResult, milestoneInfo);
+          
+          // Prepare validation context for response structure validation
+          let validationContext = null;
+          if (assessmentResult && llmDecision.isFollowUpToOutstanding) {
+            // Use milestone that was being assessed (before moving)
+            const currentMilestoneForValidation = milestoneForTeacher;
+            const nextMilestoneForValidation = activeModuleForTeacher?.milestones?.[milestoneIndexForTeacher + 1];
+            
+            if (assessmentResult.understood && !assessmentResult.needsMoreClarification && milestoneInfo?.moveToNextMilestone) {
+              validationContext = {
+                scenario: 'A',
+                currentMilestone: currentMilestoneForValidation?.text || '',
+                nextMilestone: nextMilestoneForValidation?.text || ''
+              };
+            } else if (!assessmentResult.understood && assessmentResult.isFirstIncorrect) {
+              validationContext = {
+                scenario: 'C',
+                currentMilestone: currentMilestoneForValidation?.text || '',
+                nextMilestone: null
+              };
+            }
+          }
+          
+          assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1500, session, validationContext);
+          
+          // Extract question if LLM asked one
+          if (llmDecision.shouldAskQuestion && llmDecision.questionToAsk) {
+            extractedQuestion = llmDecision.questionToAsk;
+          } else {
+            extractedQuestion = extractQuestion(assistantResponse);
+          }
+        } else {
+          // For non-teaching actions, use the response from conversation manager
+          assistantResponse = llmDecision.response || '';
+        }
+        
+        // CRITICAL: Update outstanding check intelligently to prevent redundant questions
+        // Logic:
+        // 1. If user just answered correctly and milestone is complete → clear old outstanding question
+        // 2. Only set a new outstanding question if we're teaching a NEW milestone (not the same one)
+        // 3. Don't set a new question if we just completed a milestone (wait for next teaching turn)
+        // Note: previousOutstandingCheck was already captured before assessment analysis
+        
+        // If user just answered correctly and milestone is complete, clear outstanding question
+        // (This happens in assessment analysis, but we also handle it here for safety)
+        if (llmDecision.isFollowUpToOutstanding && llmDecision.markMilestoneComplete && llmDecision.moveToNextMilestone) {
+          // User answered correctly, milestone complete, moving to next milestone
+          // Clear the old outstanding question - it was answered
+          session.meta.outstandingCheck = null;
+          session.meta.countSinceLastCheck = 0;
+          console.log('Cleared outstanding question after correct answer and milestone completion', {
+            sessionId,
+            previousQuestion: previousOutstandingCheck?.substring(0, 100) || 'none',
+            movedToNextMilestone: true
+          });
+        }
+        
+        // Only set a new outstanding question if:
+        // 1. We extracted a question from the response
+        // 2. We're NOT in a follow-up to a completed milestone (we just cleared it above)
+        // 3. The question is different from the previous one (to prevent duplicates)
+        if (extractedQuestion) {
+          const movedToNextMilestone =
+            llmDecision.markMilestoneComplete &&
+            (llmDecision.moveToNextMilestone || session.meta.currentMilestoneIndex !== validMilestoneIndex);
+          // Check if this is a follow-up to a completed milestone that is staying on the same milestone
+          const isFollowUpToCompleted =
+            llmDecision.isFollowUpToOutstanding &&
+            llmDecision.markMilestoneComplete &&
+            !movedToNextMilestone;
+          
+          // Check if the question is the same as the previous one (prevent duplicates)
+          const isSameQuestion = previousOutstandingCheck && 
+            extractedQuestion.toLowerCase().trim() === previousOutstandingCheck.toLowerCase().trim();
+          
+          // Only set new question if:
+          // 1. We're not in a follow-up to a completed milestone (we already cleared it)
+          // 2. The question is different from the previous one
+          // 3. We're teaching (not just acknowledging)
+          if (!isFollowUpToCompleted && !isSameQuestion) {
+            session.meta.outstandingCheck = extractedQuestion;
+            session.meta.countSinceLastCheck = 0;
+            session.meta.milestoneBeingTaught = true;
+            console.log('Outstanding question set', {
+              sessionId,
+              question: extractedQuestion.substring(0, 100),
+              currentMilestoneIndex: session.meta.currentMilestoneIndex,
+              isNewMilestone: llmDecision.moveToNextMilestone
+            });
+          } else {
+            if (isFollowUpToCompleted) {
+              session.meta.outstandingCheck = null;
+              session.meta.countSinceLastCheck = 0;
+            }
+            // Don't set a new question if:
+            // - We just completed a milestone (wait for next teaching)
+            // - The question is the same as before (redundant)
+            console.log('Skipping new question', {
+              sessionId,
+              reason: isFollowUpToCompleted ? 'milestone just completed' : 'same question as before',
+              extractedQuestion: extractedQuestion.substring(0, 100),
+              previousQuestion: previousOutstandingCheck?.substring(0, 100) || 'none',
+              markMilestoneComplete: llmDecision.markMilestoneComplete
+            });
+          }
+        } else {
+          // No question extracted - clear if we're not in follow-up
+          if (!llmDecision.isFollowUpToOutstanding && session.meta?.outstandingCheck) {
+            // Keep the outstanding check if we're still teaching the same milestone
+            console.log('Keeping outstanding question for follow-up', {
+              sessionId,
+              outstandingCheck: session.meta.outstandingCheck.substring(0, 100)
+            });
+          } else if (!llmDecision.isFollowUpToOutstanding) {
+            // Clear outstanding check if we're not in follow-up and no question was asked
+            session.meta.outstandingCheck = null;
+            session.meta.countSinceLastCheck = (session.meta.countSinceLastCheck || 0) + 1;
+          }
+        }
+        
+        // If we aren't generating a structured teaching response (e.g., transitioning to quiz),
+        // reuse any provided LLM response if available
+        if (!assistantResponse) {
+          assistantResponse = llmDecision.response || 'Thanks for your update! Let me think about the best next step.';
+        }
+
+        // Save session
+        await session.save();
+        
+        // Add messages
+        const userMessageObj = {
+          id: `msg_${Date.now()}`,
+          role: 'user',
+          content: userMessage,
+          timestamp: new Date(),
+          metadata: { 
+            type: 'chat', 
+            tokensIn: userMessage.length,
+            intent: llmDecision.intent,
+            phaseAtSend: session.phase
+          }
+        };
+        
+        const assistantMessage = {
+          id: `msg_${Date.now() + 1}`,
+          role: 'assistant',
+          content: assistantResponse,
+          timestamp: new Date(),
+          metadata: { 
+            type: 'chat', 
+            tokensOut: assistantResponse.length,
+            intent: llmDecision.action,
+            phaseAtSend: session.phase,
+            hadCheckInReply: !!extractedQuestion,
+            followedUpOutstanding: llmDecision.isFollowUpToOutstanding || false
+          }
+        };
+        
+        session.messages.push(userMessageObj, assistantMessage);
+        
+        // Update context summary after interaction (token-efficient, Cursor IDE-style)
+        try {
+          await updateContextSummary(session, userMessage, assistantResponse, groqClient);
+        } catch (summaryError) {
+          console.warn('Context summary update failed', { sessionId, error: summaryError.message });
+          // Continue even if summary update fails
+        }
+        
+        // CRITICAL: Recalculate progress one final time before returning response
+        // This ensures progress is always accurate, even if milestone was marked elsewhere
+        recalculateProgress();
+        
+        await session.save();
+        
+        const tokensIn = Math.ceil(userMessage.length / 4);
+        const tokensOut = Math.ceil(assistantResponse.length / 4);
+        
+        return res.json({
+          success: true,
+          data: {
+            message: assistantResponse,
+            tokensIn,
+            tokensOut,
+            hadCheckInReply: !!extractedQuestion,
+            followedUpOutstanding: llmDecision.isFollowUpToOutstanding || false,
+            phase: session.phase,
+            milestoneCompleted: llmDecision.markMilestoneComplete || false,
+            moduleCompleted: llmDecision.shouldStartQuiz || false,
+            shouldGenerateQuiz: llmDecision.shouldStartQuiz || false,
+            currentMilestoneIndex: session.meta.currentMilestoneIndex ?? 0,
+            totalMilestones: activeModule?.milestones?.length || 0,
+            plan: session.plan,
+            activeModuleId: session.activeModuleId,
+            progressPct: session.progressPct || 0,
+            points: session.points || 0
+          }
+        });
+        
+      } catch (error) {
+        console.error('LLM conversation decision failed', { sessionId, error: error.message, stack: error.stack });
+        
+        // Fallback: use teacher prompt
+        const teacherPrompt = buildTeacherPrompt(session, userMessage, false);
+        const assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1100, session);
+        
+        const userMessageObj = {
+          id: `msg_${Date.now()}`,
+          role: 'user',
+          content: userMessage,
+          timestamp: new Date(),
+          metadata: { type: 'chat', tokensIn: userMessage.length, intent: 'learning', phaseAtSend: session.phase }
+        };
+        
+        const assistantMessage = {
+          id: `msg_${Date.now() + 1}`,
+          role: 'assistant',
+          content: assistantResponse,
+          timestamp: new Date(),
+          metadata: { type: 'chat', tokensOut: assistantResponse.length, intent: 'teach', phaseAtSend: session.phase }
+        };
+        
+        session.messages.push(userMessageObj, assistantMessage);
+        
+        // Update context summary after interaction
+        try {
+          await updateContextSummary(session, userMessage, assistantResponse, groqClient);
+        } catch (summaryError) {
+          console.warn('Context summary update failed', { sessionId, error: summaryError.message });
+        }
+        
+        await session.save();
+        
+        return res.json({
+          success: true,
+          data: {
+            message: assistantResponse,
+            tokensIn: Math.ceil(userMessage.length / 4),
+            tokensOut: Math.ceil(assistantResponse.length / 4),
+            hadCheckInReply: false,
+            followedUpOutstanding: false,
+            phase: session.phase
+          }
+        });
+      }
+    }
     
   } catch (error) {
     console.error('Chat failed:', {
@@ -510,4 +1065,6 @@ router.post('/v1/chat', async (req, res) => {
   }
 });
 
+// Export callTeacherAPI for use in other routes
 module.exports = router;
+module.exports.callTeacherAPI = callTeacherAPI;

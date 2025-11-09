@@ -10,6 +10,8 @@ const {
   quizGenerationSchema 
 } = require('../validation/quizValidation');
 const { updateProgress } = require('../services/progressService');
+const { buildQuizFailureAnalysisPrompt } = require('../prompts/assessment_analyzer');
+const { getGroqClient } = require('../lib/llmClient');
 
 // Initialize Pino logger
 const logger = pino({
@@ -28,49 +30,48 @@ const addRequestId = (req, res, next) => {
   next();
 };
 
-// Groq client setup (lazy initialization to avoid test conflicts)
-let groq;
-const getGroqClient = () => {
-  if (!groq) {
-    const Groq = require('groq-sdk');
-    groq = new Groq({
-      apiKey: process.env.GROQ_API_KEY
-    });
-  }
-  return groq;
-};
-
 // Quiz generation prompt builder
-const buildQuizPrompt = (moduleTitle, difficulty = 'core', questionCount = 4) => {
-  return `Generate ${questionCount} multiple choice questions for the module "${moduleTitle}" (difficulty: ${difficulty}).
+const buildQuizPrompt = (moduleTitle, difficulty = 'core', questionCount = 7) => {
+  return `Generate ${questionCount} questions for the module "${moduleTitle}" (difficulty: ${difficulty}).
 
 Requirements:
-- Each question must have exactly 4 options (A, B, C, D)
-- One correct answer per question
-- No "All of the above" or "None of the above" options
+- Mix question types: Multiple Choice (MCQ), True/False, and Short Answer
+- MCQ questions: exactly 4 options (A, B, C, D), one correct answer
+- True/False questions: simple true or false format
+- Short Answer questions: open-ended questions that test understanding
+- No "All of the above" or "None of the above" options for MCQ
 - Concise, clear question stems
-- Beginner-appropriate difficulty
+- Difficulty-appropriate questions
 - Avoid trick wording or ambiguous phrasing
 - Focus on practical understanding, not memorization
+- Generate 5-10 questions total (you have ${questionCount} questions to generate)
 
 Return ONLY valid JSON in this exact format:
 {
   "questions": [
     {
       "id": "q1",
+      "type": "mcq",
       "text": "What is the primary purpose of variables in programming?",
-      "options": [
-        "To store and manipulate data",
-        "To display text on screen", 
-        "To create loops",
-        "To define functions"
-      ],
+      "options": ["To store and manipulate data", "To display text on screen", "To create loops", "To define functions"],
       "correctIndex": 0
+    },
+    {
+      "id": "q2",
+      "type": "true_false",
+      "text": "Python is a dynamically typed language.",
+      "correctAnswer": true
+    },
+    {
+      "id": "q3",
+      "type": "short_answer",
+      "text": "Explain the difference between a list and a tuple in Python.",
+      "correctAnswer": "A list is mutable (can be modified) while a tuple is immutable (cannot be modified)."
     }
   ]
 }
 
-Generate exactly ${questionCount} questions.`;
+Generate exactly ${questionCount} questions with a good mix of question types.`;
 };
 
 // Generate quiz using LLM
@@ -262,8 +263,8 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
       });
     }
     
-    // Generate new quiz
-    const questionCount = Math.floor(Math.random() * 3) + 3; // 3-5 questions
+    // Generate new quiz - 5-10 dynamic questions
+    const questionCount = Math.floor(Math.random() * 6) + 5; // 5-10 questions
     const difficulty = module.difficulty || 'core';
     
     req.logger.info('Generating new quiz', { sessionId, moduleId, questionCount, difficulty });
@@ -494,8 +495,172 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
       if (nextModule) {
         nextModule.status = 'in_progress';
         session.activeModuleId = nextModule.id;
+        
+        // Reset milestone tracking for new module
+        if (!session.meta) {
+          session.meta = {};
+        }
+        session.meta.currentMilestoneIndex = 0;
+        session.meta.milestoneBeingTaught = false;
+        session.meta.outstandingCheck = null;
+        session.meta.milestoneRetryCount = {}; // Clear retry counts for new module
+        
+        req.logger.info('Moving to next module', { 
+          sessionId, 
+          previousModuleId: moduleId,
+          nextModuleId: nextModule.id,
+          nextModuleTitle: nextModule.title
+        });
       } else {
         session.activeModuleId = null;
+        // All modules completed
+        req.logger.info('All modules completed', { sessionId });
+      }
+    } else {
+      // Quiz failed - use LLM to identify which milestones need review
+      try {
+        const groqClient = getGroqClient();
+        
+        // Prepare quiz results for analysis
+        const quizResults = answers.map(answer => {
+          const item = latestAttempt.items.find(item => item.id === answer.id);
+          return {
+            question: item?.text || '',
+            correct: answer.userIndex === item?.correctIndex,
+            correctAnswer: item ? item.options[item.correctIndex] : '',
+            userAnswer: item ? (item.options[answer.userIndex] || 'No answer') : 'No answer'
+          };
+        });
+        
+        const analysisPrompt = buildQuizFailureAnalysisPrompt(quizResults, module.milestones || []);
+        
+        const analysisResponse = await groqClient.chat.completions.create({
+          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert educational assessment AI. Return ONLY valid JSON matching the schema. No prose, no markdown blocks, no explanations outside the JSON.'
+            },
+            {
+              role: 'user',
+              content: analysisPrompt
+            }
+          ],
+          temperature: 0.3,
+          top_p: 0.9,
+          max_tokens: 400,
+          response_format: { type: "json_object" }
+        });
+        
+        const analysisData = JSON.parse(analysisResponse.choices[0].message.content);
+        const milestonesToReview = analysisData.milestonesToReview || [];
+        
+        // Store milestones to review in meta
+        if (!session.meta) {
+          session.meta = {};
+        }
+        session.meta.milestonesToReview = milestonesToReview;
+        
+        req.logger.info('LLM quiz failure analysis', {
+          sessionId,
+          moduleId,
+          scorePct,
+          milestonesToReview,
+          reasoning: analysisData.reasoning,
+          focusAreas: analysisData.focusAreas
+        });
+        
+        // Reset only the specific milestones that need review
+        if (milestonesToReview.length > 0 && module.milestones) {
+          if (!session.meta.milestoneRetryCount) {
+            session.meta.milestoneRetryCount = {};
+          }
+          
+          milestonesToReview.forEach(milestoneIndex => {
+            if (module.milestones[milestoneIndex]) {
+              // Mark milestone as incomplete
+              module.milestones[milestoneIndex].completed = false;
+              
+              // Remove from completed milestones array
+              if (module.completedMilestones) {
+                const index = module.completedMilestones.indexOf(milestoneIndex);
+                if (index > -1) {
+                  module.completedMilestones.splice(index, 1);
+                }
+              }
+              
+              // Reset retry count for these milestones
+              session.meta.milestoneRetryCount[milestoneIndex] = 0;
+            }
+          });
+          
+          // Set current milestone to the first milestone that needs review
+          const firstMilestoneToReview = Math.min(...milestonesToReview);
+          session.meta.currentMilestoneIndex = firstMilestoneToReview;
+          session.meta.milestoneBeingTaught = false;
+          session.meta.outstandingCheck = null;
+          
+          req.logger.info('Reset milestones for review', {
+            sessionId,
+            moduleId,
+            milestonesToReview,
+            currentMilestoneIndex: session.meta.currentMilestoneIndex
+          });
+        } else {
+          // If LLM couldn't identify specific milestones, reset all (fallback)
+          if (module.milestones) {
+            module.milestones.forEach((m, i) => {
+              m.completed = false;
+              if (!session.meta) {
+                session.meta = {};
+              }
+              if (!session.meta.milestoneRetryCount) {
+                session.meta.milestoneRetryCount = {};
+              }
+              session.meta.milestoneRetryCount[i] = 0;
+            });
+            session.meta.currentMilestoneIndex = 0;
+            session.meta.milestoneBeingTaught = false;
+            session.meta.outstandingCheck = null;
+            
+            if (module.completedMilestones) {
+              module.completedMilestones = [];
+            }
+            
+            req.logger.info('LLM analysis failed - reset all milestones (fallback)', {
+              sessionId,
+              moduleId
+            });
+          }
+        }
+      } catch (error) {
+        req.logger.error('LLM quiz failure analysis failed', {
+          sessionId,
+          moduleId,
+          error: error.message
+        });
+        
+        // Fallback: Reset all milestones if LLM analysis fails
+        if (module.milestones) {
+          module.milestones.forEach(m => {
+            m.completed = false;
+          });
+          if (!session.meta) {
+            session.meta = {};
+          }
+          session.meta.currentMilestoneIndex = 0;
+          session.meta.milestoneBeingTaught = false;
+          session.meta.outstandingCheck = null;
+          
+          if (module.completedMilestones) {
+            module.completedMilestones = [];
+          }
+          
+          req.logger.info('Fallback: reset all milestones', {
+            sessionId,
+            moduleId
+          });
+        }
       }
     }
     
@@ -508,9 +673,15 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
       forceRecalc: allModulesPassed
     });
     
-    // Only set phase to feedback if not completed
-    if (!progressResult.completed) {
-      session.phase = 'feedback';
+    // Set phase based on quiz result
+    if (passed) {
+      // If passed, move to feedback phase (brief feedback before next module)
+      if (!progressResult.completed) {
+        session.phase = 'feedback';
+      }
+    } else {
+      // If failed, go back to learning phase to retry specific milestones
+      session.phase = 'learning';
     }
     
     await session.save();
@@ -527,8 +698,18 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
     if (passed) {
       feedbackMarkdown += `**You passed — move on to the next module.**`;
     } else {
-      feedbackMarkdown += `**Not yet — retry this module.**`;
+      // Include which milestones need review if LLM identified them
+      const milestonesToReview = session.meta?.milestonesToReview || [];
+      if (milestonesToReview.length > 0 && module.milestones) {
+        const milestoneNames = milestonesToReview
+          .map(i => `${i + 1}. ${module.milestones[i]?.text || 'Milestone ' + (i + 1)}`)
+          .join(', ');
+        feedbackMarkdown += `**Score: ${scorePct}% - Need to review the following milestones:**\n${milestoneNames}\n\nWe'll go through these topics again with the feedback and assessment loop, then retake the quiz.`;
+      } else {
+        feedbackMarkdown += `**Score: ${scorePct}% - Need to review this module. Let's go through the milestones again.**`;
+      }
     }
+    
     
     req.logger.info('Quiz submitted successfully', {
       sessionId,
