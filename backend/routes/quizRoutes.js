@@ -26,52 +26,49 @@ const logger = pino({
 
 // Middleware to add request ID to logger
 const addRequestId = (req, res, next) => {
-  req.logger = logger.child({ requestId: req.id });
+  req.logger = logger.child({ requestId: req.requestId });
   next();
 };
 
 // Quiz generation prompt builder
-const buildQuizPrompt = (moduleTitle, difficulty = 'core', questionCount = 7) => {
-  return `Generate ${questionCount} questions for the module "${moduleTitle}" (difficulty: ${difficulty}).
+const buildQuizPrompt = (moduleTitle, difficulty = 'core', questionCount = 5) => {
+  return `Generate exactly ${questionCount} multiple-choice questions for the module "${moduleTitle}" (difficulty: ${difficulty}).
 
-Requirements:
-- Mix question types: Multiple Choice (MCQ), True/False, and Short Answer
-- MCQ questions: exactly 4 options (A, B, C, D), one correct answer
-- True/False questions: simple true or false format
-- Short Answer questions: open-ended questions that test understanding
-- No "All of the above" or "None of the above" options for MCQ
+CRITICAL REQUIREMENTS:
+- Each question MUST be multiple-choice with exactly 4 options (A, B, C, D) and exactly one correct answer
+- Vary the question focus to cover the breadth of the module (conceptual, practical, scenario-based)
 - Concise, clear question stems
 - Difficulty-appropriate questions
-- Avoid trick wording or ambiguous phrasing
+- No trick questions; wording must be unambiguous
 - Focus on practical understanding, not memorization
-- Generate 5-10 questions total (you have ${questionCount} questions to generate)
+- ⚠️ FORBIDDEN: NEVER use "All of the above", "None of the above", "Both A and B", or any similar compound options
+- ⚠️ Each option must be a standalone, specific answer choice
+- ⚠️ If you think multiple options could be correct, choose the MOST SPECIFIC or BEST answer and make the others clearly incorrect
+- ⚠️⚠️⚠️ CRITICAL: For each question, you MUST provide an "explanation" field with a brief explanation (2-3 sentences) explaining why the correct answer is correct. This field is REQUIRED for every question.
 
 Return ONLY valid JSON in this exact format:
 {
   "questions": [
     {
       "id": "q1",
-      "type": "mcq",
       "text": "What is the primary purpose of variables in programming?",
       "options": ["To store and manipulate data", "To display text on screen", "To create loops", "To define functions"],
-      "correctIndex": 0
+      "correctIndex": 0,
+      "explanation": "Variables are used to store and manipulate data in programs. They allow you to save values that can be referenced and modified throughout your code, making programs dynamic and reusable."
     },
     {
       "id": "q2",
-      "type": "true_false",
-      "text": "Python is a dynamically typed language.",
-      "correctAnswer": true
-    },
-    {
-      "id": "q3",
-      "type": "short_answer",
-      "text": "Explain the difference between a list and a tuple in Python.",
-      "correctAnswer": "A list is mutable (can be modified) while a tuple is immutable (cannot be modified)."
+      "text": "Which operator is used for assignment in Python?",
+      "options": ["==", "=", "!=", ">="],
+      "correctIndex": 1,
+      "explanation": "The single equals sign (=) is the assignment operator in Python, used to assign values to variables. The double equals (==) is for comparison, not assignment."
     }
   ]
 }
 
-Generate exactly ${questionCount} questions with a good mix of question types.`;
+Generate exactly ${questionCount} multiple-choice questions. Each option must be a specific, standalone answer. 
+
+⚠️⚠️⚠️ ABSOLUTE REQUIREMENT: Every question MUST include an "explanation" field. Do NOT omit this field for any question.`;
 };
 
 // Generate quiz using LLM
@@ -94,19 +91,36 @@ const generateQuiz = async (moduleTitle, difficulty, questionCount) => {
       ],
       temperature: 0.7,
       top_p: 0.9,
-      max_tokens: 800
+      max_tokens: 1500 // Increased to accommodate explanations
     });
 
     const content = response.choices[0].message.content;
     
+    // Helper to check for forbidden options
+    const hasForbiddenOptions = (questions) => {
+      const forbiddenPatterns = ['all of the above', 'none of the above', 'both a and b', 'both a and c', 'both b and c'];
+      return questions.some(q => 
+        q.options.some(opt => 
+          forbiddenPatterns.some(pattern => opt.toLowerCase().includes(pattern))
+        )
+      );
+    };
+    
     // Parse JSON with retry logic
     try {
-      const parsed = JSON.parse(content);
+      let parsed = JSON.parse(content);
+      // Check for forbidden options - if found, trigger retry
+      if (parsed.questions && hasForbiddenOptions(parsed.questions)) {
+        throw new Error('Questions contained forbidden options');
+      }
       return quizGenerationSchema.parse(parsed);
     } catch (parseError) {
+      let retryContent;
       // Retry with stricter instructions
       try {
-        const retryPrompt = `Return ONLY valid JSON in this exact format. No prose, no explanations:
+        const retryPrompt = `Return ONLY valid JSON in this exact format. No prose, no explanations.
+
+CRITICAL: NEVER use "All of the above", "None of the above", or any compound options. Each option must be a standalone, specific answer. Include an explanation for each question.
 
 {
   "questions": [
@@ -114,19 +128,20 @@ const generateQuiz = async (moduleTitle, difficulty, questionCount) => {
       "id": "q1", 
       "text": "Question text here?",
       "options": ["Option A", "Option B", "Option C", "Option D"],
-      "correctIndex": 0
+      "correctIndex": 0,
+      "explanation": "Brief explanation (2-3 sentences) explaining why the correct answer is correct."
     }
   ]
 }
 
-Generate ${questionCount} questions for "${moduleTitle}".`;
+Generate ${questionCount} questions for "${moduleTitle}". Each option must be specific and standalone. Include explanations.`;
 
         const retryResponse = await groqClient.chat.completions.create({
           model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
           messages: [
             {
               role: 'system',
-              content: 'Return only valid JSON. No prose, no explanations, no markdown.'
+              content: 'Return only valid JSON. No prose, no explanations, no markdown. NEVER use "All of the above" or "None of the above" options.'
             },
             {
               role: 'user',
@@ -135,15 +150,23 @@ Generate ${questionCount} questions for "${moduleTitle}".`;
           ],
           temperature: 0.3,
           top_p: 0.8,
-          max_tokens: 800
+          max_tokens: 1500 // Increased to accommodate explanations
         });
 
-        const retryContent = retryResponse.choices[0].message.content;
-        const retryParsed = JSON.parse(retryContent);
+        retryContent = retryResponse.choices[0].message.content;
+        let retryParsed = JSON.parse(retryContent);
+        // Check for forbidden options in retry - if found, fail
+        if (retryParsed.questions && hasForbiddenOptions(retryParsed.questions)) {
+          throw new Error('Retry still contained forbidden options');
+        }
         return quizGenerationSchema.parse(retryParsed);
       } catch (retryError) {
         // Schema validation or retry parse failed → treat as LLM output invalid
-        throw new Error(`QUIZ_LLM_OUTPUT_INVALID: ${retryError.message}`);
+        const failure = new Error(`QUIZ_LLM_OUTPUT_INVALID: ${retryError.message}`);
+        failure.rawContent = retryContent || content;
+        failure.initialRawContent = content;
+        failure.retryError = retryError.message;
+        throw failure;
       }
     }
   } catch (error) {
@@ -151,7 +174,10 @@ Generate ${questionCount} questions for "${moduleTitle}".`;
     if (error.message.includes('QUIZ_LLM_OUTPUT_INVALID')) {
       throw error;
     }
-    throw new Error(`QUIZ_API_ERROR: ${error.message}`);
+    const apiError = new Error(`QUIZ_API_ERROR: ${error.message}`);
+    apiError.rawContent = error.response?.data?.choices?.[0]?.message?.content;
+    apiError.details = error.response?.data || error.data;
+    throw apiError;
   }
 };
 
@@ -190,13 +216,13 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
         error: 'Quiz not allowed in current phase',
         code: 'ILLEGAL_PHASE',
         currentPhase: session.phase,
-        allowedPhases: ['learning', 'feedback'],
+        allowedPhases: ['learning', 'feedback', 'quizzing'],
         hint: 'Please complete assessment first to create a learning plan'
       });
     }
     
     // Phase guard
-    if (!['learning', 'feedback'].includes(session.phase)) {
+    if (!['learning', 'feedback', 'quizzing'].includes(session.phase)) {
       req.logger.warn('Illegal phase for quiz start', { 
         sessionId, 
         phase: session.phase 
@@ -206,7 +232,7 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
         error: 'Quiz not allowed in current phase',
         code: 'ILLEGAL_PHASE',
         currentPhase: session.phase,
-        allowedPhases: ['learning', 'feedback']
+        allowedPhases: ['learning', 'feedback', 'quizzing']
       });
     }
 
@@ -239,14 +265,14 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
     }
     
     // Phase guard
-    if (!['learning', 'feedback'].includes(session.phase)) {
+    if (!['learning', 'feedback', 'quizzing'].includes(session.phase)) {
       req.logger.warn('Illegal phase for quiz', { sessionId, phase: session.phase });
       return res.status(409).json({
         success: false,
         error: 'Quiz not allowed in current phase',
         code: 'ILLEGAL_PHASE',
         currentPhase: session.phase,
-        allowedPhases: ['learning', 'feedback']
+        allowedPhases: ['learning', 'feedback', 'quizzing']
       });
     }
     
@@ -263,13 +289,23 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
       });
     }
     
-    // Generate new quiz - 5-10 dynamic questions
-    const questionCount = Math.floor(Math.random() * 6) + 5; // 5-10 questions
+    // Generate new quiz - fixed count to maintain structure
+    const questionCount = 5;
     const difficulty = module.difficulty || 'core';
     
     req.logger.info('Generating new quiz', { sessionId, moduleId, questionCount, difficulty });
     
     const quizData = await generateQuiz(module.title, difficulty, questionCount);
+    
+    // Log if explanations are present
+    const questionsWithExplanations = quizData.questions.filter(q => q.explanation && q.explanation.trim()).length;
+    req.logger.info('Quiz generated - explanations check', {
+      sessionId,
+      moduleId,
+      totalQuestions: quizData.questions.length,
+      questionsWithExplanations,
+      sampleExplanation: quizData.questions[0]?.explanation?.substring(0, 50) || 'NONE'
+    });
     
     // Calculate attempt number
     const previousAttempts = session.quizAttempts.filter(
@@ -307,12 +343,14 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
     });
     
   } catch (error) {
-    req.logger.error('Quiz start failed', {
-      sessionId: req.body.sessionId,
-      error: error.message,
-      stack: error.stack,
+    req.logger.error({
+      err: error,
+      sessionId: req.body?.sessionId,
+      moduleId: req.body?.moduleId,
+      rawContent: typeof error.rawContent === 'string' ? error.rawContent.slice(0, 500) : undefined,
+      initialRawContent: typeof error.initialRawContent === 'string' ? error.initialRawContent.slice(0, 500) : undefined,
       duration: Date.now() - startTime
-    });
+    }, 'Quiz start failed');
     
     if (error instanceof z.ZodError) {
       return res.status(400).json({
@@ -434,17 +472,26 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
       if (item && answer.userIndex === item.correctIndex) {
         numCorrect++;
       } else if (item) {
+        req.logger.info('Adding feedback item', {
+          sessionId,
+          moduleId,
+          questionId: item.id,
+          hasExplanation: !!item.explanation,
+          explanationLength: item.explanation?.length || 0,
+          explanationPreview: item.explanation?.substring(0, 50) || 'NONE'
+        });
         feedbackItems.push({
           question: item.text,
           correctAnswer: item.options[item.correctIndex],
-          userAnswer: item.options[answer.userIndex] || 'No answer'
+          userAnswer: item.options[answer.userIndex] || 'No answer',
+          explanation: item.explanation || null // Use stored explanation from quiz generation
         });
       }
     });
     
     const total = answers.length;
     const scorePct = Math.round((numCorrect / total) * 100);
-    const passed = scorePct >= 70;
+    const passed = scorePct >= 60;
     
     // Find module to get points
     const module = session.plan.find(m => m.id === moduleId);
@@ -570,69 +617,19 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
           focusAreas: analysisData.focusAreas
         });
         
-        // Reset only the specific milestones that need review
-        if (milestonesToReview.length > 0 && module.milestones) {
-          if (!session.meta.milestoneRetryCount) {
-            session.meta.milestoneRetryCount = {};
-          }
-          
-          milestonesToReview.forEach(milestoneIndex => {
-            if (module.milestones[milestoneIndex]) {
-              // Mark milestone as incomplete
-              module.milestones[milestoneIndex].completed = false;
-              
-              // Remove from completed milestones array
-              if (module.completedMilestones) {
-                const index = module.completedMilestones.indexOf(milestoneIndex);
-                if (index > -1) {
-                  module.completedMilestones.splice(index, 1);
-                }
-              }
-              
-              // Reset retry count for these milestones
-              session.meta.milestoneRetryCount[milestoneIndex] = 0;
-            }
-          });
-          
-          // Set current milestone to the first milestone that needs review
-          const firstMilestoneToReview = Math.min(...milestonesToReview);
-          session.meta.currentMilestoneIndex = firstMilestoneToReview;
-          session.meta.milestoneBeingTaught = false;
-          session.meta.outstandingCheck = null;
-          
-          req.logger.info('Reset milestones for review', {
-            sessionId,
-            moduleId,
-            milestonesToReview,
-            currentMilestoneIndex: session.meta.currentMilestoneIndex
-          });
-        } else {
-          // If LLM couldn't identify specific milestones, reset all (fallback)
-          if (module.milestones) {
-            module.milestones.forEach((m, i) => {
-              m.completed = false;
-              if (!session.meta) {
-                session.meta = {};
-              }
-              if (!session.meta.milestoneRetryCount) {
-                session.meta.milestoneRetryCount = {};
-              }
-              session.meta.milestoneRetryCount[i] = 0;
-            });
-            session.meta.currentMilestoneIndex = 0;
-            session.meta.milestoneBeingTaught = false;
-            session.meta.outstandingCheck = null;
-            
-            if (module.completedMilestones) {
-              module.completedMilestones = [];
-            }
-            
-            req.logger.info('LLM analysis failed - reset all milestones (fallback)', {
-              sessionId,
-              moduleId
-            });
-          }
+        // Store milestones to review in meta (but DON'T reset them yet)
+        // Milestones will only be reset if user closes the quiz window
+        if (!session.meta) {
+          session.meta = {};
         }
+        session.meta.milestonesToReview = milestonesToReview;
+        
+        req.logger.info('Quiz failed - milestones preserved for retake', {
+          sessionId,
+          moduleId,
+          milestonesToReview,
+          note: 'Milestones will only reset if user closes quiz window'
+        });
       } catch (error) {
         req.logger.error('LLM quiz failure analysis failed', {
           sessionId,
@@ -686,13 +683,25 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
     
     await session.save();
     
-    // Generate feedback
+    // Generate feedback with explanations (using stored explanations from quiz generation)
     let feedbackMarkdown = '';
     
     if (feedbackItems.length > 0) {
-      feedbackMarkdown += feedbackItems.map(item => 
-        `**Incorrect:** ${item.question}\n- Correct answer: ${item.correctAnswer}\n- Your answer: ${item.userAnswer}`
-      ).join('\n\n') + '\n\n';
+      // Build feedback markdown using stored explanations
+      feedbackMarkdown += feedbackItems.map(item => {
+        let feedback = `**Incorrect:** ${item.question}\n- **Correct answer:** ${item.correctAnswer}\n- **Your answer:** ${item.userAnswer}`;
+        if (item.explanation) {
+          feedback += `\n- **Explanation:** ${item.explanation}`;
+        }
+        return feedback;
+      }).join('\n\n') + '\n\n';
+      
+      req.logger.info('Feedback generated with explanations', {
+        sessionId,
+        moduleId,
+        totalItems: feedbackItems.length,
+        itemsWithExplanations: feedbackItems.filter(item => item.explanation).length
+      });
     }
     
     if (passed) {

@@ -57,11 +57,14 @@ const initial = {
     outstandingCheck: null,
     assessClarifyCount: 0
   },
+  pendingQuizModuleId: null,
   // UI state
   loading: false,
   error: null,
   // Quiz state (transient)
-  quizDraft: null
+  quizDraft: null,
+  quizResult: null,
+  isQuizSubmitting: false
 };
 
 const useSessionStore = create(
@@ -210,8 +213,11 @@ const useSessionStore = create(
 
         // Enforce legal transitions
         const currentPhase = get().phase;
+        if (currentPhase === phase) {
+          return;
+        }
         const validTransitions = {
-          'pre': ['assessing'],
+          'pre': ['assessing', 'learning'],
           'assessing': ['learning'],
           'learning': ['quizzing', 'feedback'],
           'quizzing': ['feedback'],
@@ -293,29 +299,78 @@ const useSessionStore = create(
         set({
           isViewOnly: true,
           phase: 'completed',
-          quizDraft: null // Clear any draft quiz state
+          quizDraft: null,
+          quizResult: null,
+          isQuizSubmitting: false,
+          pendingQuizModuleId: null // Clear any draft quiz state
         });
       },
 
       resumeSession: (payload) => {
         if (!payload) return;
         
-        set({
-          sessionId: payload.sessionId || null,
-          phase: payload.phase || 'pre',
-          mode: payload.mode || 'studying',
-          topic: payload.topic || '',
-          chatTitle: payload.chatTitle || '',
-          plan: Array.isArray(payload.plan) ? payload.plan : [],
-          activeModuleId: payload.activeModuleId || null,
-          points: payload.points || 0,
-          gems: payload.gems || 0,
-          progressPct: payload.progressPct || 0,
-          isViewOnly: payload.isViewOnly || false,
-          messages: Array.isArray(payload.lastMessages) ? payload.lastMessages : [],
-          profile: payload.profile || initial.profile,
-          error: null
-        });
+        const currentSessionId = get().sessionId;
+        const resolvedSessionId = payload.sessionId ?? payload.id ?? currentSessionId ?? null;
+        console.log('resumeSession applying payload', { resolvedSessionId, phase: payload.phase, prevPhase: get().phase, draftLen: payload.quizAttempts?.length });
+        
+        const draftAttempt = Array.isArray(payload.quizAttempts)
+          ? payload.quizAttempts
+              .filter(attempt => attempt && attempt.status === 'draft')
+              .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
+          : null;
+        const draftItems = draftAttempt?.items || null;
+        
+        // Always update plan if provided to ensure milestone states are synced
+        const updatedPlan = Array.isArray(payload.plan) ? payload.plan : get().plan;
+        
+        set(prev => ({
+          sessionId: resolvedSessionId,
+          phase: payload.phase || prev.phase || 'pre',
+          mode: payload.mode || prev.mode || 'studying',
+          topic: payload.topic ?? prev.topic ?? '',
+          chatTitle: payload.chatTitle ?? prev.chatTitle ?? '',
+          plan: updatedPlan, // Always use updated plan to sync milestone states
+          activeModuleId: payload.activeModuleId ?? prev.activeModuleId ?? null,
+          points: payload.points ?? prev.points ?? 0,
+          gems: payload.gems ?? prev.gems ?? 0,
+          progressPct: payload.progressPct ?? prev.progressPct ?? 0,
+          isViewOnly: payload.isViewOnly ?? prev.isViewOnly ?? false,
+          messages: Array.isArray(payload.lastMessages) ? payload.lastMessages : prev.messages,
+          profile: payload.profile || prev.profile || initial.profile,
+          error: null,
+          quizDraft: draftItems && draftItems.length > 0
+            ? draftItems
+            : payload.phase === 'quizzing'
+              ? prev.quizDraft
+              : null,
+          quizResult: prev.quizResult,
+          isQuizSubmitting: false,
+          pendingQuizModuleId: payload.phase === 'quizzing' ? prev.pendingQuizModuleId : prev.pendingQuizModuleId
+        }));
+
+        const latest = get();
+        if (
+          latest.pendingQuizModuleId &&
+          latest.phase === 'quizzing' &&
+          (!latest.quizDraft || latest.quizDraft.length === 0)
+        ) {
+          queueMicrotask(() => {
+            const current = get();
+            if (
+              current.pendingQuizModuleId &&
+              current.phase === 'quizzing' &&
+              (!current.quizDraft || current.quizDraft.length === 0)
+            ) {
+              get().startQuizFromChat(current.pendingQuizModuleId)
+                .then(() => {
+                  set({ pendingQuizModuleId: null });
+                })
+                .catch(err => {
+                  console.error('Deferred quiz start failed:', err);
+                });
+            }
+          });
+        }
       },
 
       // Clear current session (for reset/start fresh)
@@ -341,7 +396,10 @@ const useSessionStore = create(
           },
           loading: false,
           error: null,
-          quizDraft: null
+          quizDraft: null,
+          quizResult: null,
+          isQuizSubmitting: false,
+          pendingQuizModuleId: null
         });
       },
 
@@ -388,6 +446,8 @@ const useSessionStore = create(
                 outstandingCheck: null
               },
               quizDraft: null,
+              quizResult: null,
+              isQuizSubmitting: false,
               loading: false
             });
             console.log('New session created with ID:', actualSession.id, 'phase:', actualSession.phase);
@@ -561,7 +621,7 @@ const useSessionStore = create(
             userMessage
           });
           
-          console.log('Backend response:', response);
+          console.log('Backend response:', JSON.stringify(response, null, 2));
 
               // Check if we should trigger assessment
               if (response.data?.shouldTriggerAssessment) {
@@ -644,9 +704,19 @@ const useSessionStore = create(
               }
               // If intent is 'general' or 'admin', do not mutate points/gems
 
-          // Check for quiz intent
+          // Handle quiz start when backend returns nextAction: 'START_QUIZ'
           if (response.data?.nextAction === 'START_QUIZ' || response.nextAction === 'START_QUIZ') {
-            await get().startQuizFromChat(response.moduleId || response.data?.moduleId);
+            const moduleForQuiz = response.data?.moduleId || response.moduleId || get().activeModuleId;
+            console.log('Quiz start requested by backend, calling startQuizFromChat', { moduleForQuiz });
+            try {
+              await get().startQuizFromChat(moduleForQuiz);
+            } catch (quizError) {
+              console.error('Failed to start quiz after backend request:', quizError);
+              set({ error: 'Failed to start quiz. Please try again.' });
+            }
+          } else if (response.data?.phase === 'quizzing' && state.phase !== 'quizzing') {
+            console.log('Phase changed to quizzing - waiting for user to type "start quiz"');
+            // Don't auto-start - let user explicitly trigger with "start quiz" message
           }
 
           set({ loading: false });
@@ -685,8 +755,13 @@ const useSessionStore = create(
         if (!state.sessionId) {
           throw new Error('No active session');
         }
+        if (state.quizDraft && state.quizDraft.length > 0) {
+          console.log('startQuizFromChat skipped - draft already present');
+          return { questions: state.quizDraft };
+        }
 
         try {
+          console.log('startQuizFromChat invoked', { moduleId, activeModuleId: state.activeModuleId, existingDraft: state.quizDraft?.length });
           const response = await quizApi.startQuiz({
             sessionId: state.sessionId,
             moduleId: moduleId || state.activeModuleId
@@ -695,7 +770,10 @@ const useSessionStore = create(
           // Store quiz draft
           set({ 
             quizDraft: response.questions,
-            loading: false 
+            quizResult: null,
+            isQuizSubmitting: false,
+            loading: false,
+            pendingQuizModuleId: null 
           });
 
           // Start quiz
@@ -716,7 +794,7 @@ const useSessionStore = create(
           throw new Error('No active session or module');
         }
 
-        set({ loading: true, error: null });
+        set({ isQuizSubmitting: true, error: null });
 
         try {
           const response = await quizApi.submitQuiz({
@@ -725,41 +803,48 @@ const useSessionStore = create(
             answers
           });
 
-          // Update points and progress
-          get().awardPoints(
-            state.points + response.pointsEarned,
-            Math.floor((state.points + response.pointsEarned) / 20)
-          );
-
-          // Finish quiz with results
-          get().finishQuiz({
-            passed: response.passed,
-            pointsEarned: response.pointsEarned,
-            nextModuleId: response.nextModuleId
-          });
-
-          // Check if completed
-          if (response.completed) {
-            get().lockViewOnly();
+          const result = response?.data || response;
+          if (!result) {
+            throw new Error('Invalid quiz submission response');
           }
 
-          set({ loading: false });
-          return response;
+          set(prevState => ({
+            quizResult: result,
+            quizDraft: null,
+            isQuizSubmitting: false,
+            phase: result.passed ? 'feedback' : prevState.phase === 'quizzing' ? 'learning' : prevState.phase
+          }));
+
+          // Always refresh session state after quiz submit to sync milestones and activeModuleId
+          try {
+            const refreshedSession = await get().resumeSessionFromServer(state.sessionId);
+            console.log('Session refreshed after quiz submit', {
+              activeModuleId: refreshedSession?.activeModuleId,
+              phase: refreshedSession?.phase,
+              planLength: refreshedSession?.plan?.length
+            });
+          } catch (resumeError) {
+            console.error('Failed to refresh session after quiz submit:', resumeError);
+          }
+
+          return result;
         } catch (error) {
           set({ 
             error: error.message, 
-            loading: false 
+            isQuizSubmitting: false 
           });
           throw error;
         }
       },
 
       resumeSessionFromServer: async (sessionId) => {
+        console.log('resumeSessionFromServer called', { sessionId });
         set({ loading: true, error: null });
 
         try {
           const response = await sessionApi.resumeSession(sessionId);
           if (response.success) {
+            console.log('resumeSessionFromServer success', response.data);
             get().resumeSession(response.data);
             set({ sessionId, loading: false });
             return response.data;
@@ -776,6 +861,14 @@ const useSessionStore = create(
       },
 
       // Utility methods
+      clearQuizState: () => {
+        set({
+          quizDraft: null,
+          quizResult: null,
+          isQuizSubmitting: false
+        });
+      },
+
       reset: async () => {
         console.log('Resetting session...');
         
@@ -841,5 +934,21 @@ const useSessionStore = create(
     }
   )
 );
+
+if (process.env.NODE_ENV === 'development') {
+  useSessionStore.subscribe((state, previous) => {
+    try {
+      console.log('sessionStore update', {
+        phase: state.phase,
+        prevPhase: previous?.phase,
+        quizDraftLen: state.quizDraft?.length || 0,
+        loading: state.loading,
+        sessionId: state.sessionId
+      });
+    } catch (logError) {
+      console.warn('sessionStore logging failed', logError);
+    }
+  });
+}
 
 export default useSessionStore;

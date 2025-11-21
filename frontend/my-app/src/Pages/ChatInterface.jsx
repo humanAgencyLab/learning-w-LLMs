@@ -1,9 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import QuizModal from '../components/QuizModal';
-import QuizPanel from '../components/QuizPanel';
-import {
-  submitQuiz as newSubmitQuiz,
-} from '../lib/stageApi';
+import QuizOverlay from '../components/quiz/QuizOverlay';
 import useSessionStore from '../state/sessionStore';
 
 function ChatInterface() {
@@ -93,9 +89,6 @@ function ChatInterface() {
   console.log('ChatInterface render - isActiveLearning:', isActiveLearning);
   console.log('ChatInterface render - isPreSurface:', isPreSurface);
 
-  const [quizPanelOpen, setQuizPanelOpen] = useState(false);
-  const [quizModalOpen, setQuizModalOpen] = useState(false);
-  const [currentQuizData] = useState(null);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -112,6 +105,7 @@ function ChatInterface() {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
 
   // Helper function to intelligently determine intent based on conversation context
   const hasLearningIntent = (message) => {
@@ -209,34 +203,9 @@ function ChatInterface() {
     }
   };
 
-  const handleQuizSubmit = async (quizId, answers) => {
-    try {
-      await newSubmitQuiz(sessionId, quizId, answers);
-      setToast({ message: 'Quiz submitted successfully!', type: 'success' });
-      setQuizPanelOpen(false);
-    } catch (error) {
-      console.error('Error submitting quiz:', error);
-      setToast({ message: 'Failed to submit quiz.', type: 'error' });
-    }
-  };
-
   return (
     <>
-      {/* Quiz Modal */}
-      <QuizModal
-        isOpen={quizModalOpen}
-        onClose={() => setQuizModalOpen(false)}
-        quizData={currentQuizData}
-        onSubmit={handleQuizSubmit}
-      />
-
-      {/* Quiz Panel */}
-      <QuizPanel
-        isOpen={quizPanelOpen}
-        onClose={() => setQuizPanelOpen(false)}
-        quizData={currentQuizData}
-        onSubmit={handleQuizSubmit}
-      />
+      <QuizOverlay />
 
       {/* CONTENT COLUMN */}
       <div className="flex h-full min-h-0 flex-col">

@@ -18,7 +18,7 @@ const logger = pino({
 
 // Middleware to add request ID to logger
 const addRequestId = (req, res, next) => {
-  req.logger = logger.child({ requestId: req.id });
+  req.logger = logger.child({ requestId: req.requestId });
   next();
 };
 

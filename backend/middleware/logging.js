@@ -5,10 +5,10 @@ const logger = require('../utils/logger');
  */
 const requestLogger = (req, res, next) => {
   const startTime = Date.now();
-  const requestId = req.requestId || `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  // req.requestId is guaranteed to be set by app.js middleware before this runs
+  const requestId = req.requestId;
   
-  // Attach request ID and logger to request object
-  req.requestId = requestId;
+  // Attach logger to request object (requestId already set)
   req.logger = logger;
   
   // Log request start

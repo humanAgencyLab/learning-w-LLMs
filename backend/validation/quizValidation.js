@@ -22,7 +22,8 @@ const quizItemSchema = z.object({
   text: z.string().min(1, 'Question text is required'),
   options: z.array(z.string().min(1, 'Option text is required'))
     .length(4, 'Must have exactly 4 options'),
-  correctIndex: z.number().int('Correct index must be integer').min(0).max(3, 'Correct index must be 0-3')
+  correctIndex: z.number().int('Correct index must be integer').min(0).max(3, 'Correct index must be 0-3'),
+  explanation: z.string().min(10, 'Explanation must be at least 10 characters').optional() // Explanation for why the correct answer is correct
 });
 
 // Quiz generation response schema

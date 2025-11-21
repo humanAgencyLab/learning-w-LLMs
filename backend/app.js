@@ -29,10 +29,13 @@ const quizRoutes = require('./routes/quizRoutes');
 const healthRoutes = require('./routes/healthRoutes');
 
 // Import middleware
-const { requestLogger, errorLogger, metricsTracker, securityHeaders, generateRequestId } = require('./middleware/logging');
+const { requestLogger, errorLogger, metricsTracker, securityHeaders } = require('./middleware/logging');
 const { applyRateLimit, trackRateLimitMetrics } = require('./middleware/rateLimiter');
 
 const app = express();
+// Trust first proxy (React dev server / reverse proxies) so rate limiting has correct IPs
+const trustProxy = parseInt(process.env.TRUST_PROXY || '1', 10);
+app.set('trust proxy', trustProxy);
 const PORT = process.env.PORT || 5001;
 
 // Logger configuration
@@ -51,13 +54,6 @@ const logger = winston.createLogger({
       )
     })
   ]
-});
-
-// Request ID middleware
-app.use((req, res, next) => {
-  req.id = uuidv4();
-  res.setHeader('X-Request-Id', req.id);
-  next();
 });
 
 // Security middleware
@@ -79,9 +75,15 @@ app.use(cors({
 app.use(express.json({ limit: '1mb', strict: false, type: 'application/json' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// Request ID middleware
+// Request ID middleware - Single source of truth for request IDs
+// Sets both req.requestId (used throughout codebase) and X-Request-Id header
 app.use((req, res, next) => {
-  req.requestId = generateRequestId();
+  // Use UUID v4 for consistent, standard request IDs
+  req.requestId = uuidv4();
+  // Also set req.id for backward compatibility (will be removed in future)
+  req.id = req.requestId;
+  // Set HTTP response header for client tracking
+  res.setHeader('X-Request-Id', req.requestId);
   next();
 });
 

@@ -22,9 +22,34 @@ jest.mock('../lib/quizApi', () => ({
 
 describe('SessionStore', () => {
   beforeEach(() => {
+    const sessionApi = require('../lib/sessionApi');
+    sessionApi.createSession.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'default-session',
+        profile: {
+          source: 'dummy',
+          name: 'Default User'
+        }
+      }
+    });
+    sessionApi.resumeSession.mockResolvedValue({
+      success: true,
+      data: {
+        sessionId: 'default-session',
+        phase: 'pre',
+        plan: [],
+        activeModuleId: null,
+        points: 0,
+        gems: 0,
+        progressPct: 0,
+        messages: []
+      }
+    });
+
     // Reset store state before each test
     act(() => {
-      useSessionStore.getState().reset();
+      useSessionStore.getState().clearSession();
     });
   });
 
@@ -299,7 +324,7 @@ describe('SessionStore', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    it('should handle startAssessment with clarify response', async () => {
+    it('should surface error when assessment response lacks plan', async () => {
       const { result } = renderHook(() => useSessionStore());
       
       // Set up session
@@ -315,14 +340,18 @@ describe('SessionStore', () => {
       const { assess } = require('../lib/assessmentApi');
       assess.mockResolvedValue(mockResponse);
 
+      let caughtError;
       await act(async () => {
-        await result.current.startAssessment('I want to learn JavaScript');
+        try {
+          await result.current.startAssessment('I want to learn JavaScript');
+        } catch (error) {
+          caughtError = error;
+        }
       });
 
-      expect(result.current.phase).toBe('assessing');
-      expect(result.current.messages).toHaveLength(1);
-      expect(result.current.messages[0].role).toBe('assistant');
-      expect(result.current.messages[0].content).toContain('What is your experience level?');
+      expect(caughtError).toBeDefined();
+      expect(caughtError.message).toContain('Unexpected assessment response');
+      expect(result.current.error).toContain('Unexpected assessment response');
     });
 
     it('should handle startAssessment with plan response', async () => {
@@ -334,23 +363,41 @@ describe('SessionStore', () => {
       });
 
       const mockResponse = {
-        topic: 'JavaScript Fundamentals',
-        chatTitle: 'Learn JavaScript',
-        plan: [
-          { id: '1', title: 'Variables', points: 30, status: 'in_progress' }
-        ]
+        data: {
+          topic: 'JavaScript Fundamentals',
+          chatTitle: 'Learn JavaScript',
+          plan: [
+            { id: '1', title: 'Variables', points: 30, status: 'in_progress' }
+          ]
+        }
       };
 
       const { assess } = require('../lib/assessmentApi');
       assess.mockResolvedValue(mockResponse);
+      const { resumeSession } = require('../lib/sessionApi');
+      resumeSession.mockResolvedValue({
+        success: true,
+        data: {
+          sessionId: 'test-123',
+          phase: 'planning',
+          topic: mockResponse.data.topic,
+          chatTitle: mockResponse.data.chatTitle,
+          plan: mockResponse.data.plan,
+          activeModuleId: null,
+          points: 0,
+          gems: 0,
+          progressPct: 0,
+          messages: []
+        }
+      });
 
       await act(async () => {
         await result.current.startAssessment('I want to learn JavaScript');
       });
 
-      expect(result.current.phase).toBe('learning');
-      expect(result.current.topic).toBe('JavaScript Fundamentals');
-      expect(result.current.plan).toEqual(mockResponse.plan);
+      expect(result.current.phase).toBe('planning');
+      expect(result.current.topic).toBe(mockResponse.data.topic);
+      expect(result.current.plan).toEqual(mockResponse.data.plan);
     });
 
     it('should handle sendChatMessage', async () => {
@@ -362,8 +409,10 @@ describe('SessionStore', () => {
       });
 
       const mockResponse = {
-        message: 'Hello! How can I help you learn?',
-        tokens: 15
+        data: {
+          message: 'Hello! How can I help you learn?',
+          tokensOut: 15
+        }
       };
 
       const { sendMessage } = require('../lib/chatApi');
@@ -396,16 +445,33 @@ describe('SessionStore', () => {
       };
 
       const mockSubmitResponse = {
-        passed: true,
-        scorePct: 100,
-        pointsEarned: 30,
-        feedbackMarkdown: 'Great job!',
-        nextModuleId: 'module-2'
+        data: {
+          passed: true,
+          scorePct: 100,
+          pointsEarned: 30,
+          feedbackMarkdown: 'Great job!',
+          nextModuleId: 'module-2'
+        }
       };
 
       const { startQuiz, submitQuiz } = require('../lib/quizApi');
       startQuiz.mockResolvedValue(mockStartResponse);
       submitQuiz.mockResolvedValue(mockSubmitResponse);
+
+      const { resumeSession } = require('../lib/sessionApi');
+      resumeSession.mockResolvedValue({
+        success: true,
+        data: {
+          sessionId: 'test-123',
+          phase: 'feedback',
+          plan: [],
+          activeModuleId: 'module-2',
+          points: 30,
+          gems: 6,
+          progressPct: 30,
+          messages: []
+        }
+      });
 
       // Start quiz
       await act(async () => {
@@ -422,9 +488,12 @@ describe('SessionStore', () => {
         ]);
       });
 
+      expect(result.current.quizDraft).toBeNull();
+      expect(result.current.quizResult).toEqual(mockSubmitResponse.data);
+      expect(result.current.isQuizSubmitting).toBe(false);
       expect(result.current.phase).toBe('feedback');
       expect(result.current.points).toBe(30);
-      expect(result.current.gems).toBe(1);
+      expect(result.current.gems).toBe(6);
     });
   });
 

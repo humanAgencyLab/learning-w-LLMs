@@ -296,6 +296,52 @@ router.post('/v1/chat', async (req, res) => {
       });
     }
     
+    // Handle 'quizzing' phase - user wants to start the quiz
+    if (session.phase === 'quizzing' || session.phase === 'quiz') {
+      const wantsQuiz = typeof userMessage === 'string' && /start\s+quiz/i.test(userMessage);
+      if (wantsQuiz) {
+        const userMessageObj = {
+          id: `msg_${Date.now()}`,
+          role: 'user',
+          content: userMessage,
+          timestamp: new Date(),
+          metadata: { type: 'chat', tokensIn: userMessage.length, intent: 'requesting_quiz', phaseAtSend: session.phase }
+        };
+
+        session.messages.push(userMessageObj);
+        session.meta = session.meta || {};
+        session.meta.milestoneBeingTaught = false;
+        session.meta.outstandingCheck = null;
+        session.meta.countSinceLastCheck = 0;
+        await session.save();
+
+        return res.json({
+          success: true,
+          data: {
+            message: "Great! Let's test your understanding of this module.",
+            nextAction: 'START_QUIZ',
+            moduleId: session.activeModuleId,
+            tokensIn: userMessage.length,
+            tokensOut: 0,
+            hadCheckInReply: false,
+            followedUpOutstanding: false,
+            phase: session.phase
+          }
+        });
+      } else {
+        // User sent a message in quizzing phase but didn't say "start quiz"
+        return res.json({
+          success: true,
+          data: {
+            message: "When you're ready, type 'start quiz' to begin the mastery check for this module.",
+            tokensIn: userMessage.length,
+            tokensOut: 0,
+            phase: session.phase
+          }
+        });
+      }
+    }
+    
     // Check if session is view-only (only hardcoded check we keep)
     if (session.isViewOnly) {
       return res.status(409).json({
@@ -310,6 +356,246 @@ router.post('/v1/chat', async (req, res) => {
       // Initialize meta if not exists
       if (!session.meta) {
         session.meta = {};
+      }
+      
+      // Handle reset module session - show message and wait for "ready"
+      if (typeof userMessage === 'string' && userMessage.trim() === '_reset_module_session_') {
+        const activeModule = session.plan.find(m => m.id === session.activeModuleId);
+        if (activeModule) {
+          // Reset module state
+          session.meta.currentMilestoneIndex = 0;
+          session.meta.milestoneBeingTaught = false;
+          session.meta.outstandingCheck = null;
+          session.meta.countSinceLastCheck = 0;
+          session.phase = 'learning';
+          
+          // Reset all milestones in this module to incomplete
+          if (activeModule.milestones) {
+            activeModule.milestones.forEach((m, i) => {
+              m.completed = false;
+              if (!session.meta.milestoneRetryCount) {
+                session.meta.milestoneRetryCount = {};
+              }
+              session.meta.milestoneRetryCount[i] = 0;
+            });
+          }
+          activeModule.completedMilestones = [];
+          activeModule.status = 'in_progress';
+          
+          const userMessageObj = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: 'Close quiz',
+            timestamp: new Date(),
+            metadata: { type: 'chat', tokensIn: 10, intent: 'reset_module_session', phaseAtSend: session.phase }
+          };
+          
+          session.messages.push(userMessageObj);
+          await session.save();
+          
+          // Return reset message
+          const resetMessage = `Your session is reset. Let's start from the beginning of ${activeModule.title}. Say 'ready' when you are ready.`;
+          const assistantMessageObj = {
+            id: `msg_${Date.now() + 1}`,
+            role: 'assistant',
+            content: resetMessage,
+            timestamp: new Date(),
+            metadata: { type: 'system', tokensOut: resetMessage.length, phaseAtSend: session.phase }
+          };
+          
+          session.messages.push(assistantMessageObj);
+          await session.save();
+          
+          return res.json({
+            success: true,
+            data: {
+              message: resetMessage,
+              tokensIn: 10,
+              tokensOut: resetMessage.length,
+              hadCheckInReply: false,
+              followedUpOutstanding: false,
+              phase: session.phase,
+              plan: session.plan,
+              activeModuleId: session.activeModuleId
+            }
+          });
+        }
+      }
+      
+      // Handle "ready" message - reset to first milestone of current module
+      if (typeof userMessage === 'string' && /^\s*ready\s*$/i.test(userMessage.trim())) {
+        const activeModule = session.plan.find(m => m.id === session.activeModuleId);
+        if (activeModule && activeModule.milestones && activeModule.milestones.length > 0) {
+          // Reset to first milestone
+          session.meta.currentMilestoneIndex = 0;
+          session.meta.milestoneBeingTaught = false;
+          session.meta.outstandingCheck = null;
+          session.meta.countSinceLastCheck = 0;
+          session.phase = 'learning';
+          
+          // Reset all milestones in this module to incomplete
+          activeModule.milestones.forEach((m, i) => {
+            m.completed = false;
+            if (!session.meta.milestoneRetryCount) {
+              session.meta.milestoneRetryCount = {};
+            }
+            session.meta.milestoneRetryCount[i] = 0;
+          });
+          activeModule.completedMilestones = [];
+          activeModule.status = 'in_progress';
+          
+          const userMessageObj = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: userMessage,
+            timestamp: new Date(),
+            metadata: { type: 'chat', tokensIn: userMessage.length, intent: 'reset_to_first_milestone', phaseAtSend: session.phase }
+          };
+          
+          session.messages.push(userMessageObj);
+          await session.save();
+          
+          // Generate first teaching content for first milestone
+          // Use trigger message that will be detected as first_teaching scenario
+          const triggerMessage = `Let's start from the beginning of ${activeModule.title}`;
+          const teacherPrompt = buildTeacherPrompt(session, triggerMessage, false);
+          
+          try {
+            const teachingContent = await callTeacherAPI(teacherPrompt, 1500, session);
+            const assistantMessageObj = {
+              id: `msg_${Date.now() + 1}`,
+              role: 'assistant',
+              content: teachingContent,
+              timestamp: new Date(),
+              metadata: { type: 'teaching', tokensOut: teachingContent.length, phaseAtSend: session.phase }
+            };
+            
+            session.messages.push(assistantMessageObj);
+            session.meta.milestoneBeingTaught = true;
+            session.meta.outstandingCheck = extractQuestion(teachingContent);
+            await session.save();
+            
+            return res.json({
+              success: true,
+              data: {
+                message: teachingContent,
+                tokensIn: userMessage.length,
+                tokensOut: teachingContent.length,
+                hadCheckInReply: true,
+                followedUpOutstanding: false,
+                phase: session.phase,
+                plan: session.plan,
+                activeModuleId: session.activeModuleId
+              }
+            });
+          } catch (teachingError) {
+            req.logger.error('Failed to generate first teaching after reset', {
+              sessionId,
+              error: teachingError.message
+            });
+            // Fallback message
+            const firstMilestone = activeModule.milestones[0];
+            return res.json({
+              success: true,
+              data: {
+                message: `Let's start from the beginning of ${activeModule.title}. ${firstMilestone.text}`,
+                tokensIn: userMessage.length,
+                tokensOut: 0,
+                phase: session.phase,
+                plan: session.plan,
+                activeModuleId: session.activeModuleId
+              }
+            });
+          }
+        }
+      }
+      
+      // Handle "start" message - move to next module's first milestone (if passed)
+      if (typeof userMessage === 'string' && /^\s*start\s*$/i.test(userMessage.trim()) && session.phase === 'feedback') {
+        const currentIndex = session.plan.findIndex(m => m.id === session.activeModuleId);
+        const nextModule = session.plan[currentIndex + 1];
+        
+        if (nextModule) {
+          // Move to next module
+          session.activeModuleId = nextModule.id;
+          nextModule.status = 'in_progress';
+          session.meta.currentMilestoneIndex = 0;
+          session.meta.milestoneBeingTaught = false;
+          session.meta.outstandingCheck = null;
+          session.meta.countSinceLastCheck = 0;
+          session.phase = 'learning';
+          
+          // Reset retry counts for new module
+          if (!session.meta.milestoneRetryCount) {
+            session.meta.milestoneRetryCount = {};
+          }
+          
+          const userMessageObj = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: userMessage,
+            timestamp: new Date(),
+            metadata: { type: 'chat', tokensIn: userMessage.length, intent: 'move_to_next_module', phaseAtSend: session.phase }
+          };
+          
+          session.messages.push(userMessageObj);
+          await session.save();
+          
+          // Generate first teaching content for next module's first milestone
+          const firstMilestone = nextModule.milestones?.[0];
+          if (firstMilestone) {
+            // Use trigger message that will be detected as first_teaching scenario
+            const triggerMessage = `Let's start with ${nextModule.title}`;
+            const teacherPrompt = buildTeacherPrompt(session, triggerMessage, false);
+            
+            try {
+              const teachingContent = await callTeacherAPI(teacherPrompt, 1500, session);
+              const assistantMessageObj = {
+                id: `msg_${Date.now() + 1}`,
+                role: 'assistant',
+                content: teachingContent,
+                timestamp: new Date(),
+                metadata: { type: 'teaching', tokensOut: teachingContent.length, phaseAtSend: session.phase }
+              };
+              
+              session.messages.push(assistantMessageObj);
+              session.meta.milestoneBeingTaught = true;
+              session.meta.outstandingCheck = extractQuestion(teachingContent);
+              await session.save();
+              
+              return res.json({
+                success: true,
+                data: {
+                  message: teachingContent,
+                  tokensIn: userMessage.length,
+                  tokensOut: teachingContent.length,
+                  hadCheckInReply: true,
+                  followedUpOutstanding: false,
+                  phase: session.phase,
+                  plan: session.plan,
+                  activeModuleId: session.activeModuleId
+                }
+              });
+            } catch (teachingError) {
+              req.logger.error('Failed to generate first teaching for next module', {
+                sessionId,
+                error: teachingError.message
+              });
+              // Fallback message
+              return res.json({
+                success: true,
+                data: {
+                  message: `Great! Let's start with ${nextModule.title}. ${firstMilestone.text}`,
+                  tokensIn: userMessage.length,
+                  tokensOut: 0,
+                  phase: session.phase,
+                  plan: session.plan,
+                  activeModuleId: session.activeModuleId
+                }
+              });
+            }
+          }
+        }
       }
       
       // Initialize milestone tracking if not exists
