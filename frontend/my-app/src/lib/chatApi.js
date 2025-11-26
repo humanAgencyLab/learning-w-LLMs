@@ -1,4 +1,5 @@
 import { API_BASE } from '../config';
+import { getAuthHeaders } from './authApi';
 
 export async function sendMessage({ sessionId, userMessage }) {
   const url = `${API_BASE}/v1/chat`;
@@ -7,9 +8,8 @@ export async function sendMessage({ sessionId, userMessage }) {
   
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
+    credentials: 'include',
     body: JSON.stringify({
       sessionId,
       userMessage

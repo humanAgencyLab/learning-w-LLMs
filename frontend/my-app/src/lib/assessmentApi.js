@@ -1,11 +1,11 @@
 import { API_BASE } from '../config';
+import { getAuthHeaders } from './authApi';
 
 export async function assess({ sessionId, userMessage, mode, profile }) {
   const response = await fetch(`${API_BASE}/v1/assessment`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
+    credentials: 'include',
     body: JSON.stringify({
       sessionId,
       userMessage,
@@ -31,9 +31,8 @@ export async function assess({ sessionId, userMessage, mode, profile }) {
 export async function approvePlan({ sessionId }) {
   const response = await fetch(`${API_BASE}/v1/assessment/approve`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
+    credentials: 'include',
     body: JSON.stringify({
       sessionId
     }),

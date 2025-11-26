@@ -1,4 +1,5 @@
 import { API_BASE } from '../config';
+import { getAuthHeaders } from './authApi';
 
 export async function createSession(profile) {
   const url = `${API_BASE}/v1/sessions`;
@@ -7,9 +8,8 @@ export async function createSession(profile) {
   
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
+    credentials: 'include',
     body: JSON.stringify(profile || {}),
   });
 
@@ -30,9 +30,8 @@ export async function createSession(profile) {
 export async function getSession(sessionId) {
   const response = await fetch(`${API_BASE}/v1/sessions/${sessionId}`, {
     method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
+    credentials: 'include',
   });
 
   if (!response.ok) {
@@ -46,9 +45,8 @@ export async function getSession(sessionId) {
 export async function resumeSession(sessionId) {
   const response = await fetch(`${API_BASE}/v1/sessions/${sessionId}/resume`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
+    credentials: 'include',
   });
 
   if (!response.ok) {
@@ -62,9 +60,8 @@ export async function resumeSession(sessionId) {
 export async function getSessions(limit = 20) {
   const response = await fetch(`${API_BASE}/v1/sessions?limit=${limit}`, {
     method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
+    credentials: 'include',
   });
 
   if (!response.ok) {

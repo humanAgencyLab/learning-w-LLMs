@@ -1,9 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const pino = require('pino');
+const mongoose = require('mongoose');
 const { z } = require('zod');
 const Session = require('../models/Session');
+const User = require('../models/User');
 const { createSessionSchema, resumeSessionSchema } = require('../validation/sessionValidation');
+const { requireAuth, requireOwnership } = require('../middleware/auth');
 
 // Initialize Pino logger
 const logger = pino({
@@ -22,36 +25,142 @@ const addRequestId = (req, res, next) => {
   next();
 };
 
-// Enhanced dummy profile for new sessions (with onboarding flow data)
-const getDummyProfile = () => ({
-  source: 'dummy',
-  name: 'Alex',
-  background: '2nd-year CS undergrad with basic programming experience',
-  goals: ['Master Python fundamentals', 'Build practical projects', 'Prepare for technical interviews'],
-  strengths: ['Basic programming concepts', 'Problem-solving mindset', 'Eager to learn'],
-  gaps: ['Advanced Python features', 'Data structures implementation', 'Algorithm optimization'],
-  timePerDayMins: 40,
-  preferredStyle: 'examples-first',
-  lastUpdated: new Date().toISOString(),
-  // Enhanced fields from onboarding flow
-  skillLevel: 'Beginner',
-  learningType: 'Visual',
-  major: 'Computer Science',
-  currentCourses: ['Python Basics', 'Data Structures'],
-  daysPerWeek: 3,
-  minutesPerSession: 40,
-  recentTopics: ['programming basics', 'algorithms'],
-  selfRating: 'Basic',
-  primaryGoal: 'Master Basics',
-  defaultMode: 'Studying',
-  explanationLength: 'Balanced',
-  examplesPreference: 'Many',
-  language: 'English',
-  codeLanguagePreference: 'Python'
+/**
+ * Convert user profile to session profile format
+ * Must match Session model's profile schema requirements
+ */
+function userProfileToSessionProfile(user) {
+  // Handle case where user.profile might be null or undefined
+  const profile = user.profile || {};
+  
+  return {
+    source: 'user',
+    name: user.name || 'User',
+    background: profile.background || 'Student learning with AI assistance', // Required field
+    goals: Array.isArray(profile.goals) ? profile.goals : [],
+    strengths: Array.isArray(profile.strengths) ? profile.strengths : [],
+    gaps: Array.isArray(profile.gaps) ? profile.gaps : [],
+    timePerDayMins: profile.timePerDayMins || 30,
+    preferredStyle: profile.preferredStyle || 'mixed',
+    lastUpdated: new Date().toISOString(),
+    skillLevel: profile.skillLevel || 'Beginner',
+    learningType: profile.learningType || 'Visual', // Must be one of: Visual, Auditory, Reading/Writing, Kinesthetic
+    major: profile.major && ['Computer Science', 'Mathematics', 'Data Science', 'Engineering', 'Other'].includes(profile.major) 
+      ? profile.major 
+      : 'Other', // Must be valid enum value, not empty string
+    currentCourses: Array.isArray(profile.currentCourses) ? profile.currentCourses : [],
+    daysPerWeek: profile.daysPerWeek || 3,
+    minutesPerSession: profile.minutesPerSession || 30,
+    recentTopics: Array.isArray(profile.recentTopics) ? profile.recentTopics : [],
+    selfRating: profile.selfRating && ['None', 'Basic', 'Intermediate', 'Advanced'].includes(profile.selfRating)
+      ? profile.selfRating
+      : 'Basic', // Must be valid enum value, not empty string
+    primaryGoal: profile.primaryGoal && ['Master Basics', 'Exam Prep', 'Revise Gaps', 'Project Help', 'Interview Prep'].includes(profile.primaryGoal)
+      ? profile.primaryGoal
+      : 'Master Basics', // Must be valid enum value, not empty string
+    defaultMode: profile.defaultMode && ['Studying', 'Revision'].includes(profile.defaultMode)
+      ? profile.defaultMode
+      : 'Studying', // Must be valid enum value
+    explanationLength: profile.explanationLength && ['Concise', 'Balanced', 'Detailed'].includes(profile.explanationLength)
+      ? profile.explanationLength
+      : 'Balanced', // Must be valid enum value
+    examplesPreference: profile.examplesPreference && ['Few', 'Many'].includes(profile.examplesPreference)
+      ? profile.examplesPreference
+      : 'Many', // Must be valid enum value
+    language: profile.language || 'English',
+    codeLanguagePreference: profile.codeLanguagePreference && ['Python', 'JavaScript', 'C++', 'None'].includes(profile.codeLanguagePreference)
+      ? profile.codeLanguagePreference
+      : 'None' // Must be valid enum value
+  };
+}
+
+// GET /v1/sessions - List all sessions for authenticated user
+// Only returns sessions that have a plan and chatTitle (saved chats)
+router.get('/v1/sessions', requireAuth, addRequestId, async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = parseInt(req.query.offset) || 0;
+    const status = req.query.status; // Filter by phase
+    
+    req.logger.info('Fetching user sessions', { 
+      userId: req.userId,
+      limit,
+      offset,
+      status 
+    });
+    
+    // Build query - only sessions with plan and chatTitle (saved chats)
+    const query = { 
+      userId: req.userId,
+      chatTitle: { $ne: '', $exists: true }, // Must have a chat title
+      'plan.0': { $exists: true } // Must have at least one module in plan
+    };
+    
+    if (status) {
+      if (status === 'completed') {
+        query.phase = 'completed';
+      } else if (status === 'in_progress') {
+        query.phase = { $ne: 'completed' };
+      } else {
+        query.phase = status;
+      }
+    }
+    
+    // Fetch sessions
+    const sessions = await Session.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(offset)
+      .select('phase topic chatTitle points gems progressPct createdAt updatedAt plan');
+    
+    const total = await Session.countDocuments(query);
+    
+    req.logger.info('Sessions fetched successfully', { 
+      userId: req.userId,
+      count: sessions.length,
+      total,
+      duration: Date.now() - startTime 
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        sessions: sessions.map(session => ({
+          id: session._id,
+          topic: session.topic,
+          chatTitle: session.chatTitle,
+          phase: session.phase,
+          progressPct: session.progressPct,
+          points: session.points,
+          gems: session.gems,
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt
+        })),
+        total,
+        limit,
+        offset
+      }
+    });
+    
+  } catch (error) {
+    req.logger.error('Failed to fetch sessions', { 
+      userId: req.userId,
+      error: error.message,
+      stack: error.stack,
+      duration: Date.now() - startTime 
+    });
+    
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
 });
 
-// POST /v1/sessions - Create new session
-router.post('/v1/sessions', addRequestId, async (req, res) => {
+// POST /v1/sessions - Create new session (requires authentication)
+router.post('/v1/sessions', requireAuth, addRequestId, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -60,22 +169,28 @@ router.post('/v1/sessions', addRequestId, async (req, res) => {
     // Validate request body
     const validatedData = createSessionSchema.parse(req.body);
     
-    // Always inject dummy profile if none provided (Phase 2 requirement)
-    let profile = validatedData.profile || getDummyProfile();
-    
-    // Ensure profile has required fields and is not empty/placeholder
-    if (!profile.name || profile.name.trim() === '' || profile.name.toLowerCase().includes('anonymous')) {
-      req.logger.warn('Empty or placeholder profile provided, injecting dummy profile');
-      profile = getDummyProfile();
+    // Get user profile from authenticated user
+    const user = await User.findById(req.userId).select('+passwordHash'); // Include all fields
+    if (!user) {
+      req.logger.warn('User not found for session creation', { userId: req.userId });
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+        code: 'USER_NOT_FOUND'
+      });
     }
     
+    // Convert user profile to session profile format
+    const profile = validatedData.profile || userProfileToSessionProfile(user);
+    
     // Create new session with defaults
+    // Note: Session is created but won't appear in chat history until plan is generated and chatTitle is set
     const sessionData = {
-      phase: validatedData.phase,
-      mode: validatedData.mode,
-      topic: validatedData.topic,
-      chatTitle: validatedData.chatTitle,
-      plan: [], // Will be populated later
+      phase: validatedData.phase || 'pre',
+      mode: validatedData.mode || 'studying',
+      topic: validatedData.topic || '',
+      chatTitle: validatedData.chatTitle || '', // Empty until plan is generated
+      plan: [], // Will be populated later when assessment completes
       activeModuleId: null,
       points: 0,
       gems: 0,
@@ -84,7 +199,7 @@ router.post('/v1/sessions', addRequestId, async (req, res) => {
       messages: [],
       profile: profile,
       quizAttempts: [],
-      userId: validatedData.userId
+      userId: new mongoose.Types.ObjectId(req.userId) // Convert to ObjectId
     };
     
     const session = new Session(sessionData);
@@ -117,6 +232,7 @@ router.post('/v1/sessions', addRequestId, async (req, res) => {
     
   } catch (error) {
     req.logger.error('Failed to create session', { 
+      userId: req.userId,
       error: error.message,
       stack: error.stack,
       duration: Date.now() - startTime 
@@ -133,13 +249,18 @@ router.post('/v1/sessions', addRequestId, async (req, res) => {
     
     res.status(500).json({
       success: false,
-      error: 'Internal server error'
+      error: 'Internal server error',
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
 
-// GET /v1/sessions/:id - Full fetch of session
-router.get('/v1/sessions/:id', addRequestId, async (req, res) => {
+// GET /v1/sessions/:id - Full fetch of session (requires authentication and ownership)
+router.get('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(async (req) => {
+  const session = await Session.findById(req.params.id);
+  return session?.userId;
+}), async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -213,8 +334,11 @@ router.get('/v1/sessions/:id', addRequestId, async (req, res) => {
   }
 });
 
-// POST /v1/sessions/:id/resume - Minimal hydrate payload
-router.post('/v1/sessions/:id/resume', addRequestId, async (req, res) => {
+// POST /v1/sessions/:id/resume - Minimal hydrate payload (requires authentication and ownership)
+router.post('/v1/sessions/:id/resume', requireAuth, addRequestId, requireOwnership(async (req) => {
+  const session = await Session.findById(req.params.id);
+  return session?.userId;
+}), async (req, res) => {
   const startTime = Date.now();
   
   try {

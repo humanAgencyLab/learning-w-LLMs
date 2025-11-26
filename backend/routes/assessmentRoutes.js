@@ -13,6 +13,7 @@ const { contextControl } = require('../middleware/contextControl');
 const { buildAssessmentPrompt } = require('../prompts/srl_assessment_prompt');
 const { callTeacherAPI } = require('../services/teacherService');
 const { validateFirstTeaching } = require('../utils/responseValidator');
+const { requireAuth } = require('../middleware/auth');
 
 // Initialize Pino logger
 const logger = pino({
@@ -112,7 +113,7 @@ const callAssessmentAPI = async (prompt, isRetry = false) => {
 };
 
 // POST /v1/assessment - Assessment endpoint
-router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => {
+router.post('/v1/assessment', requireAuth, addRequestId, contextControl, async (req, res) => {
   const startTime = Date.now();
   let retryCount = 0;
   let session = null; // Declare session outside try block for catch block access
@@ -134,6 +135,20 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
         success: false,
         code: 'NOT_FOUND',
         message: 'Resource not found'
+      });
+    }
+    
+    // Verify session belongs to authenticated user
+    if (session.userId.toString() !== req.userId) {
+      req.logger.warn('Access denied - session ownership mismatch', { 
+        sessionId, 
+        sessionUserId: session.userId, 
+        reqUserId: req.userId 
+      });
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN',
+        message: 'Access denied. You do not have permission to access this session.'
       });
     }
     
@@ -577,7 +592,7 @@ router.post('/v1/assessment', addRequestId, contextControl, async (req, res) => 
 });
 
 // POST /v1/assessment/approve - Approve plan and move to learning phase
-router.post('/v1/assessment/approve', addRequestId, async (req, res) => {
+router.post('/v1/assessment/approve', requireAuth, addRequestId, async (req, res) => {
   const startTime = Date.now();
   let session;
   
@@ -600,6 +615,20 @@ router.post('/v1/assessment/approve', addRequestId, async (req, res) => {
         success: false,
         code: 'NOT_FOUND',
         message: 'Session not found'
+      });
+    }
+    
+    // Verify session belongs to authenticated user
+    if (session.userId.toString() !== req.userId) {
+      req.logger.warn('Access denied - session ownership mismatch', { 
+        sessionId, 
+        sessionUserId: session.userId, 
+        reqUserId: req.userId 
+      });
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN',
+        message: 'Access denied. You do not have permission to access this session.'
       });
     }
     
@@ -817,7 +846,7 @@ router.post('/v1/assessment/approve', addRequestId, async (req, res) => {
 });
 
 // POST /v1/assessment/modify - Request plan modifications
-router.post('/v1/assessment/modify', addRequestId, contextControl, async (req, res) => {
+router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, async (req, res) => {
   const startTime = Date.now();
   let session;
   
@@ -849,6 +878,20 @@ router.post('/v1/assessment/modify', addRequestId, contextControl, async (req, r
         success: false,
         code: 'NOT_FOUND',
         message: 'Session not found'
+      });
+    }
+    
+    // Verify session belongs to authenticated user
+    if (session.userId.toString() !== req.userId) {
+      req.logger.warn('Access denied - session ownership mismatch', { 
+        sessionId, 
+        sessionUserId: session.userId, 
+        reqUserId: req.userId 
+      });
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN',
+        message: 'Access denied. You do not have permission to access this session.'
       });
     }
     

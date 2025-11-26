@@ -327,12 +327,12 @@ const SessionSchema = new mongoose.Schema({
     }
   }],
   
-  // User reference
+  // User reference (required - all sessions must belong to a user)
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: false,
-    default: null
+    required: true,
+    index: true
   },
   
   // Chat cadence tracking

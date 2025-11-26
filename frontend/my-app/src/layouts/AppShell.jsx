@@ -1,15 +1,18 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import TopBar from '../components/topbar/TopBar';
 import LeftNav from '../components/nav/LeftNav';
 import useSessionStore from '../state/sessionStore';
 
 const AppShell = () => {
   const { reset } = useSessionStore();
+  const navigate = useNavigate();
 
   const handleStartNewChat = async () => {
     // Reset the session to start fresh
     await reset();
+    // Navigate to chat interface
+    navigate('/chat', { replace: true });
   };
 
       return (

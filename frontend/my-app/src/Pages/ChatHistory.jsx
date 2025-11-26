@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import * as sessionApi from '../lib/sessionApi';
+import useSessionStore from '../state/sessionStore';
 // import '../styles/ChatHistory.css'; // LEGACY - Using Tailwind CSS
 
 function ChatHistory() {
@@ -7,64 +9,123 @@ function ChatHistory() {
   const [results, setResults] = useState([]); // stores filtered results
   const [searched, setSearched] = useState(false); // tracks if search has been performed
   const [bookmarks, setBookmarks] = useState({});
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const navigate = useNavigate();
+  const { resumeSessionFromServer } = useSessionStore();
 
-  // Sample chat data
-  // In a real application, this data would likely come from an API or database
-  // For demonstration purposes, we will use a static array of objects
-  const chatData = [
-    {
-      date: 'Today',
-      summaries: [
-        'Discussed study strategies and resources.',
-        'Reviewed previous exam questions and answers.',
-      ],
-    },
-    {
-      date: '5 days ago',
-      summaries: ['Explored new learning techniques and tools.'],
-    },
-    {
-      date: 'June 23, 2025',
-      summaries: [
-        'Explored new learning techniques and tools.',
-        'Reviewed for Biology exam.',
-        'Completed Calculus practice problems.',
-        'Revised Java code examples.',
-      ],
-    },
-  ];
+  // Fetch sessions from API
+  useEffect(() => {
+    const loadSessions = async () => {
+      try {
+        setLoading(true);
+        const response = await sessionApi.getSessions(50);
+        if (response.success && response.data.sessions) {
+          // Group sessions by date
+          const grouped = groupSessionsByDate(response.data.sessions);
+          setSessions(grouped);
+        }
+      } catch (err) {
+        console.error('Failed to load sessions:', err);
+        setError(err.message || 'Failed to load chat history');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadSessions();
+  }, []);
+
+  // Group sessions by date
+  const groupSessionsByDate = (sessions) => {
+    const groups = {};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    sessions.forEach(session => {
+      const sessionDate = new Date(session.createdAt);
+      sessionDate.setHours(0, 0, 0, 0);
+      const diffTime = today - sessionDate;
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      
+      let dateLabel;
+      if (diffDays === 0) {
+        dateLabel = 'Today';
+      } else if (diffDays === 1) {
+        dateLabel = 'Yesterday';
+      } else if (diffDays < 7) {
+        dateLabel = `${diffDays} days ago`;
+      } else {
+        dateLabel = sessionDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      }
+      
+      if (!groups[dateLabel]) {
+        groups[dateLabel] = [];
+      }
+      groups[dateLabel].push(session);
+    });
+    
+    return Object.entries(groups).map(([date, sessions]) => ({
+      date,
+      sessions
+    }));
+  };
 
   const handleSearchClick = (e) => {
     e.preventDefault();
     // filter only when the button is clicked
-    const filtered = chatData
+    const filtered = sessions
       .map((group) => ({
         date: group.date,
-        summaries: group.summaries.filter((summary) =>
-          summary.toLowerCase().includes(searchQuery.toLowerCase()),
+        sessions: group.sessions.filter((session) =>
+          (session.topic || session.chatTitle || '').toLowerCase().includes(searchQuery.toLowerCase()),
         ),
       }))
-      .filter((group) => group.summaries.length > 0);
+      .filter((group) => group.sessions.length > 0);
 
     setResults(filtered);
     setSearched(true); // mark that user clicked Search
   };
 
   // Decide which data to show (search results or all chats if no search yet)
-  const dataToDisplay = searched ? results : chatData;
+  const dataToDisplay = searched ? results : sessions;
 
-  const toggleBookmark = (summaryKey) => {
+  const toggleBookmark = (sessionId) => {
     setBookmarks((prev) => ({
       ...prev,
-      [summaryKey]: !prev[summaryKey],
+      [sessionId]: !prev[sessionId],
     }));
   };
 
-  const handleSummaryClick = (summaryKey) => {
-    // Navigate to the chat page with the summary key
-    navigate(`/summary/${encodeURIComponent(summaryKey)}`);
+  const handleSessionClick = async (sessionId) => {
+    try {
+      // Resume the session
+      await resumeSessionFromServer(sessionId);
+      // Navigate to chat interface
+      navigate('/chat', { replace: true });
+    } catch (err) {
+      console.error('Failed to resume session:', err);
+      setError(err.message || 'Failed to resume session');
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="chat-history-container">
+        <h1 className="chat-history-heading">Chat History</h1>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="chat-history-container">
+        <h1 className="chat-history-heading">Chat History</h1>
+        <p className="text-red-500">Error: {error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="chat-history-container">
@@ -81,6 +142,11 @@ function ChatHistory() {
               className="chat-history-search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  handleSearchClick(e);
+                }
+              }}
             />
             <button
               className="chat-history-search-button"
@@ -91,37 +157,52 @@ function ChatHistory() {
           </div>
 
           {/* Display the chat history */}
-          {/* replaces your manually typed chat summaries */}
-          {dataToDisplay.map((group, index) => (
-            <div key={index} className="chat-history-group">
-              <div className="chat-history-date">
-                <h2>{group.date}</h2>
-              </div>
-              {group.summaries.map((summary, i) => {
-                const summaryKey = `${group.date}-${i}`;
-                const isBookmarked = bookmarks[summaryKey];
-                return (
-                  <div
-                    key={i}
-                    className="chat-history-summary"
-                    onClick={() => handleSummaryClick(summaryKey)}
-                  >
-                    <p>{summary}</p>
-                    <button
-                      className={`bookmark-button ${isBookmarked ? 'bookmarked' : ''}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleBookmark(summaryKey);
-                      }}
-                    >
-                      {' '}
-                      {isBookmarked ? '★' : '☆'}
-                    </button>
-                  </div>
-                );
-              })}
+          {dataToDisplay.length === 0 ? (
+            <div className="text-gray-500 mt-4">
+              <p>No chat history found.</p>
+              <p className="text-sm mt-2">Chats will appear here after you complete assessment and a learning plan is generated.</p>
             </div>
-          ))}
+          ) : (
+            dataToDisplay.map((group, index) => (
+              <div key={index} className="chat-history-group">
+                <div className="chat-history-date">
+                  <h2>{group.date}</h2>
+                </div>
+                {group.sessions.map((session) => {
+                  const sessionId = session.id || session._id;
+                  const isBookmarked = bookmarks[sessionId];
+                  const displayTitle = session.chatTitle || session.topic || 'Untitled Chat';
+                  const phaseLabel = session.phase ? `(${session.phase})` : '';
+                  return (
+                    <div
+                      key={sessionId}
+                      className="chat-history-summary cursor-pointer"
+                      onClick={() => handleSessionClick(sessionId)}
+                    >
+                      <div className="flex-1">
+                        <p className="font-semibold">{displayTitle}</p>
+                        {session.topic && session.topic !== displayTitle && (
+                          <p className="text-sm text-gray-600">{session.topic}</p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-1">
+                          {phaseLabel} • {session.progressPct || 0}% complete
+                        </p>
+                      </div>
+                      <button
+                        className={`bookmark-button ${isBookmarked ? 'bookmarked' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleBookmark(sessionId);
+                        }}
+                      >
+                        {isBookmarked ? '★' : '☆'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ))
+          )}
         </div>
       </div>
   );

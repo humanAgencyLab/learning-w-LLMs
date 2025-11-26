@@ -1,11 +1,11 @@
 import { API_BASE } from '../config';
+import { getAuthHeaders } from './authApi';
 
 export async function startQuiz({ sessionId, moduleId }) {
   const response = await fetch(`${API_BASE}/v1/quiz/start`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
+    credentials: 'include',
     body: JSON.stringify({
       sessionId,
       moduleId
@@ -23,9 +23,8 @@ export async function startQuiz({ sessionId, moduleId }) {
 export async function submitQuiz({ sessionId, moduleId, answers }) {
   const response = await fetch(`${API_BASE}/v1/quiz/submit`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
+    credentials: 'include',
     body: JSON.stringify({
       sessionId,
       moduleId,

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const { z } = require('zod');
 const Session = require('../models/Session');
 const { chatRequestSchema } = require('../validation/chatValidation');
@@ -14,6 +15,7 @@ const { buildConversationDecisionPrompt } = require('../prompts/conversation_man
 const { updateContextSummary } = require('../prompts/context_summarizer');
 const { updateProgress } = require('../services/progressService');
 const { callTeacherAPI } = require('../services/teacherService');
+const { requireAuth, requireOwnership } = require('../middleware/auth');
 
 // Extract question from assistant response
 const extractQuestion = (response) => {
@@ -24,8 +26,8 @@ const extractQuestion = (response) => {
   return null;
 };
 
-// POST /v1/chat - Teacher chat endpoint
-router.post('/v1/chat', async (req, res) => {
+// POST /v1/chat - Teacher chat endpoint (requires authentication)
+router.post('/v1/chat', requireAuth, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -35,12 +37,49 @@ router.post('/v1/chat', async (req, res) => {
     const { sessionId } = req.body;
     const userMessage = req.sanitized?.message || req.body.userMessage;
     
+    // Validate sessionId exists
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Session ID is required',
+        details: {
+          sessionId: ['Session ID is required']
+        }
+      });
+    }
+    
+    // Validate userMessage exists
+    if (!userMessage || userMessage.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'User message is required',
+        details: {
+          userMessage: ['User message cannot be empty']
+        }
+      });
+    }
+    
     // Load session
     let session;
     try {
+      // Validate MongoDB ObjectId format
+      if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+        return res.status(400).json({
+          success: false,
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid session ID format',
+          details: {
+            sessionId: ['Invalid session ID format']
+          }
+        });
+      }
+      
       session = await Session.findById(sessionId);
     } catch (error) {
-      // Invalid ObjectId format
+      // Invalid ObjectId format or database error
+      console.error('Error loading session:', error);
       return res.status(400).json({
         success: false,
         code: 'VALIDATION_ERROR',

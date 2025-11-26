@@ -161,14 +161,38 @@ function ChatInterface() {
     e.preventDefault();
     if (!inputValue.trim() || loading) return;
 
-    const message = inputValue;
+    const message = inputValue.trim();
     setInputValue('');
 
     try {
-      // If no session exists, create one first
-      if (!sessionId) {
+      // Ensure we have a valid session before sending
+      let currentSessionId = sessionId;
+      if (!currentSessionId) {
         console.log('No session found, creating one...');
-        await createSession();
+        try {
+          await createSession();
+          // Wait a bit for the store to update with the new sessionId
+          await new Promise(resolve => setTimeout(resolve, 300));
+          currentSessionId = useSessionStore.getState().sessionId;
+          
+          if (!currentSessionId) {
+            // Try one more time after a longer wait
+            await new Promise(resolve => setTimeout(resolve, 500));
+            currentSessionId = useSessionStore.getState().sessionId;
+          }
+          
+          if (!currentSessionId) {
+            throw new Error('Failed to create session. Please refresh the page and try again.');
+          }
+        } catch (createError) {
+          console.error('Error creating session:', createError);
+          throw new Error(createError.message || 'Failed to create session. Please try again.');
+        }
+      }
+      
+      // Validate sessionId format (should be a valid MongoDB ObjectId)
+      if (!currentSessionId || currentSessionId.length < 10) {
+        throw new Error('Invalid session ID. Please refresh the page.');
       }
       
       // Always use sendChatMessage - it handles shouldTriggerAssessment automatically
@@ -176,6 +200,10 @@ function ChatInterface() {
       await sendChatMessage(message);
     } catch (err) {
       console.error('Error sending message:', err);
+      // Set error in the store
+      useSessionStore.setState({ error: err.message || 'Failed to send message' });
+      // Also show error to user
+      alert(err.message || 'Failed to send message. Please try again.');
     }
   };
 

@@ -27,6 +27,9 @@ const assessmentRoutes = require('./routes/assessmentRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const quizRoutes = require('./routes/quizRoutes');
 const healthRoutes = require('./routes/healthRoutes');
+const authRoutes = require('./routes/authRoutes');
+const profileRoutes = require('./routes/profileRoutes');
+const path = require('path');
 
 // Import middleware
 const { requestLogger, errorLogger, metricsTracker, securityHeaders } = require('./middleware/logging');
@@ -75,6 +78,10 @@ app.use(cors({
 app.use(express.json({ limit: '1mb', strict: false, type: 'application/json' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
+// Serve static files for avatar uploads
+const { AVATAR_UPLOAD_DIR } = require('./utils/fileUpload');
+app.use('/uploads/avatars', express.static(path.resolve(AVATAR_UPLOAD_DIR)));
+
 // Request ID middleware - Single source of truth for request IDs
 // Sets both req.requestId (used throughout codebase) and X-Request-Id header
 app.use((req, res, next) => {
@@ -115,7 +122,9 @@ if (process.env.NODE_ENV === 'production') {
   app.use(morgan('dev'));
 }
 
-// Mount session routes
+// Mount routes
+app.use('/v1/auth', authRoutes);
+app.use('/v1/profile', profileRoutes);
 app.use('/', sessionRoutes);
 app.use('/', assessmentRoutes);
 app.use('/', chatRoutes);

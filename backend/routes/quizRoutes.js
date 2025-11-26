@@ -12,6 +12,7 @@ const {
 const { updateProgress } = require('../services/progressService');
 const { buildQuizFailureAnalysisPrompt } = require('../prompts/assessment_analyzer');
 const { getGroqClient } = require('../lib/llmClient');
+const { requireAuth } = require('../middleware/auth');
 
 // Initialize Pino logger
 const logger = pino({
@@ -183,7 +184,7 @@ Generate ${questionCount} questions for "${moduleTitle}". Each option must be sp
 
 
 // POST /v1/quiz/start - Start a quiz for a module
-router.post('/v1/quiz/start', addRequestId, async (req, res) => {
+router.post('/v1/quiz/start', requireAuth, addRequestId, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -201,6 +202,20 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
         success: false,
         code: 'NOT_FOUND',
         message: 'Resource not found'
+      });
+    }
+    
+    // Verify session belongs to authenticated user
+    if (session.userId.toString() !== req.userId) {
+      req.logger.warn('Access denied - session ownership mismatch', { 
+        sessionId, 
+        sessionUserId: session.userId, 
+        reqUserId: req.userId 
+      });
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN',
+        message: 'Access denied. You do not have permission to access this session.'
       });
     }
     
@@ -380,7 +395,7 @@ router.post('/v1/quiz/start', addRequestId, async (req, res) => {
 });
 
 // POST /v1/quiz/submit - Submit quiz answers
-router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
+router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -398,6 +413,20 @@ router.post('/v1/quiz/submit', addRequestId, async (req, res) => {
         success: false,
         code: 'NOT_FOUND',
         message: 'Resource not found'
+      });
+    }
+
+    // Verify session belongs to authenticated user
+    if (session.userId.toString() !== req.userId) {
+      req.logger.warn('Access denied - session ownership mismatch', { 
+        sessionId, 
+        sessionUserId: session.userId, 
+        reqUserId: req.userId 
+      });
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN',
+        message: 'Access denied. You do not have permission to access this session.'
       });
     }
 

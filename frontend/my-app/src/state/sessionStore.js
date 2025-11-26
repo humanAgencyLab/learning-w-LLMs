@@ -4,6 +4,7 @@ import * as sessionApi from '../lib/sessionApi';
 import * as assessmentApi from '../lib/assessmentApi';
 import * as chatApi from '../lib/chatApi';
 import * as quizApi from '../lib/quizApi';
+import useAuthStore from './authStore';
 
 // Types (for reference - not enforced at runtime)
 const Phase = 'pre' | 'assessing' | 'learning' | 'quizzing' | 'feedback' | 'completed';
@@ -25,32 +26,7 @@ const initial = {
   progressPct: 0,
   isViewOnly: false, 
   messages: [],
-  profile: {
-    source: 'dummy',
-    name: 'Alex',
-    background: '2nd-year CS undergrad with basic programming experience',
-    goals: ['Master Python fundamentals', 'Build practical projects', 'Prepare for technical interviews'],
-    strengths: ['Basic programming concepts', 'Problem-solving mindset', 'Eager to learn'],
-    gaps: ['Advanced Python features', 'Data structures implementation', 'Algorithm optimization'],
-    timePerDayMins: 40,
-    preferredStyle: 'examples-first',
-    lastUpdated: new Date().toISOString(),
-    // Enhanced fields from onboarding flow
-    skillLevel: 'Beginner',
-    learningType: 'Visual',
-    major: 'Computer Science',
-    currentCourses: ['Python Basics', 'Data Structures'],
-    daysPerWeek: 3,
-    minutesPerSession: 40,
-    recentTopics: ['programming basics', 'algorithms'],
-    selfRating: 'Basic',
-    primaryGoal: 'Master Basics',
-    defaultMode: 'Studying',
-    explanationLength: 'Balanced',
-    examplesPreference: 'Many',
-    language: 'English',
-    codeLanguagePreference: 'Python'
-  },
+  profile: null, // Will be populated from auth store
   model: 'llama',
   meta: {
     countSinceLastCheck: 0,
@@ -336,7 +312,7 @@ const useSessionStore = create(
           progressPct: payload.progressPct ?? prev.progressPct ?? 0,
           isViewOnly: payload.isViewOnly ?? prev.isViewOnly ?? false,
           messages: Array.isArray(payload.lastMessages) ? payload.lastMessages : prev.messages,
-          profile: payload.profile || prev.profile || initial.profile,
+          profile: payload.profile || prev.profile || null,
           error: null,
           quizDraft: draftItems && draftItems.length > 0
             ? draftItems
@@ -404,7 +380,7 @@ const useSessionStore = create(
       },
 
       // API Actions (thunks)
-      createSession: async (profile) => {
+      createSession: async (profileOverride) => {
         const state = get();
         
         // Prevent multiple simultaneous session creation calls
@@ -413,11 +389,47 @@ const useSessionStore = create(
           return;
         }
         
-        console.log('Creating new session with profile:', profile);
+        // Get profile from auth store if not provided
+        let profileToUse = profileOverride;
+        if (!profileToUse) {
+          const authState = useAuthStore.getState();
+          if (authState.user && authState.user.profile) {
+            // Convert user profile to session profile format
+            profileToUse = {
+              source: 'user',
+              name: authState.user.name,
+              background: authState.user.profile.background || '',
+              goals: authState.user.profile.goals || [],
+              strengths: authState.user.profile.strengths || [],
+              gaps: authState.user.profile.gaps || [],
+              timePerDayMins: authState.user.profile.timePerDayMins || 30,
+              preferredStyle: authState.user.profile.preferredStyle || 'mixed',
+              lastUpdated: new Date().toISOString(),
+              skillLevel: authState.user.profile.skillLevel || 'Beginner',
+              learningType: authState.user.profile.learningType || 'Visual',
+              major: authState.user.profile.major || '',
+              currentCourses: authState.user.profile.currentCourses || [],
+              daysPerWeek: authState.user.profile.daysPerWeek || 3,
+              minutesPerSession: authState.user.profile.minutesPerSession || 30,
+              recentTopics: authState.user.profile.recentTopics || [],
+              selfRating: authState.user.profile.selfRating || '',
+              primaryGoal: authState.user.profile.primaryGoal || '',
+              defaultMode: authState.user.profile.defaultMode || 'Studying',
+              explanationLength: authState.user.profile.explanationLength || 'Balanced',
+              examplesPreference: authState.user.profile.examplesPreference || 'Many',
+              language: authState.user.profile.language || 'English',
+            };
+          } else {
+            // Fallback: user must be authenticated to create sessions
+            throw new Error('User must be authenticated to create a session');
+          }
+        }
+        
+        console.log('Creating new session with profile:', profileToUse);
         set({ loading: true, error: null });
         
         try {
-          const response = await sessionApi.createSession(profile);
+          const response = await sessionApi.createSession(profileToUse);
           console.log('Session API response:', response);
           
           if (response.success) {
@@ -724,6 +736,30 @@ const useSessionStore = create(
         } catch (error) {
           console.error('Error in sendChatMessage:', error);
           
+          // Handle validation errors
+          if (error.message.includes('Validation failed') || error.message.includes('Session ID is required') || error.message.includes('Invalid session ID')) {
+            console.log('Validation error detected, attempting to create new session...');
+            try {
+              // Clear the invalid session and create a new one
+              set({ sessionId: null });
+              await get().createSession();
+              // Retry the message with the new session
+              const newState = get();
+              if (newState.sessionId) {
+                return await get().sendChatMessage(userMessage);
+              } else {
+                throw new Error('Failed to create new session. Please refresh the page.');
+              }
+            } catch (createError) {
+              console.error('Failed to create new session:', createError);
+              set({ 
+                error: 'Session error. Please refresh the page and try again.', 
+                loading: false 
+              });
+              throw new Error('Session error. Please refresh the page and try again.');
+            }
+          }
+          
           // Handle 409 ILLEGAL_PHASE - session state mismatch
           if (error.message.includes('409') || error.message.includes('ILLEGAL_PHASE') || error.message.includes('Please complete assessment first')) {
             console.log('Session phase mismatch detected, resuming from server...');
@@ -742,8 +778,30 @@ const useSessionStore = create(
             }
           }
           
+          // Handle 404 - session not found
+          if (error.message.includes('404') || error.message.includes('Session not found')) {
+            console.log('Session not found, creating new session...');
+            try {
+              set({ sessionId: null });
+              await get().createSession();
+              const newState = get();
+              if (newState.sessionId) {
+                return await get().sendChatMessage(userMessage);
+              } else {
+                throw new Error('Failed to create new session.');
+              }
+            } catch (createError) {
+              console.error('Failed to create new session:', createError);
+              set({ 
+                error: 'Session not found. Please refresh the page.', 
+                loading: false 
+              });
+              throw new Error('Session not found. Please refresh the page.');
+            }
+          }
+          
           set({ 
-            error: error.message, 
+            error: error.message || 'Failed to send message. Please try again.', 
             loading: false 
           });
           throw error;
