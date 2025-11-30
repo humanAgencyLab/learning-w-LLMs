@@ -98,6 +98,22 @@ router.get('/v1/sessions', requireAuth, addRequestId, async (req, res) => {
       'plan.0': { $exists: true } // Must have at least one module in plan
     };
     
+    // Filter by favorites if requested
+    if (req.query.favorites === 'true') {
+      query.isFavorite = true;
+    }
+    
+    // Search functionality
+    if (req.query.search) {
+      const searchTerm = req.query.search.trim();
+      if (searchTerm) {
+        query.$or = [
+          { topic: { $regex: searchTerm, $options: 'i' } },
+          { chatTitle: { $regex: searchTerm, $options: 'i' } }
+        ];
+      }
+    }
+    
     if (status) {
       if (status === 'completed') {
         query.phase = 'completed';
@@ -113,7 +129,7 @@ router.get('/v1/sessions', requireAuth, addRequestId, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(limit)
       .skip(offset)
-      .select('phase topic chatTitle points gems progressPct createdAt updatedAt plan');
+      .select('phase mode topic chatTitle points gems progressPct isFavorite createdAt updatedAt plan');
     
     const total = await Session.countDocuments(query);
     
@@ -129,12 +145,14 @@ router.get('/v1/sessions', requireAuth, addRequestId, async (req, res) => {
       data: {
         sessions: sessions.map(session => ({
           id: session._id,
+          mode: session.mode,
           topic: session.topic,
           chatTitle: session.chatTitle,
           phase: session.phase,
           progressPct: session.progressPct,
           points: session.points,
           gems: session.gems,
+          isFavorite: session.isFavorite || false,
           createdAt: session.createdAt,
           updatedAt: session.updatedAt
         })),
@@ -397,6 +415,304 @@ router.post('/v1/sessions/:id/resume', requireAuth, addRequestId, requireOwnersh
   } catch (error) {
     req.logger.error('Failed to resume session', { 
       sessionId: req.params.id,
+      error: error.message,
+      stack: error.stack,
+      duration: Date.now() - startTime 
+    });
+    
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// PATCH /v1/sessions/:id/favorite - Toggle favorite status
+router.patch('/v1/sessions/:id/favorite', requireAuth, addRequestId, requireOwnership(async (req) => {
+  const session = await Session.findById(req.params.id);
+  return session?.userId;
+}), async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const { id } = req.params;
+    const { isFavorite } = req.body;
+    
+    req.logger.info('Updating favorite status', { sessionId: id, isFavorite });
+    
+    // Validate session ID format
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      req.logger.warn('Invalid session ID format', { sessionId: id });
+      return res.status(404).json({
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'Resource not found'
+      });
+    }
+    
+    const session = await Session.findById(id);
+    
+    if (!session) {
+      req.logger.warn('Session not found', { sessionId: id });
+      return res.status(404).json({
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'Resource not found'
+      });
+    }
+    
+    // Update favorite status
+    if (typeof isFavorite === 'boolean') {
+      session.isFavorite = isFavorite;
+    } else {
+      session.isFavorite = !session.isFavorite;
+    }
+    await session.save();
+    
+    req.logger.info('Favorite status updated', { 
+      sessionId: id,
+      isFavorite: session.isFavorite,
+      duration: Date.now() - startTime 
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        id: session._id,
+        isFavorite: session.isFavorite
+      }
+    });
+    
+  } catch (error) {
+    req.logger.error('Failed to update favorite', { 
+      sessionId: req.params.id,
+      error: error.message,
+      stack: error.stack,
+      duration: Date.now() - startTime 
+    });
+    
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// PATCH /v1/sessions/:id - Update session (e.g., chatTitle)
+router.patch('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(async (req) => {
+  const session = await Session.findById(req.params.id);
+  return session?.userId;
+}), async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const { id } = req.params;
+    const { chatTitle } = req.body;
+    
+    req.logger.info('Updating session', { sessionId: id, chatTitle });
+    
+    // Validate session ID format
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      req.logger.warn('Invalid session ID format', { sessionId: id });
+      return res.status(404).json({
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'Resource not found'
+      });
+    }
+    
+    const session = await Session.findById(id);
+    
+    if (!session) {
+      req.logger.warn('Session not found', { sessionId: id });
+      return res.status(404).json({
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'Resource not found'
+      });
+    }
+    
+    // Update chatTitle if provided
+    if (chatTitle !== undefined) {
+      session.chatTitle = chatTitle;
+    }
+    
+    await session.save();
+    
+    req.logger.info('Session updated', { 
+      sessionId: id,
+      chatTitle: session.chatTitle,
+      duration: Date.now() - startTime 
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        id: session._id,
+        chatTitle: session.chatTitle
+      }
+    });
+    
+  } catch (error) {
+    req.logger.error('Failed to update session', { 
+      sessionId: req.params.id,
+      error: error.message,
+      stack: error.stack,
+      duration: Date.now() - startTime 
+    });
+    
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// DELETE /v1/sessions/:id - Delete session
+router.delete('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(async (req) => {
+  const session = await Session.findById(req.params.id);
+  return session?.userId;
+}), async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const { id } = req.params;
+    
+    req.logger.info('Deleting session', { sessionId: id });
+    
+    // Validate session ID format
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      req.logger.warn('Invalid session ID format', { sessionId: id });
+      return res.status(404).json({
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'Resource not found'
+      });
+    }
+    
+    const session = await Session.findByIdAndDelete(id);
+    
+    if (!session) {
+      req.logger.warn('Session not found', { sessionId: id });
+      return res.status(404).json({
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'Resource not found'
+      });
+    }
+    
+    req.logger.info('Session deleted', { 
+      sessionId: id,
+      userId: session.userId,
+      duration: Date.now() - startTime 
+    });
+    
+    // Note: We do NOT recalculate gems on session delete
+    // Gems are based on pointsTotal which accumulates points when earned
+    // Deleting a session does not affect pointsTotal or gems
+    
+    res.json({
+      success: true,
+      data: {
+        id: id
+      }
+    });
+    
+  } catch (error) {
+    req.logger.error('Failed to delete session', { 
+      sessionId: req.params.id,
+      error: error.message,
+      stack: error.stack,
+      duration: Date.now() - startTime 
+    });
+    
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// GET /v1/sessions/search - Search sessions (with enhanced search across messages)
+router.get('/v1/sessions/search', requireAuth, addRequestId, async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const searchQuery = req.query.q || req.query.query || '';
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = parseInt(req.query.offset) || 0;
+    
+    if (!searchQuery.trim()) {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Search query is required'
+      });
+    }
+    
+    req.logger.info('Searching sessions', { 
+      userId: req.userId,
+      searchQuery,
+      limit,
+      offset 
+    });
+    
+    // Build search query - search in topic, chatTitle, and message content
+    const searchRegex = { $regex: searchQuery.trim(), $options: 'i' };
+    
+    const query = { 
+      userId: req.userId,
+      chatTitle: { $ne: '', $exists: true },
+      'plan.0': { $exists: true },
+      $or: [
+        { topic: searchRegex },
+        { chatTitle: searchRegex },
+        { 'messages.content': searchRegex }
+      ]
+    };
+    
+    // Fetch sessions
+    const sessions = await Session.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(offset)
+      .select('phase mode topic chatTitle points gems progressPct isFavorite createdAt updatedAt plan');
+    
+    const total = await Session.countDocuments(query);
+    
+    req.logger.info('Search completed', { 
+      userId: req.userId,
+      count: sessions.length,
+      total,
+      duration: Date.now() - startTime 
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        sessions: sessions.map(session => ({
+          id: session._id,
+          mode: session.mode,
+          topic: session.topic,
+          chatTitle: session.chatTitle,
+          phase: session.phase,
+          progressPct: session.progressPct,
+          points: session.points,
+          gems: session.gems,
+          isFavorite: session.isFavorite || false,
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt
+        })),
+        total,
+        limit,
+        offset,
+        query: searchQuery
+      }
+    });
+    
+  } catch (error) {
+    req.logger.error('Search failed', { 
+      userId: req.userId,
       error: error.message,
       stack: error.stack,
       duration: Date.now() - startTime 

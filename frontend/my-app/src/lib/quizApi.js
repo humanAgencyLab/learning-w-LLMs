@@ -1,5 +1,6 @@
 import { API_BASE } from '../config';
 import { getAuthHeaders } from './authApi';
+import { safeReadResponse, extractErrorMessage } from './responseUtils';
 
 export async function startQuiz({ sessionId, moduleId }) {
   const response = await fetch(`${API_BASE}/v1/quiz/start`, {
@@ -12,12 +13,14 @@ export async function startQuiz({ sessionId, moduleId }) {
     }),
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to start quiz');
+    const errorMessage = extractErrorMessage(response, 'Failed to start quiz', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }
 
 export async function submitQuiz({ sessionId, moduleId, answers }) {
@@ -32,11 +35,13 @@ export async function submitQuiz({ sessionId, moduleId, answers }) {
     }),
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to submit quiz');
+    const errorMessage = extractErrorMessage(response, 'Failed to submit quiz', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }
 

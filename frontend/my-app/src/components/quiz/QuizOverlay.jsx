@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import Confetti from 'react-confetti';
 import useSessionStore from '../../state/sessionStore';
+import * as certificateApi from '../../lib/profileApi';
 
 // QuizOverlay v2.0 - Fixed UI overflow, explanations, and buttons
 const QuizOverlay = () => {
@@ -14,6 +16,7 @@ const QuizOverlay = () => {
   const sendChatMessage = useSessionStore((state) => state.sendChatMessage);
   const resumeSessionFromServer = useSessionStore((state) => state.resumeSessionFromServer);
   const sessionId = useSessionStore((state) => state.sessionId);
+  const topic = useSessionStore((state) => state.topic);
   
   // Debug: Log component version on mount
   useEffect(() => {
@@ -23,6 +26,9 @@ const QuizOverlay = () => {
   const [answers, setAnswers] = useState({});
   const [error, setError] = useState(null);
   const [showCloseWarning, setShowCloseWarning] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [isGeneratingCertificate, setIsGeneratingCertificate] = useState(false);
+  const [certificateGenerated, setCertificateGenerated] = useState(false);
 
   const questions = quizDraft || [];
   const isResultView = Boolean(quizResult);
@@ -34,12 +40,75 @@ const QuizOverlay = () => {
     return module?.title || 'Module Quiz';
   }, [plan, activeModuleId]);
 
+  // Check if this is the last module (all modules completed)
+  const isLastModule = useMemo(() => {
+    if (!plan || plan.length === 0) return false;
+    if (!quizResult?.passed) return false;
+    
+    // Check if all modules are passed
+    const allModulesPassed = plan.every(m => m.status === 'passed');
+    return allModulesPassed;
+  }, [plan, quizResult]);
+
+  // Show confetti when last module is completed
+  useEffect(() => {
+    if (isLastModule && quizResult?.passed) {
+      setShowConfetti(true);
+      // Hide confetti after 5 seconds
+      const timer = setTimeout(() => {
+        setShowConfetti(false);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [isLastModule, quizResult]);
+
   // Find next module for "Move to next module" button
+  // After passing a quiz, the backend advances activeModuleId to the next module,
+  // so if we're in feedback phase with a passed quiz, the nextModule is the current activeModuleId
   const nextModule = useMemo(() => {
-    if (!plan || !activeModuleId) return null;
+    if (!plan || plan.length === 0) return null;
+    
+    // If quiz passed, the backend has already advanced activeModuleId to the next module
+    // So the next module to move to is the current activeModuleId
+    if (quizResult?.passed) {
+      if (activeModuleId) {
+        // Backend advanced to next module - that's the one we want
+        const nextModuleObj = plan.find((m) => m.id === activeModuleId);
+        if (nextModuleObj) {
+          console.log('Next module found (after quiz pass):', {
+            nextModuleId: nextModuleObj.id,
+            nextModuleTitle: nextModuleObj.title,
+            activeModuleId,
+            planModules: plan.map(m => ({ id: m.id, title: m.title, status: m.status }))
+          });
+          return nextModuleObj;
+        }
+      }
+      // Fallback: find the last passed module and get the one after it
+      const lastPassedIndex = plan.map((m, i) => ({ module: m, index: i }))
+        .filter(({ module }) => module.status === 'passed')
+        .map(({ index }) => index)
+        .sort((a, b) => b - a)[0]; // Get highest index
+      
+      if (lastPassedIndex !== undefined && lastPassedIndex < plan.length - 1) {
+        const fallbackNext = plan[lastPassedIndex + 1];
+        console.log('Next module found (fallback method):', {
+          nextModuleId: fallbackNext.id,
+          nextModuleTitle: fallbackNext.title,
+          lastPassedIndex
+        });
+        return fallbackNext;
+      }
+      console.log('No next module - all modules completed');
+      return null; // All modules completed
+    }
+    
+    // For non-passed quizzes or during quiz, find next module after current activeModuleId
+    if (!activeModuleId) return null;
     const currentIndex = plan.findIndex((m) => m.id === activeModuleId);
+    if (currentIndex === -1) return null;
     return plan[currentIndex + 1] || null;
-  }, [plan, activeModuleId]);
+  }, [plan, activeModuleId, quizResult]);
 
   const answeredCount = useMemo(() => {
     if (!questions.length) return 0;
@@ -146,16 +215,66 @@ const QuizOverlay = () => {
     
     if (nextModule) {
       try {
+        console.log('Moving to next module', { 
+          nextModuleId: nextModule.id, 
+          nextModuleTitle: nextModule.title,
+          currentActiveModuleId: activeModuleId 
+        });
+        
         // Refresh session state first to ensure we have the latest activeModuleId
         if (sessionId) {
-          await resumeSessionFromServer(sessionId);
+          const refreshed = await resumeSessionFromServer(sessionId);
+          console.log('Session refreshed before moving to next module', {
+            refreshedActiveModuleId: refreshed?.activeModuleId,
+            nextModuleId: nextModule.id
+          });
         }
+        
         // Send "start" message to trigger first milestone of next module
         await sendChatMessage('start');
+        console.log('Sent start message for next module');
       } catch (error) {
         console.error('Failed to move to next module:', error);
         setError('Failed to move to next module. Please try again.');
       }
+    } else {
+      console.warn('No next module available', { plan, activeModuleId, quizResult });
+      setError('No next module available. All modules may be completed.');
+    }
+  };
+
+  // Handle certificate generation
+  const handleGenerateCertificate = async () => {
+    if (!sessionId || !topic) {
+      setError('Missing session information for certificate generation.');
+      return;
+    }
+
+    setIsGeneratingCertificate(true);
+    setError(null);
+    setCertificateGenerated(false);
+
+    try {
+      const result = await certificateApi.generateCertificate(sessionId, topic);
+      
+      // Download the certificate automatically
+      if (result.certificateId) {
+        const blob = await certificateApi.downloadCertificate(result.certificateId);
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Certificate_${topic.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        setCertificateGenerated(true);
+      }
+    } catch (error) {
+      console.error('Failed to generate certificate:', error);
+      setError(error.message || 'Failed to generate certificate. Please try again.');
+    } finally {
+      setIsGeneratingCertificate(false);
     }
   };
 
@@ -248,26 +367,60 @@ const QuizOverlay = () => {
       <div className="flex flex-col h-full overflow-hidden">
         {/* Fixed header - status banner */}
         <div
-          className={`rounded-2xl border p-5 flex-shrink-0 ${
+          className={`rounded-2xl border p-6 flex-shrink-0 ${
             passed
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              ? isLastModule
+                ? 'border-purple-300 bg-gradient-to-br from-purple-100 via-pink-50 to-purple-100 text-purple-900 shadow-lg'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
               : 'border-amber-200 bg-amber-50 text-amber-700'
           }`}
         >
-          <div className="text-sm uppercase tracking-wide font-semibold">
-            {passed ? 'Quiz Passed' : 'Quiz Incomplete'}
-          </div>
-          <div className="mt-2 flex items-baseline gap-3">
-            <span className="text-4xl font-bold">{scorePct}%</span>
-            <span className="text-sm text-current opacity-80">
-              Minimum required score: 60%
-            </span>
-          </div>
-          <p className="mt-3 text-sm leading-6 text-current">
-            {passed
-              ? "Great work! You're ready to move on to the next module."
-              : "Let's review the areas that need more attention, then you can retake this quiz."}
-          </p>
+          {isLastModule && passed ? (
+            <>
+              <div className="text-lg uppercase tracking-wide font-bold mb-3 flex items-center justify-center gap-2">
+                <span className="text-3xl">🎉</span>
+                <span>Course Completed!</span>
+                <span className="text-3xl">🎉</span>
+              </div>
+              <div className="mt-3 flex items-baseline justify-center gap-3">
+                <span className="text-5xl font-bold">{scorePct}%</span>
+                <span className="text-base text-current opacity-80">
+                  Final Score
+                </span>
+              </div>
+              <p className="mt-4 text-lg leading-7 text-current font-semibold text-center">
+                🎓 Congratulations! You've successfully completed all modules for <span className="font-bold text-purple-700">"{topic}"</span>.
+              </p>
+              {certificateGenerated ? (
+                <div className="mt-4 p-3 bg-green-100 border border-green-300 rounded-lg text-center">
+                  <p className="text-green-800 font-semibold">
+                    ✅ Certificate generated and downloaded! You can also access it from your Profile.
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-3 text-base leading-6 text-current text-center">
+                  Generate your certificate to celebrate this achievement!
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="text-sm uppercase tracking-wide font-semibold">
+                {passed ? 'Quiz Passed' : 'Quiz Incomplete'}
+              </div>
+              <div className="mt-2 flex items-baseline gap-3">
+                <span className="text-4xl font-bold">{scorePct}%</span>
+                <span className="text-sm text-current opacity-80">
+                  Minimum required score: 60%
+                </span>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-current">
+                {passed
+                  ? "Great work! You're ready to move on to the next module."
+                  : "Let's review the areas that need more attention, then you can retake this quiz."}
+              </p>
+            </>
+          )}
         </div>
 
         {/* Scrollable middle section - feedback */}
@@ -325,7 +478,7 @@ const QuizOverlay = () => {
               </button>
             </>
           )}
-          {passed && (
+          {passed && !isLastModule && (
             <button
               type="button"
               onClick={handleMoveToNextModule}
@@ -338,6 +491,47 @@ const QuizOverlay = () => {
             >
               {nextModule ? 'Move to Next Module' : 'All Modules Complete'}
             </button>
+          )}
+          {passed && isLastModule && (
+            <>
+              {certificateGenerated ? (
+                <div className="flex flex-col gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={handleGenerateCertificate}
+                    disabled={isGeneratingCertificate}
+                    className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isGeneratingCertificate ? 'Generating...' : '📥 Download Again'}
+                  </button>
+                  <a
+                    href="/profile"
+                    className="inline-flex items-center justify-center rounded-xl border border-purple-600 bg-white px-6 py-3 text-sm font-semibold text-purple-600 shadow-sm transition hover:bg-purple-50 text-center"
+                  >
+                    View All Certificates
+                  </a>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleGenerateCertificate}
+                  disabled={isGeneratingCertificate}
+                  className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGeneratingCertificate ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Generating...
+                    </>
+                  ) : (
+                    '🎓 Generate Certificate'
+                  )}
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -442,6 +636,20 @@ const QuizOverlay = () => {
 
   return (
     <>
+      {/* Confetti for course completion - Above quiz overlay */}
+      {showConfetti && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1300, pointerEvents: 'none' }}>
+          <Confetti
+            width={window.innerWidth}
+            height={window.innerHeight}
+            recycle={false}
+            numberOfPieces={300}
+            gravity={0.2}
+            colors={['#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444']}
+          />
+        </div>
+      )}
+      
       {/* Warning Dialog */}
       {showCloseWarning && (
         <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-slate-900/60 px-4">

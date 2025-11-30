@@ -550,14 +550,31 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
       }
       
       // Handle "start" message - move to next module's first milestone (if passed)
+      // NOTE: If quiz was passed, activeModuleId was already advanced during quiz submission
+      // So we need to check if we're already on the next module before advancing
       if (typeof userMessage === 'string' && /^\s*start\s*$/i.test(userMessage.trim()) && session.phase === 'feedback') {
-        const currentIndex = session.plan.findIndex(m => m.id === session.activeModuleId);
-        const nextModule = session.plan[currentIndex + 1];
+        // Find the last passed module to determine what the "next" module should be
+        const lastPassedModuleIndex = session.plan.findLastIndex(m => m.status === 'passed');
+        const expectedNextModuleIndex = lastPassedModuleIndex + 1;
+        const expectedNextModule = session.plan[expectedNextModuleIndex];
         
-        if (nextModule) {
-          // Move to next module
-          session.activeModuleId = nextModule.id;
-          nextModule.status = 'in_progress';
+        // Check if activeModuleId is already on the next module (quiz submission already advanced it)
+        const currentActiveIndex = session.plan.findIndex(m => m.id === session.activeModuleId);
+        const isAlreadyOnNextModule = currentActiveIndex === expectedNextModuleIndex;
+        
+        if (expectedNextModule) {
+          // Only advance if we're not already on the next module
+          if (!isAlreadyOnNextModule) {
+            // Move to next module
+            session.activeModuleId = expectedNextModule.id;
+            expectedNextModule.status = 'in_progress';
+          } else {
+            // Already on next module - just ensure it's marked as in_progress
+            if (expectedNextModule.status !== 'in_progress') {
+              expectedNextModule.status = 'in_progress';
+            }
+          }
+          
           session.meta.currentMilestoneIndex = 0;
           session.meta.milestoneBeingTaught = false;
           session.meta.outstandingCheck = null;
@@ -581,10 +598,11 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
           await session.save();
           
           // Generate first teaching content for next module's first milestone
-          const firstMilestone = nextModule.milestones?.[0];
+          // Use expectedNextModule which is the correct module to start
+          const firstMilestone = expectedNextModule.milestones?.[0];
           if (firstMilestone) {
             // Use trigger message that will be detected as first_teaching scenario
-            const triggerMessage = `Let's start with ${nextModule.title}`;
+            const triggerMessage = `Let's start with ${expectedNextModule.title}`;
             const teacherPrompt = buildTeacherPrompt(session, triggerMessage, false);
             
             try {
@@ -624,7 +642,7 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
               return res.json({
                 success: true,
                 data: {
-                  message: `Great! Let's start with ${nextModule.title}. ${firstMilestone.text}`,
+                  message: `Great! Let's start with ${expectedNextModule.title}. ${firstMilestone.text}`,
                   tokensIn: userMessage.length,
                   tokensOut: 0,
                   phase: session.phase,
@@ -1010,7 +1028,7 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
         
         // CRITICAL: ALWAYS recalculate progress based on actual milestone completion status
         // This ensures progress is always up-to-date, regardless of how milestone was marked
-        const recalculateProgress = () => {
+        const recalculateProgress = async () => {
           try {
             if (!session.plan || session.plan.length === 0) {
               return;
@@ -1036,6 +1054,7 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
             
             // Calculate points based on module progress (milestone completion)
             // Each module contributes points proportionally to its milestone completion
+            let previousPoints = session.points || 0;
             let calculatedPoints = 0;
             session.plan.forEach(module => {
               if (module.milestones && Array.isArray(module.milestones) && module.milestones.length > 0) {
@@ -1048,12 +1067,52 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
             session.points = Math.min(100, Math.max(0, calculatedPoints));
             session.gems = Math.floor(session.points / 20);
             
+            // Calculate points earned from milestone completion
+            const pointsEarned = calculatedPoints - previousPoints;
+            
+            // Update user's global pointsTotal when points are earned from milestone completion
+            if (session.userId && pointsEarned > 0) {
+              try {
+                const User = require('../models/User');
+                const user = await User.findById(session.userId);
+                if (user) {
+                  // Add earned points to global pointsTotal (accumulative, never decreases)
+                  const previousPointsTotal = user.stats.pointsTotal || 0;
+                  user.stats.pointsTotal = previousPointsTotal + pointsEarned;
+                  
+                  // Calculate gems from pointsTotal: 1 gem per 20 points
+                  const totalGems = Math.floor(user.stats.pointsTotal / 20);
+                  user.stats.gemsTotal = totalGems;
+                  
+                  await user.save();
+                  
+                  req.logger.info({
+                    userId: session.userId,
+                    sessionId,
+                    pointsEarned,
+                    previousPointsTotal,
+                    newPointsTotal: user.stats.pointsTotal,
+                    totalGems,
+                    previousGemsTotal: Math.floor(previousPointsTotal / 20)
+                  }, 'Updated user global pointsTotal and gems from milestone completion');
+                }
+              } catch (userUpdateError) {
+                req.logger.error({
+                  userId: session.userId,
+                  error: userUpdateError.message
+                }, 'Failed to update user global pointsTotal and gems from milestone completion');
+                // Don't fail the request if user update fails
+              }
+            }
+            
             console.log('Progress recalculated', {
               sessionId,
               totalMilestonesInPlan,
               totalCompletedMilestones,
               overallProgressPct,
               calculatedPoints: session.points,
+              previousPoints,
+              pointsEarned,
               gems: session.gems,
               activeModuleId: session.activeModuleId,
               currentMilestoneIndex: session.meta?.currentMilestoneIndex ?? 0
@@ -1065,7 +1124,7 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
         };
         
         // Recalculate progress after milestone completion check
-        recalculateProgress();
+        await recalculateProgress();
         
         // Generate response using teacher prompt if needed
         let assistantResponse = '';

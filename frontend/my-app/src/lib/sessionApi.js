@@ -1,5 +1,6 @@
 import { API_BASE } from '../config';
 import { getAuthHeaders } from './authApi';
+import { safeReadResponse, extractErrorMessage } from './responseUtils';
 
 export async function createSession(profile) {
   const url = `${API_BASE}/v1/sessions`;
@@ -16,13 +17,13 @@ export async function createSession(profile) {
   console.log('sessionApi.createSession - Response status:', response.status);
   console.log('sessionApi.createSession - Response ok:', response.ok);
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Network error' }));
-    console.error('sessionApi.createSession - Error response:', errorData);
-    throw new Error(errorData.error || errorData.message || 'Failed to create session');
+    console.error('sessionApi.createSession - Error response:', data);
+    const errorMessage = extractErrorMessage(response, 'Failed to create session', data);
+    throw new Error(errorMessage);
   }
-
-  const data = await response.json();
   console.log('sessionApi.createSession - Success response:', data);
   return data;
 }
@@ -34,12 +35,14 @@ export async function getSession(sessionId) {
     credentials: 'include',
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to load session');
+    const errorMessage = extractErrorMessage(response, 'Failed to load session', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }
 
 export async function resumeSession(sessionId) {
@@ -49,26 +52,114 @@ export async function resumeSession(sessionId) {
     credentials: 'include',
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to resume session');
+    const errorMessage = extractErrorMessage(response, 'Failed to resume session', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }
 
-export async function getSessions(limit = 20) {
-  const response = await fetch(`${API_BASE}/v1/sessions?limit=${limit}`, {
+export async function getSessions(limit = 20, options = {}) {
+  const { favorites, search, status } = options;
+  let url = `${API_BASE}/v1/sessions?limit=${limit}`;
+  
+  if (favorites) {
+    url += '&favorites=true';
+  }
+  if (search) {
+    url += `&search=${encodeURIComponent(search)}`;
+  }
+  if (status) {
+    url += `&status=${encodeURIComponent(status)}`;
+  }
+  
+  const response = await fetch(url, {
     method: 'GET',
     headers: getAuthHeaders(),
     credentials: 'include',
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    throw new Error('Failed to load sessions');
+    const errorMessage = extractErrorMessage(response, 'Failed to load sessions', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
+}
+
+export async function searchSessions(query, limit = 20) {
+  const response = await fetch(`${API_BASE}/v1/sessions/search?q=${encodeURIComponent(query)}&limit=${limit}`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+    credentials: 'include',
+  });
+
+  const data = await safeReadResponse(response);
+  
+  if (!response.ok) {
+    const errorMessage = extractErrorMessage(response, 'Failed to search sessions', data);
+    throw new Error(errorMessage);
+  }
+
+  return data;
+}
+
+export async function toggleFavorite(sessionId, isFavorite) {
+  const response = await fetch(`${API_BASE}/v1/sessions/${sessionId}/favorite`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    credentials: 'include',
+    body: JSON.stringify({ isFavorite }),
+  });
+
+  const data = await safeReadResponse(response);
+  
+  if (!response.ok) {
+    const errorMessage = extractErrorMessage(response, 'Failed to toggle favorite', data);
+    throw new Error(errorMessage);
+  }
+
+  return data;
+}
+
+export async function deleteSession(sessionId) {
+  const response = await fetch(`${API_BASE}/v1/sessions/${sessionId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+    credentials: 'include',
+  });
+
+  const data = await safeReadResponse(response);
+  
+  if (!response.ok) {
+    const errorMessage = extractErrorMessage(response, 'Failed to delete session', data);
+    throw new Error(errorMessage);
+  }
+
+  return data;
+}
+
+export async function updateSessionTitle(sessionId, chatTitle) {
+  const response = await fetch(`${API_BASE}/v1/sessions/${sessionId}`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    credentials: 'include',
+    body: JSON.stringify({ chatTitle }),
+  });
+
+  const data = await safeReadResponse(response);
+  
+  if (!response.ok) {
+    const errorMessage = extractErrorMessage(response, 'Failed to update session title', data);
+    throw new Error(errorMessage);
+  }
+
+  return data;
 }
 
 // Legacy methods for backward compatibility
@@ -81,12 +172,14 @@ export async function updateSessionStage(sessionId, stage) {
     body: JSON.stringify({ stage }),
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to update session stage');
+    const errorMessage = extractErrorMessage(response, 'Failed to update session stage', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }
 
 export async function updateSessionNotes(sessionId, notes) {
@@ -98,10 +191,12 @@ export async function updateSessionNotes(sessionId, notes) {
     body: JSON.stringify({ notes }),
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to update notes');
+    const errorMessage = extractErrorMessage(response, 'Failed to update notes', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }

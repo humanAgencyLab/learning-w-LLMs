@@ -204,6 +204,10 @@ export async function getCurrentUser() {
   const data = await response.json();
 
   if (!response.ok) {
+    // Don't treat rate limit errors as auth failures
+    if (response.status === 429 || (data.code === 'RATE_LIMITED' || data.code === 'RATE_LIMIT_EXCEEDED')) {
+      throw new Error('API rate limit exceeded. Please try again in a few minutes.');
+    }
     throw new Error(data.error || 'Failed to get user info');
   }
 

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import useSessionStore from '../../state/sessionStore';
 
 function TopBar({ onStartNewChat }) {
-  const { phase, topic, sessionId } = useSessionStore();
+  const { phase, chatTitle, sessionId } = useSessionStore();
+  const location = useLocation();
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   
   const handleStartChat = async () => {
@@ -21,17 +23,19 @@ function TopBar({ onStartNewChat }) {
     setShowConfirmDialog(false);
   };
 
-  const showTitle = ['learning', 'quizzing', 'feedback', 'completed'].includes(phase);
+  // Only show title when on /chat route and in active learning phases
+  const isChatRoute = location.pathname === '/chat';
+  const showTitle = isChatRoute && ['learning', 'quizzing', 'feedback', 'completed'].includes(phase);
 
   return (
     <>
       <div className="bg-white flex gap-6 items-center justify-between px-16 py-4 w-full">
         <div className="text-base font-semibold">
-          {showTitle && topic ? (
+          {showTitle && chatTitle ? (
             <div className="flex items-center gap-2">
                   <img src="/icons/studying.svg" alt="graduation cap" className="h-6 w-6" />
               <span>
-                You are <strong>Studying</strong> {topic} 💪
+                You are <strong>Studying</strong> {chatTitle} 💪
               </span>
             </div>
           ) : null}

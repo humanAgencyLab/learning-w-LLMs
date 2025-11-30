@@ -19,20 +19,6 @@ function PrimaryNav() {
       </NavLink>
       
       <NavLink 
-        to="/settings" 
-        className="flex gap-3 h-8 items-center px-3 py-1 rounded-lg hover:bg-gray-50"
-      >
-            <img 
-              src="/icons/settings.svg" 
-              alt="settings" 
-              className="w-5 h-5" 
-            />
-        <p className="font-normal text-sm leading-4 text-[#030712] tracking-[-0.25px]">
-          Settings
-        </p>
-      </NavLink>
-      
-      <NavLink 
         to="/performance" 
         className="flex gap-3 h-8 items-center px-3 py-1 rounded-lg hover:bg-gray-50"
       >
@@ -57,20 +43,6 @@ function PrimaryNav() {
             />
         <p className="font-normal text-sm leading-4 text-[#030712] tracking-[-0.25px]">
           Favourites
-        </p>
-      </NavLink>
-      
-      <NavLink 
-        to="/chatquiz" 
-        className="flex gap-3 h-8 items-center px-3 py-1 rounded-lg hover:bg-gray-50"
-      >
-            <img 
-              src="/icons/quiz.svg" 
-              alt="idea" 
-              className="w-5 h-5" 
-            />
-        <p className="font-normal text-sm leading-4 text-[#030712] tracking-[-0.25px]">
-          Quiz
         </p>
       </NavLink>
     </div>

@@ -1,7 +1,12 @@
 const express = require('express');
+const fs = require('fs');
+const fsPromises = require('fs').promises;
+const path = require('path');
 const User = require('../models/User');
+const Session = require('../models/Session');
 const { requireAuth } = require('../middleware/auth');
 const { uploadAvatar, getAvatarUrl, deleteAvatarFile, extractFilenameFromUrl } = require('../utils/fileUpload');
+const { generateCertificatePDF, getCertificatePath } = require('../services/certificateService');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -24,15 +29,25 @@ router.get('/', requireAuth, async (req, res) => {
     
     const userData = user.toJSON();
     
+    // Ensure mobile is included in the response
+    const profileResponse = {
+      name: userData.name,
+      email: userData.email,
+      avatarUrl: userData.avatarUrl,
+      ...userData.profile
+    };
+    
+    logger.info({
+      requestId: req.requestId,
+      userId: req.userId,
+      profileFields: Object.keys(profileResponse),
+      hasMobile: 'mobile' in profileResponse
+    }, 'Get profile');
+    
     res.json({
       success: true,
       data: {
-        profile: {
-          name: userData.name,
-          email: userData.email,
-          avatarUrl: userData.avatarUrl,
-          ...userData.profile
-        },
+        profile: profileResponse,
         preferences: userData.preferences,
         stats: userData.stats
       }
@@ -72,6 +87,7 @@ router.put('/', requireAuth, async (req, res) => {
     const {
       name,
       avatarUrl,
+      mobile,
       background,
       goals,
       strengths,
@@ -111,6 +127,9 @@ router.put('/', requireAuth, async (req, res) => {
     }
     
     // Update profile fields
+    if (mobile !== undefined) {
+      user.profile.mobile = mobile.trim() || '';
+    }
     if (background !== undefined) user.profile.background = background;
     if (goals !== undefined) user.profile.goals = Array.isArray(goals) ? goals : [];
     if (strengths !== undefined) user.profile.strengths = Array.isArray(strengths) ? strengths : [];
@@ -220,7 +239,17 @@ router.put('/', requireAuth, async (req, res) => {
     
     logger.info({
       requestId: req.requestId,
-      userId: req.userId
+      userId: req.userId,
+      updatedFields: {
+        name: name !== undefined,
+        mobile: mobile !== undefined,
+        major: major !== undefined,
+        skillLevel: skillLevel !== undefined,
+        learningType: learningType !== undefined,
+        daysPerWeek: daysPerWeek !== undefined,
+        minutesPerSession: minutesPerSession !== undefined,
+        currentCourses: currentCourses !== undefined
+      }
     }, 'Profile updated');
     
     const userData = user.toJSON();
@@ -434,6 +463,176 @@ router.post('/avatar', requireAuth, uploadAvatar, async (req, res) => {
 });
 
 /**
+ * PATCH /v1/profile/email
+ * Update user email
+ */
+router.patch('/email', requireAuth, async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email is required',
+        code: 'VALIDATION_ERROR'
+      });
+    }
+    
+    // Validate email format
+    const emailRegex = /^\S+@\S+\.\S+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid email format',
+        code: 'VALIDATION_ERROR'
+      });
+    }
+    
+    const user = await User.findById(req.userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+    
+    // Check if email is already taken by another user
+    const existingUser = await User.findOne({ 
+      email: email.toLowerCase().trim(),
+      _id: { $ne: req.userId }
+    });
+    
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        error: 'Email already registered',
+        code: 'EMAIL_EXISTS'
+      });
+    }
+    
+    // Update email
+    user.email = email.toLowerCase().trim();
+    user.emailVerified = false; // Require re-verification after email change
+    await user.save();
+    
+    logger.info({
+      requestId: req.requestId,
+      userId: req.userId,
+      newEmail: user.email
+    }, 'Email updated');
+    
+    res.json({
+      success: true,
+      message: 'Email updated successfully',
+      data: {
+        email: user.email
+      }
+    });
+  } catch (error) {
+    logger.error({
+      requestId: req.requestId,
+      userId: req.userId,
+      error: error.message,
+      stack: error.stack
+    }, 'Update email error');
+    
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        error: 'Email already registered',
+        code: 'EMAIL_EXISTS'
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update email',
+      code: 'SERVER_ERROR'
+    });
+  }
+});
+
+/**
+ * PATCH /v1/profile/password
+ * Change user password
+ */
+router.patch('/password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Current password and new password are required',
+        code: 'VALIDATION_ERROR'
+      });
+    }
+    
+    // Validate password strength
+    const { validatePasswordStrength } = require('../utils/password');
+    const passwordValidation = validatePasswordStrength(newPassword);
+    if (!passwordValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: passwordValidation.errors.join(', '),
+        code: 'VALIDATION_ERROR'
+      });
+    }
+    
+    const user = await User.findById(req.userId).select('+passwordHash');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+    
+    // Verify current password
+    const { comparePassword, hashPassword } = require('../utils/password');
+    const isPasswordValid = await comparePassword(currentPassword, user.passwordHash);
+    
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Current password is incorrect',
+        code: 'INVALID_PASSWORD'
+      });
+    }
+    
+    // Update password
+    user.passwordHash = await hashPassword(newPassword);
+    await user.save();
+    
+    logger.info({
+      requestId: req.requestId,
+      userId: req.userId
+    }, 'Password changed');
+    
+    res.json({
+      success: true,
+      message: 'Password changed successfully'
+    });
+  } catch (error) {
+    logger.error({
+      requestId: req.requestId,
+      userId: req.userId,
+      error: error.message,
+      stack: error.stack
+    }, 'Change password error');
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to change password',
+      code: 'SERVER_ERROR'
+    });
+  }
+});
+
+/**
  * POST /v1/profile/onboarding/complete
  * Mark onboarding as complete
  */
@@ -472,6 +671,242 @@ router.post('/onboarding/complete', requireAuth, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to complete onboarding'
+    });
+  }
+});
+
+/**
+ * POST /v1/profile/certificates/generate
+ * Generate a certificate for completed course
+ */
+router.post('/certificates/generate', requireAuth, async (req, res) => {
+  try {
+    const { sessionId, topic } = req.body;
+    
+    if (!sessionId || !topic) {
+      return res.status(400).json({
+        success: false,
+        error: 'Session ID and topic are required',
+        code: 'VALIDATION_ERROR'
+      });
+    }
+    
+    // Verify session exists and belongs to user
+    const session = await Session.findOne({ 
+      _id: sessionId, 
+      userId: req.userId 
+    });
+    
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        error: 'Session not found or access denied',
+        code: 'SESSION_NOT_FOUND'
+      });
+    }
+    
+    // Verify all modules are completed
+    const allModulesPassed = session.plan.every(m => m.status === 'passed');
+    if (!allModulesPassed) {
+      return res.status(400).json({
+        success: false,
+        error: 'All modules must be completed to generate certificate',
+        code: 'INCOMPLETE_COURSE'
+      });
+    }
+    
+    // Check if certificate already exists for this session
+    const user = await User.findById(req.userId);
+    const existingCertificate = user.certificates.find(c => c.sessionId === sessionId);
+    
+    if (existingCertificate) {
+      return res.json({
+        success: true,
+        data: {
+          certificateId: existingCertificate.certificateId,
+          downloadUrl: `/v1/profile/certificates/${existingCertificate.certificateId}/download`,
+          message: 'Certificate already exists'
+        }
+      });
+    }
+    
+    // Generate certificate PDF
+    const { filePath, certificateId } = await generateCertificatePDF({
+      userName: user.name,
+      topic: topic || session.topic,
+      issuedAt: new Date()
+    });
+    
+    // Store certificate in user document
+    const relativePath = path.relative(path.join(__dirname, '../uploads'), filePath);
+    user.certificates.push({
+      certificateId,
+      topic: topic || session.topic,
+      sessionId: sessionId.toString(),
+      filePath: relativePath,
+      issuedAt: new Date()
+    });
+    
+    await user.save();
+    
+    logger.info({
+      requestId: req.requestId,
+      userId: req.userId,
+      certificateId,
+      sessionId,
+      topic: topic || session.topic
+    }, 'Certificate generated');
+    
+    res.json({
+      success: true,
+      data: {
+        certificateId,
+        downloadUrl: `/v1/profile/certificates/${certificateId}/download`
+      }
+    });
+  } catch (error) {
+    logger.error({
+      requestId: req.requestId,
+      userId: req.userId,
+      error: error.message,
+      stack: error.stack
+    }, 'Generate certificate error');
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate certificate',
+      code: 'SERVER_ERROR'
+    });
+  }
+});
+
+/**
+ * GET /v1/profile/certificates
+ * Get all certificates for user
+ */
+router.get('/certificates', requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+    
+    const certificates = user.certificates.map(cert => ({
+      certificateId: cert.certificateId,
+      topic: cert.topic,
+      sessionId: cert.sessionId,
+      issuedAt: cert.issuedAt,
+      downloadUrl: `/v1/profile/certificates/${cert.certificateId}/download`
+    }));
+    
+    logger.info({
+      requestId: req.requestId,
+      userId: req.userId,
+      certificateCount: certificates.length
+    }, 'Get certificates');
+    
+    res.json({
+      success: true,
+      data: certificates
+    });
+  } catch (error) {
+    logger.error({
+      requestId: req.requestId,
+      userId: req.userId,
+      error: error.message,
+      stack: error.stack
+    }, 'Get certificates error');
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get certificates',
+      code: 'SERVER_ERROR'
+    });
+  }
+});
+
+/**
+ * GET /v1/profile/certificates/:certificateId/download
+ * Download certificate PDF
+ */
+router.get('/certificates/:certificateId/download', requireAuth, async (req, res) => {
+  try {
+    const { certificateId } = req.params;
+    
+    const user = await User.findById(req.userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+    
+    // Find certificate
+    const certificate = user.certificates.find(c => c.certificateId === certificateId);
+    
+    if (!certificate) {
+      return res.status(404).json({
+        success: false,
+        error: 'Certificate not found',
+        code: 'CERTIFICATE_NOT_FOUND'
+      });
+    }
+    
+    // Get full file path
+    const fullPath = path.join(__dirname, '../uploads', certificate.filePath);
+    
+    // Check if file exists
+    try {
+      await fsPromises.access(fullPath);
+    } catch (error) {
+      logger.error({
+        requestId: req.requestId,
+        userId: req.userId,
+        certificateId,
+        filePath: fullPath
+      }, 'Certificate file not found');
+      
+      return res.status(404).json({
+        success: false,
+        error: 'Certificate file not found',
+        code: 'FILE_NOT_FOUND'
+      });
+    }
+    
+    // Set headers for PDF download
+    const fileName = `Certificate_${certificate.topic.replace(/\s+/g, '_')}_${certificate.issuedAt.toISOString().split('T')[0]}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    
+    // Stream the file
+    const fileStream = fs.createReadStream(fullPath);
+    fileStream.pipe(res);
+    
+    logger.info({
+      requestId: req.requestId,
+      userId: req.userId,
+      certificateId
+    }, 'Certificate downloaded');
+  } catch (error) {
+    logger.error({
+      requestId: req.requestId,
+      userId: req.userId,
+      certificateId: req.params.certificateId,
+      error: error.message,
+      stack: error.stack
+    }, 'Download certificate error');
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to download certificate',
+      code: 'SERVER_ERROR'
     });
   }
 });

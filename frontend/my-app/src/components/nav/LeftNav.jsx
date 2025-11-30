@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import PrimaryNav from './PrimaryNav';
 import StudyPanelNav from '../study/StudyPanelNav';
 import useSessionStore from '../../state/sessionStore';
@@ -7,12 +7,29 @@ import useAuthStore from '../../state/authStore';
 
 function LeftNav() {
   const navigate = useNavigate();
-  const { phase, gems } = useSessionStore();
-  const { user, logout } = useAuthStore();
+  const location = useLocation();
+  const { phase, plan } = useSessionStore();
+  const { user, logout, fetchUser } = useAuthStore();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
   
-  const showStudyPanel = ['learning', 'quizzing', 'feedback', 'completed'].includes(phase);
+  // Fetch user data on mount and when phase changes to ensure stats are loaded
+  useEffect(() => {
+    // Always fetch user to get latest stats (especially gems)
+    fetchUser().catch(err => console.error('Failed to fetch user:', err));
+  }, [fetchUser, phase]); // Re-fetch when phase changes (e.g., after quiz completion)
+  
+  // Use global gems from user stats, fallback to 0
+  const globalGems = user?.stats?.gemsTotal || 0;
+  
+  // Only show study panel when:
+  // 1. On /chat page
+  // 2. In learning phases
+  // 3. Plan is generated
+  const isChatPage = location.pathname === '/chat';
+  const showStudyPanel = isChatPage && 
+                         ['learning', 'quizzing', 'feedback', 'completed'].includes(phase) && 
+                         plan && plan.length > 0;
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -40,7 +57,11 @@ function LeftNav() {
   };
 
   const userName = user?.name || 'User';
-  const userAvatar = user?.avatarUrl || '/icons/profile.png';
+  // Get avatar from user object - use actual avatarUrl if available, otherwise fallback
+  // Always use the user's avatarUrl if it exists, even if it's a local import path
+  const userAvatar = user?.avatarUrl && user.avatarUrl.trim()
+    ? user.avatarUrl 
+    : '/icons/profile.png';
 
   return (
     <div className="bg-white border-r border-[#e6e7e8] h-full w-[252px] flex flex-col flex-shrink-0">
@@ -95,7 +116,7 @@ function LeftNav() {
                     alt="diamond" 
                   />
                   <p className="font-bold text-sm leading-4 text-[#4e81ee] tracking-[-0.25px]">
-                    {gems || 0}
+                    {globalGems}
                   </p>
                 </div>
               </div>

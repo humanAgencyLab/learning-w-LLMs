@@ -712,6 +712,42 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
     
     await session.save();
     
+    // Update user's global pointsTotal and gems when points are earned
+    // Only update when points are actually earned (pointsEarned > 0)
+    if (session.userId && pointsEarned > 0) {
+      try {
+        const User = require('../models/User');
+        const user = await User.findById(session.userId);
+        if (user) {
+          // Add earned points to global pointsTotal (accumulative, never decreases)
+          const previousPointsTotal = user.stats.pointsTotal || 0;
+          user.stats.pointsTotal = previousPointsTotal + pointsEarned;
+          
+          // Calculate gems from pointsTotal: 1 gem per 20 points
+          const totalGems = Math.floor(user.stats.pointsTotal / 20);
+          user.stats.gemsTotal = totalGems;
+          
+          await user.save();
+          
+          req.logger.info({
+            userId: session.userId,
+            sessionId,
+            pointsEarned,
+            previousPointsTotal,
+            newPointsTotal: user.stats.pointsTotal,
+            totalGems,
+            previousGemsTotal: Math.floor(previousPointsTotal / 20)
+          }, 'Updated user global pointsTotal and gems from earned points');
+        }
+      } catch (userUpdateError) {
+        req.logger.error({
+          userId: session.userId,
+          error: userUpdateError.message
+        }, 'Failed to update user global pointsTotal and gems');
+        // Don't fail the request if user update fails
+      }
+    }
+    
     // Generate feedback with explanations (using stored explanations from quiz generation)
     let feedbackMarkdown = '';
     

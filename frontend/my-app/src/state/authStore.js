@@ -111,6 +111,20 @@ const useAuthStore = create(
           });
           return user;
         } catch (error) {
+          // Don't treat rate limit errors as auth failures
+          const isRateLimit = error.message?.includes('rate limit') || 
+                             error.message?.includes('RATE_LIMITED') ||
+                             error.message?.includes('RATE_LIMIT_EXCEEDED');
+          
+          if (isRateLimit) {
+            // Rate limit error - don't change auth state, just set error
+            set({
+              isLoading: false,
+              error: error.message || 'API rate limit exceeded',
+            });
+            throw error;
+          }
+          
           // Don't set isAuthenticated to false on error - let ProtectedRoute handle auth checks
           // This prevents redirects when profile page tries to fetch user
           set({
@@ -142,6 +156,20 @@ const useAuthStore = create(
             error: null,
           });
         } catch (error) {
+          // Don't treat rate limit errors as auth failures
+          const isRateLimit = error.message?.includes('rate limit') || 
+                             error.message?.includes('RATE_LIMITED') ||
+                             error.message?.includes('RATE_LIMIT_EXCEEDED');
+          
+          if (isRateLimit) {
+            // Rate limit error - keep auth state, just set error
+            set({
+              isLoading: false,
+              error: error.message || 'API rate limit exceeded',
+            });
+            return;
+          }
+          
           // Token might be invalid, try to refresh
           try {
             await get().refreshToken();
@@ -153,7 +181,21 @@ const useAuthStore = create(
               error: null,
             });
           } catch (refreshError) {
-            // Both failed, clear auth state
+            // Check if refresh error is also rate limit
+            const isRefreshRateLimit = refreshError.message?.includes('rate limit') || 
+                                      refreshError.message?.includes('RATE_LIMITED') ||
+                                      refreshError.message?.includes('RATE_LIMIT_EXCEEDED');
+            
+            if (isRefreshRateLimit) {
+              // Rate limit on refresh - keep auth state
+              set({
+                isLoading: false,
+                error: refreshError.message || 'API rate limit exceeded',
+              });
+              return;
+            }
+            
+            // Both failed and not rate limits, clear auth state
             set({
               ...initial,
               isLoading: false,
@@ -169,12 +211,10 @@ const useAuthStore = create(
         set({ isLoading: true, error: null });
         try {
           const { profile } = await profileApi.updateProfile(profileData);
-          const currentUser = get().user;
+          // Refresh full user data to get updated stats and avatar
+          const updatedUser = await authApi.getCurrentUser();
           set({
-            user: {
-              ...currentUser,
-              ...profile,
-            },
+            user: updatedUser,
             isLoading: false,
             error: null,
           });
@@ -221,12 +261,10 @@ const useAuthStore = create(
         set({ isLoading: true, error: null });
         try {
           const { avatarUrl } = await profileApi.uploadAvatar(file);
-          const currentUser = get().user;
+          // Refresh full user data to get updated avatar and stats
+          const updatedUser = await authApi.getCurrentUser();
           set({
-            user: {
-              ...currentUser,
-              avatarUrl,
-            },
+            user: updatedUser,
             isLoading: false,
             error: null,
           });

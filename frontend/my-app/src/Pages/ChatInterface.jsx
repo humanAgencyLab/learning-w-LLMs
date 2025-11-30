@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Confetti from 'react-confetti';
 import QuizOverlay from '../components/quiz/QuizOverlay';
 import useSessionStore from '../state/sessionStore';
 
@@ -28,6 +29,7 @@ function ChatInterface() {
   } = useSessionStore();
   const [inputValue, setInputValue] = useState('');
   const [modificationRequest, setModificationRequest] = useState('');
+  const [showConfetti, setShowConfetti] = useState(false);
 
   // Initialize session if none exists
   useEffect(() => {
@@ -48,7 +50,12 @@ function ChatInterface() {
         // Resume session from server to sync state
         try {
           console.log('Resuming session from server to sync state...');
-          await resumeSessionFromServer(sessionId);
+          const resumedSession = await resumeSessionFromServer(sessionId);
+          // Show confetti if session is completed
+          if (resumedSession?.phase === 'completed') {
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 5000);
+          }
         } catch (error) {
           console.error('Failed to resume session:', error);
           // If resume fails, clear the session and create a new one
@@ -231,8 +238,30 @@ function ChatInterface() {
     }
   };
 
+  // Show confetti when phase becomes completed
+  useEffect(() => {
+    if (phase === 'completed' && plan && plan.length > 0 && plan.every(m => m.status === 'passed')) {
+      setShowConfetti(true);
+      const timer = setTimeout(() => setShowConfetti(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [phase, plan]);
+
   return (
     <>
+      {/* Confetti for completed sessions - Above everything */}
+      {showConfetti && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1300, pointerEvents: 'none' }}>
+          <Confetti
+            width={window.innerWidth}
+            height={window.innerHeight}
+            recycle={false}
+            numberOfPieces={300}
+            gravity={0.2}
+            colors={['#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444']}
+          />
+        </div>
+      )}
       <QuizOverlay />
 
       {/* CONTENT COLUMN */}

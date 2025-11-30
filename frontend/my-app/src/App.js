@@ -7,7 +7,6 @@ import ChatInterface from './Pages/ChatInterface';
 import ResetPassword from './Pages/ResetPassword';
 import Profile from './Pages/Profile';
 import Performance from './Pages/Performance';
-import Settings from './Pages/Settings';
 import ChatHistory from './Pages/ChatHistory';
 import ChatInterfaceQUIZ from './Pages/ChatInterfaceQUIZ';
 import Favorites from './Pages/Favorites';
@@ -21,6 +20,7 @@ import AppShell from './layouts/AppShell';
 import ProtectedRoute from './components/ProtectedRoute';
 import useAuthStore from './state/authStore';
 import Onboarding from './Pages/Onboarding';
+import { ToastContainer } from './components/ui/toast';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
@@ -32,6 +32,7 @@ function App() {
 
   return (
     <Router>
+      <ToastContainer />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/signin" element={<SignIn />} />
@@ -59,14 +60,6 @@ function App() {
             element={
               <ProtectedRoute>
                 <ChatHistory />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <Settings />
               </ProtectedRoute>
             }
           />

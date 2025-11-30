@@ -16,6 +16,7 @@
   "license": "ISC",
   "description": "Backend API for Learning with LLMs application",
   "dependencies": {
+    "@swc/helpers": "^0.5.17",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -30,8 +31,10 @@
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
     "openai": "^4.86.2",
+    "pdfkit": "^0.17.2",
     "pino": "^10.1.0",
     "swagger-ui-express": "^5.0.1",
+    "tslib": "^2.8.1",
     "uuid": "^13.0.0",
     "winston": "^3.18.3",
     "zod": "^3.25.76"

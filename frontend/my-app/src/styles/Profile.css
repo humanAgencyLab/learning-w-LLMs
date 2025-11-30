@@ -76,6 +76,30 @@
   cursor: not-allowed;
 }
 
+.profile-cancel-button {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 21px;
+  line-height: 28px;
+  color: #6b7280;
+  letter-spacing: -0.6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 0.2s ease;
+}
+
+.profile-cancel-button:hover:not(:disabled) {
+  opacity: 0.8;
+  color: #4b5563;
+}
+
+.profile-cancel-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .profile-section-title {
   font-family: 'Inter', sans-serif;
   font-weight: 700;
@@ -577,7 +601,260 @@
   margin: 0;
 }
 
+/* Settings Input Fields */
+.profile-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid #d4d6d8;
+  border-radius: 12px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 20px;
+  color: #030712;
+  letter-spacing: -0.25px;
+  outline: none;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+}
+
+.profile-input:focus {
+  border-color: #4e81ee;
+}
+
+.profile-input:disabled {
+  background-color: #f7f8f8;
+  color: #686d77;
+  cursor: not-allowed;
+}
+
+.profile-input::placeholder {
+  color: #686d77;
+}
+
+/* Password Change Button */
+.profile-change-password-button {
+  padding: 10px 20px;
+  border: 1px solid #4e81ee;
+  border-radius: 8px;
+  background: transparent;
+  color: #4e81ee;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.profile-change-password-button:hover:not(:disabled) {
+  background-color: #f0f4ff;
+  border-color: #3d6bd8;
+}
+
+.profile-change-password-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Password Section */
+.profile-password-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.profile-cancel-password-button {
+  padding: 8px 16px;
+  border: 1px solid #d4d6d8;
+  border-radius: 8px;
+  background: transparent;
+  color: #686d77;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  align-self: flex-start;
+}
+
+.profile-cancel-password-button:hover {
+  background-color: #f3f4f6;
+  border-color: #b8bcc0;
+}
+
 /* Close dropdowns when clicking outside */
 .profile-page-container {
   position: relative;
+}
+
+/* Certificates Section */
+.profile-certificates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.profile-certificate-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+  transition: all 0.3s ease;
+  gap: 16px;
+}
+
+.profile-certificate-item:hover {
+  border-color: #4f46e5;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.1);
+}
+
+.profile-certificate-item-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-certificate-icon {
+  font-size: 40px;
+  flex-shrink: 0;
+}
+
+.profile-certificate-content {
+  text-align: left;
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-certificate-topic {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 24px;
+  color: #1e293b;
+  margin: 0 0 8px 0;
+  word-wrap: break-word;
+}
+
+.profile-certificate-date {
+  font-family: 'Inter', sans-serif;
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 20px;
+  color: #64748b;
+  margin: 0;
+}
+
+.profile-certificate-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.profile-certificate-view {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: 1px solid #10b981;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #10b981;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.profile-certificate-view:hover {
+  background-color: #10b981;
+  color: #ffffff;
+}
+
+.profile-certificate-view svg {
+  width: 18px;
+  height: 18px;
+}
+
+.profile-certificate-download {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: 1px solid #4f46e5;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #4f46e5;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.profile-certificate-download:hover {
+  background-color: #4f46e5;
+  color: #ffffff;
+}
+
+.profile-certificate-download svg {
+  width: 18px;
+  height: 18px;
+}
+
+.profile-loading {
+  text-align: center;
+  padding: 40px 20px;
+  color: #64748b;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+}
+
+.profile-empty-state {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.profile-empty-text {
+  color: #64748b;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  margin: 0;
+}
+
+/* Responsive styles for certificate list */
+@media (max-width: 768px) {
+  .profile-certificate-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .profile-certificate-item-left {
+    width: 100%;
+  }
+
+  .profile-certificate-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .profile-certificate-view,
+  .profile-certificate-download {
+    flex: 1;
+  }
 }

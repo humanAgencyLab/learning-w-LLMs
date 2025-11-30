@@ -2,12 +2,15 @@ const rateLimit = require('express-rate-limit');
 const logger = require('../utils/logger');
 
 // Environment-driven rate limits with defaults
+// Higher limits for development, lower for production
+const isDevelopment = process.env.NODE_ENV !== 'production';
 const RATE_LIMITS = {
-  assessment: parseInt(process.env.RL_ASSESSMENT) || 5, // per minute
-  chat: parseInt(process.env.RL_CHAT) || 12, // per minute
-  quizStart: parseInt(process.env.RL_QUIZ_START) || 6, // per minute
-  quizSubmit: parseInt(process.env.RL_QUIZ_SUBMIT) || 8, // per minute
-  general: parseInt(process.env.RL_GENERAL) || 30 // per minute
+  assessment: parseInt(process.env.RL_ASSESSMENT) || (isDevelopment ? 30 : 5), // per minute
+  chat: parseInt(process.env.RL_CHAT) || (isDevelopment ? 60 : 12), // per minute
+  quizStart: parseInt(process.env.RL_QUIZ_START) || (isDevelopment ? 30 : 6), // per minute
+  quizSubmit: parseInt(process.env.RL_QUIZ_SUBMIT) || (isDevelopment ? 30 : 8), // per minute
+  general: parseInt(process.env.RL_GENERAL) || (isDevelopment ? 100 : 30), // per minute
+  auth: parseInt(process.env.RL_AUTH) || (isDevelopment ? 50 : 20) // per minute for auth endpoints
 };
 
 // Store for tracking requests (in production, use Redis)
@@ -45,7 +48,8 @@ function createRateLimiter(options) {
       res.status(429).json({
         success: false,
         code: 'RATE_LIMITED',
-        message: 'Too many requests'
+        error: 'Too many requests',
+        message: `Too many requests. Please wait ${retryAfter} seconds before trying again.`
       });
     },
     skip: (req) => {
@@ -82,13 +86,21 @@ const generalLimiter = createRateLimiter({
   windowMs: 60 * 1000
 });
 
+const authLimiter = createRateLimiter({
+  max: RATE_LIMITS.auth,
+  windowMs: 60 * 1000
+});
+
 /**
  * Middleware to apply rate limiting based on route
  */
 const applyRateLimit = (req, res, next) => {
   const path = req.path;
   
-  if (path.includes('/v1/assessment')) {
+  // Auth endpoints get higher limits (login, signup, refresh, etc.)
+  if (path.includes('/v1/auth')) {
+    return authLimiter(req, res, next);
+  } else if (path.includes('/v1/assessment')) {
     return assessmentLimiter(req, res, next);
   } else if (path.includes('/v1/chat')) {
     return chatLimiter(req, res, next);
@@ -132,5 +144,6 @@ module.exports = {
   quizStartLimiter,
   quizSubmitLimiter,
   generalLimiter,
+  authLimiter,
   RATE_LIMITS
 };

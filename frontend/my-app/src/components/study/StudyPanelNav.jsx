@@ -10,7 +10,10 @@ function StudyPanelNav({
   
   // Use props if provided, otherwise derive from session store
   const displayTopic = topic || sessionData.topic;
-  const displayProgress = progressPct !== undefined ? progressPct : sessionData.progressPercent || 0;
+  // Use progressPct from session store, which should be updated from backend
+  const displayProgress = progressPct !== undefined ? progressPct : 
+                         (sessionData.progressPct !== undefined ? sessionData.progressPct : 
+                         (sessionData.progressPercent || 0));
   const displayModules = modules || sessionData.plan || [];
 
   // Don't render if no topic data

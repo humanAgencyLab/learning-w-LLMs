@@ -30,7 +30,7 @@ function updateProgress(session, options = {}) {
   const prevIsViewOnly = session.isViewOnly;
 
   let newPoints;
-  let newGems;
+  let newGems = 0;
   let completed = false;
   let phaseChanged = false;
 

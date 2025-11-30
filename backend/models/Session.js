@@ -106,6 +106,11 @@ const SessionSchema = new mongoose.Schema({
     required: true,
     default: false
   },
+  isFavorite: {
+    type: Boolean,
+    required: false,
+    default: false
+  },
   progressPct: {
     type: Number,
     required: true,

@@ -1,5 +1,6 @@
 import { API_BASE } from '../config';
 import { getAuthHeaders } from './authApi';
+import { safeReadResponse, extractErrorMessage, isRateLimited } from './responseUtils';
 
 export async function assess({ sessionId, userMessage, mode, profile }) {
   const response = await fetch(`${API_BASE}/v1/assessment`, {
@@ -14,18 +15,17 @@ export async function assess({ sessionId, userMessage, mode, profile }) {
     }),
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    
-    // Check for rate limit
-    if (response.status === 503 && errorData.code === 'RATE_LIMIT_EXCEEDED') {
+    if (isRateLimited(response.status, data)) {
       throw new Error('API rate limit exceeded. Please try again in a few minutes.');
     }
-    
-    throw new Error(errorData.error || errorData.message || 'Assessment failed');
+    const errorMessage = extractErrorMessage(response, 'Assessment failed', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }
 
 export async function approvePlan({ sessionId }) {
@@ -38,51 +38,41 @@ export async function approvePlan({ sessionId }) {
     }),
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    
-    // Check for rate limit
-    if (response.status === 503 && errorData.code === 'RATE_LIMIT_EXCEEDED') {
+    if (isRateLimited(response.status, data)) {
       throw new Error('API rate limit exceeded. Please try again in a few minutes.');
     }
-    
-    throw new Error(errorData.error || errorData.message || 'Failed to approve plan');
+    const errorMessage = extractErrorMessage(response, 'Failed to approve plan', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }
 
 export async function modifyPlan({ sessionId, modificationRequest }) {
   const response = await fetch(`${API_BASE}/v1/assessment/modify`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
+    credentials: 'include',
     body: JSON.stringify({
       sessionId,
       modificationRequest
     }),
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    let errorData;
-    try {
-      errorData = await response.json();
-    } catch (parseError) {
-      // If JSON parsing fails, read as text
-      const textError = await response.text();
-      throw new Error(textError || 'Failed to modify plan');
-    }
-    
-    // Check for rate limit
-    if (response.status === 503 && errorData.code === 'RATE_LIMIT_EXCEEDED') {
+    if (isRateLimited(response.status, data)) {
       throw new Error('API rate limit exceeded. Please try again in a few minutes.');
     }
-    
-    throw new Error(errorData.error || errorData.message || 'Failed to modify plan');
+    const errorMessage = extractErrorMessage(response, 'Failed to modify plan', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }
 
 // Legacy method for backward compatibility (no longer used but kept for reference)
@@ -99,18 +89,17 @@ export async function answerClarify(sessionId, answers) {
     }),
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    
-    // Check for rate limit
-    if (response.status === 503 && errorData.code === 'RATE_LIMIT_EXCEEDED') {
+    if (isRateLimited(response.status, data)) {
       throw new Error('API rate limit exceeded. Please try again in a few minutes.');
     }
-    
-    throw new Error(errorData.error || errorData.message || 'Failed to answer clarification');
+    const errorMessage = extractErrorMessage(response, 'Failed to answer clarification', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }
 
 // Legacy methods for backward compatibility
@@ -127,12 +116,14 @@ export async function assessStage(
     body: JSON.stringify({ message, topic, historySessionId }),
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Assessment failed');
+    const errorMessage = extractErrorMessage(response, 'Assessment failed', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }
 
 export async function getSessionDetails(sessionId) {
@@ -143,12 +134,14 @@ export async function getSessionDetails(sessionId) {
     },
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to load session details');
+    const errorMessage = extractErrorMessage(response, 'Failed to load session details', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }
 
 export async function updateSessionStage(sessionId, stage) {
@@ -160,12 +153,14 @@ export async function updateSessionStage(sessionId, stage) {
     body: JSON.stringify({ stage }),
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to update session stage');
+    const errorMessage = extractErrorMessage(response, 'Failed to update session stage', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }
 
 export async function startQuiz(sessionId, stage) {
@@ -177,12 +172,14 @@ export async function startQuiz(sessionId, stage) {
     body: JSON.stringify({ sessionId, stage }),
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to start quiz');
+    const errorMessage = extractErrorMessage(response, 'Failed to start quiz', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }
 
 export async function submitQuiz(quizId, sessionId, answers) {
@@ -194,10 +191,12 @@ export async function submitQuiz(quizId, sessionId, answers) {
     body: JSON.stringify({ quizId, sessionId, answers }),
   });
 
+  const data = await safeReadResponse(response);
+  
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Failed to submit quiz');
+    const errorMessage = extractErrorMessage(response, 'Failed to submit quiz', data);
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  return data;
 }

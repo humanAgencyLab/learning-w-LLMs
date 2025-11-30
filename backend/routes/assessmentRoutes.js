@@ -317,7 +317,8 @@ router.post('/v1/assessment', requireAuth, addRequestId, contextControl, async (
     
     // Update session with plan (stay in planning phase, not learning)
     session.topic = topic;
-    session.chatTitle = chatTitle;
+    // Always set chatTitle to match topic for consistency
+    session.chatTitle = topic;
     session.plan = finalPlan.map(module => ({
       id: module.moduleId,
       title: module.title,
@@ -513,7 +514,8 @@ router.post('/v1/assessment', requireAuth, addRequestId, contextControl, async (
       // Apply the plan to session (same as normal flow) - only if session exists
       if (session) {
         session.topic = defaultPlan.topic;
-        session.chatTitle = defaultPlan.chatTitle;
+        // Use default chatTitle from plan (or fallback to topic)
+        session.chatTitle = defaultPlan.chatTitle || defaultPlan.topic;
         session.plan = defaultPlan.plan.map(module => ({
           id: module.moduleId,
           title: module.title,
@@ -848,12 +850,17 @@ router.post('/v1/assessment/approve', requireAuth, addRequestId, async (req, res
 // POST /v1/assessment/modify - Request plan modifications
 router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, async (req, res) => {
   const startTime = Date.now();
-  let session;
+  let session = null;
+  let sessionId = null;
+  let modificationRequest = null;
+  let lastError = null;
+  let retryCount = 0;
   
   try {
     req.logger.info('Plan modification request received', { body: req.body });
     
-    const { sessionId, modificationRequest } = req.body;
+    sessionId = req.body?.sessionId;
+    modificationRequest = req.body?.modificationRequest;
     
     if (!sessionId) {
       return res.status(400).json({
@@ -950,11 +957,9 @@ router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, 
     
     // Call LLM to generate modified plan - MUST use LLM for modifications
     // Try up to 3 times (initial + 2 retries) with progressively stricter instructions
-    let llmResponse;
-    let parsedResponse;
-    let retryCount = 0;
+    let llmResponse = null;
+    let parsedResponse = null;
     const maxRetries = 2; // Allow up to 2 retries (3 total attempts)
-    let lastError;
     
     // Attempt 1: Initial call with full context
     let success = false;
@@ -1124,7 +1129,8 @@ router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, 
     
     // Update session with modified plan
     session.topic = topic;
-    session.chatTitle = chatTitle;
+    // Use LLM-generated chatTitle (or fallback to topic if not provided)
+    session.chatTitle = chatTitle || topic;
     session.plan = finalPlan.map(module => ({
       id: module.moduleId,
       title: module.title,
@@ -1186,11 +1192,17 @@ router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, 
     });
     
   } catch (error) {
+    // Ensure we have safe access to variables
+    const safeSessionId = sessionId || req.body?.sessionId || 'unknown';
+    const safeModificationRequest = modificationRequest || req.body?.modificationRequest || 'unknown';
+    
     req.logger.error('Plan modification failed', {
-      sessionId: req.body?.sessionId || sessionId,
-      error: error.message,
-      stack: error.stack,
-      modificationRequest: req.body?.modificationRequest || modificationRequest
+      sessionId: safeSessionId,
+      error: error?.message || 'Unknown error',
+      stack: error?.stack,
+      modificationRequest: safeModificationRequest,
+      errorName: error?.name,
+      lastError: lastError?.message
     });
     
     if (error instanceof z.ZodError) {
@@ -1203,12 +1215,12 @@ router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, 
     }
     
     // Handle LLM failure after retries - return specific error message
-    if (error.message === 'LLM_FAILED_AFTER_RETRIES') {
+    if (error?.message === 'LLM_FAILED_AFTER_RETRIES') {
       // Log detailed error information
       req.logger.error('LLM failed after all retries for modification', {
-        sessionId: req.body?.sessionId || sessionId,
-        modificationRequest: req.body?.modificationRequest || modificationRequest,
-        error: error.message,
+        sessionId: safeSessionId,
+        modificationRequest: safeModificationRequest,
+        error: error?.message || 'Unknown error',
         lastError: lastError?.message,
         lastErrorStack: lastError?.stack,
         lastErrorStatus: lastError?.status,
@@ -1244,21 +1256,29 @@ router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, 
     }
     
     // Handle LLM API errors
-    if (error.message.includes('GROQ_API_ERROR') || error.message.includes('JSON_PARSE_FAILED')) {
+    if (error?.message?.includes('GROQ_API_ERROR') || error?.message?.includes('JSON_PARSE_FAILED')) {
       return res.status(502).json({
         success: false,
         code: 'LLM_PROVIDER_ERROR',
         message: 'Unable to process modification request. Please try again.',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error?.message : undefined
       });
     }
     
-    if (error.message === 'LLM_FAILED_USE_DEFAULT') {
+    // Generic error handler - ensure we always return a response
+    return res.status(500).json({
+      success: false,
+      code: 'INTERNAL_ERROR',
+      message: 'An unexpected error occurred while processing your modification request. Please try again.',
+      details: process.env.NODE_ENV === 'development' ? error?.message : undefined
+    });
+    
+    if (error?.message === 'LLM_FAILED_USE_DEFAULT') {
       // Fallback: Modify existing plan based on user request
-      req.logger.info('Using fallback plan modification due to LLM failure', { sessionId });
+      req.logger.info('Using fallback plan modification due to LLM failure', { sessionId: safeSessionId });
       
       // Ensure modificationRequest is available
-      const modReqText = (req.body?.modificationRequest || modificationRequest || '').toLowerCase();
+      const modReqText = (safeModificationRequest || '').toLowerCase();
       
       if (session && session.plan && session.plan.length > 0 && modReqText) {
         // Try to modify existing plan based on keywords in modification request

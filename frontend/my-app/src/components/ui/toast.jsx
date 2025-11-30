@@ -40,30 +40,36 @@ export const Toast = ({
 
   const typeStyles = {
     info: {
-      backgroundColor: 'var(--color-panel)',
-      borderLeft: '4px solid var(--color-primary)',
+      backgroundColor: 'var(--color-panel, #ffffff)',
+      borderLeft: '4px solid var(--color-primary, #4e81ee)',
+      color: 'var(--color-text, #111827)',
     },
     success: {
-      backgroundColor: 'var(--color-panel)',
-      borderLeft: '4px solid var(--color-positive)',
+      backgroundColor: 'var(--color-panel, #ffffff)',
+      borderLeft: '4px solid var(--color-positive, #10b981)',
+      color: 'var(--color-text, #111827)',
     },
     warning: {
-      backgroundColor: 'var(--color-panel)',
-      borderLeft: '4px solid var(--color-warning)',
+      backgroundColor: 'var(--color-panel, #fff7ed)',
+      borderLeft: '4px solid var(--color-warning, #f59e0b)',
+      color: 'var(--color-text, #92400e)',
     },
   };
 
   const toastStyles = {
     ...typeStyles[type],
-    padding: 'var(--space-4)',
-    borderRadius: 'var(--radius-md)',
-    border: '1px solid var(--color-border)',
-    color: 'var(--color-text)',
-    marginBottom: 'var(--space-2)',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    border: '1px solid var(--color-border, #e5e7eb)',
     opacity: isVisible ? 1 : 0,
-    transform: isVisible ? 'translateX(0)' : 'translateX(100%)',
+    transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
     transition: 'all 0.3s ease',
     maxWidth: '400px',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)',
+    fontSize: '14px',
+    fontWeight: '500',
+    lineHeight: '1.5',
+    zIndex: 1002,
   };
 
   return (
@@ -91,9 +97,14 @@ export const ToastContainer = () => {
 
   const containerStyles = {
     position: 'fixed',
-    top: 'var(--space-4)',
-    right: 'var(--space-4)',
+    bottom: '16px',
+    left: '50%',
+    transform: 'translateX(-50%)',
     zIndex: 1001,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '8px',
   };
 
   return (

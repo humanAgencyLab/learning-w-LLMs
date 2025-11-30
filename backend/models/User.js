@@ -77,6 +77,11 @@ const UserSchema = new mongoose.Schema({
       enum: ['user'],
       default: 'user'
     },
+    mobile: {
+      type: String,
+      default: '',
+      trim: true
+    },
     background: {
       type: String,
       default: ''
@@ -165,6 +170,29 @@ const UserSchema = new mongoose.Schema({
       default: false
     }
   },
+  certificates: [{
+    certificateId: {
+      type: String,
+      required: true,
+      unique: true
+    },
+    topic: {
+      type: String,
+      required: true
+    },
+    sessionId: {
+      type: String,
+      required: true
+    },
+    filePath: {
+      type: String,
+      required: true
+    },
+    issuedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   stats: {
     pointsTotal: {
       type: Number,
