@@ -29,6 +29,7 @@ const quizRoutes = require('./routes/quizRoutes');
 const healthRoutes = require('./routes/healthRoutes');
 const authRoutes = require('./routes/authRoutes');
 const profileRoutes = require('./routes/profileRoutes');
+const performanceRoutes = require('./routes/performanceRoutes');
 const path = require('path');
 
 // Import middleware
@@ -125,6 +126,7 @@ if (process.env.NODE_ENV === 'production') {
 // Mount routes
 app.use('/v1/auth', authRoutes);
 app.use('/v1/profile', profileRoutes);
+app.use('/', performanceRoutes);
 app.use('/', sessionRoutes);
 app.use('/', assessmentRoutes);
 app.use('/', chatRoutes);
