@@ -267,7 +267,10 @@ const SessionSchema = new mongoose.Schema({
     },
     moduleId: {
       type: String,
-      required: true
+      required: function() {
+        // moduleId is required for regular quizzes, optional for revision quizzes
+        return !this.isRevision;
+      }
     },
     attemptNo: {
       type: Number,
@@ -329,6 +332,13 @@ const SessionSchema = new mongoose.Schema({
     },
     submittedAt: {
       type: Date
+    },
+    isRevision: {
+      type: Boolean,
+      default: false
+    },
+    revisionTopic: {
+      type: String
     }
   }],
   

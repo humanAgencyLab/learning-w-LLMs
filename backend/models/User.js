@@ -7,7 +7,6 @@ const UserSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    index: true,
     match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email address']
   },
   passwordHash: {
@@ -173,8 +172,7 @@ const UserSchema = new mongoose.Schema({
   certificates: [{
     certificateId: {
       type: String,
-      required: true,
-      unique: true
+      required: true
     },
     topic: {
       type: String,
@@ -235,6 +233,8 @@ const UserSchema = new mongoose.Schema({
 UserSchema.index({ email: 1 }, { unique: true });
 UserSchema.index({ emailVerificationToken: 1 }, { sparse: true });
 UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
+// Note: certificateId uniqueness is handled at application level, not via index
+// to avoid issues with null values in the certificates array
 
 // Method to get user without sensitive fields
 UserSchema.methods.toJSON = function() {

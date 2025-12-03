@@ -2,10 +2,10 @@ import { API_BASE } from '../config';
 import { getAuthHeaders } from './authApi';
 import { safeReadResponse, extractErrorMessage } from './responseUtils';
 
-export async function sendMessage({ sessionId, userMessage }) {
+export async function sendMessage({ sessionId, userMessage, mode }) {
   const url = `${API_BASE}/v1/chat`;
   console.log('chatApi.sendMessage - Making request to:', url);
-  console.log('Payload:', { sessionId, userMessage });
+  console.log('Payload:', { sessionId, userMessage, mode });
   
   const response = await fetch(url, {
     method: 'POST',
@@ -13,7 +13,8 @@ export async function sendMessage({ sessionId, userMessage }) {
     credentials: 'include',
     body: JSON.stringify({
       sessionId,
-      userMessage
+      userMessage,
+      mode // Pass mode to backend
     }),
   });
 

@@ -34,11 +34,17 @@ const QuizOverlay = () => {
   const isResultView = Boolean(quizResult);
   const isOpen = (questions && questions.length > 0) || isResultView;
 
+  const isRevision = useSessionStore((state) => state.meta?.isRevision);
+  const revisionTopic = useSessionStore((state) => state.meta?.revisionTopic || state.topic);
+  
   const moduleTitle = useMemo(() => {
+    if (isRevision) {
+      return revisionTopic ? `Revision: ${revisionTopic}` : 'Revision Quiz';
+    }
     if (!activeModuleId) return 'Module Quiz';
     const module = plan?.find((m) => m.id === activeModuleId);
     return module?.title || 'Module Quiz';
-  }, [plan, activeModuleId]);
+  }, [plan, activeModuleId, isRevision, revisionTopic]);
 
   // Check if this is the last module (all modules completed)
   const isLastModule = useMemo(() => {
@@ -686,7 +692,7 @@ const QuizOverlay = () => {
         <div className="flex items-start justify-between gap-4 flex-shrink-0 p-6 pb-4 border-b border-slate-200">
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Module Quiz
+              {isRevision ? 'Revision Quiz' : 'Module Quiz'}
             </div>
             <h2 className="mt-1 text-2xl font-bold text-slate-900">
               {moduleTitle}

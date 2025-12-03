@@ -72,6 +72,133 @@ Generate exactly ${questionCount} multiple-choice questions. Each option must be
 ⚠️⚠️⚠️ ABSOLUTE REQUIREMENT: Every question MUST include an "explanation" field. Do NOT omit this field for any question.`;
 };
 
+// Generate revision quiz for a topic (not tied to a module)
+const generateRevisionQuiz = async (topic, questionCount = 5) => {
+  try {
+    const groqClient = getGroqClient();
+    const revisionPrompt = `Generate exactly ${questionCount} multiple-choice questions for revision of the topic "${topic}".
+
+CRITICAL REQUIREMENTS:
+- Each question MUST be multiple-choice with exactly 4 options (A, B, C, D) and exactly one correct answer
+- Questions should test understanding across different aspects of the topic (conceptual, practical, application)
+- Concise, clear question stems
+- Focus on practical understanding and key concepts
+- No trick questions; wording must be unambiguous
+- ⚠️ FORBIDDEN: NEVER use "All of the above", "None of the above", "Both A and B", or any similar compound options
+- ⚠️ Each option must be a standalone, specific answer choice
+- ⚠️⚠️⚠️ CRITICAL: For each question, you MUST provide an "explanation" field with a brief explanation (2-3 sentences) explaining why the correct answer is correct. This field is REQUIRED for every question.
+
+Return ONLY valid JSON in this exact format:
+{
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Question text here?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctIndex": 0,
+      "explanation": "Brief explanation (2-3 sentences) explaining why the correct answer is correct."
+    }
+  ]
+}
+
+Generate exactly ${questionCount} multiple-choice questions for "${topic}". Each option must be specific and standalone. Include explanations.`;
+
+    const response = await groqClient.chat.completions.create({
+      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert quiz generator for revision quizzes. Return only valid JSON matching the provided schema. No prose, no explanations, no markdown.'
+        },
+        {
+          role: 'user',
+          content: revisionPrompt
+        }
+      ],
+      temperature: 0.7,
+      top_p: 0.9,
+      max_tokens: 1500
+    });
+
+    const content = response.choices[0].message.content;
+    
+    // Helper to check for forbidden options
+    const hasForbiddenOptions = (questions) => {
+      const forbiddenPatterns = ['all of the above', 'none of the above', 'both a and b', 'both a and c', 'both b and c'];
+      return questions.some(q => 
+        q.options.some(opt => 
+          forbiddenPatterns.some(pattern => opt.toLowerCase().includes(pattern))
+        )
+      );
+    };
+    
+    // Parse JSON with retry logic
+    try {
+      let parsed = JSON.parse(content);
+      if (parsed.questions && hasForbiddenOptions(parsed.questions)) {
+        throw new Error('Questions contained forbidden options');
+      }
+      return quizGenerationSchema.parse(parsed);
+    } catch (parseError) {
+      // Retry with stricter instructions
+      try {
+        const retryPrompt = `Return ONLY valid JSON in this exact format. No prose, no explanations.
+
+CRITICAL: NEVER use "All of the above", "None of the above", or any compound options. Each option must be a standalone, specific answer. Include an explanation for each question.
+
+{
+  "questions": [
+    {
+      "id": "q1", 
+      "text": "Question text here?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctIndex": 0,
+      "explanation": "Brief explanation (2-3 sentences) explaining why the correct answer is correct."
+    }
+  ]
+}
+
+Generate ${questionCount} revision questions for "${topic}". Each option must be specific and standalone. Include explanations.`;
+
+        const retryResponse = await groqClient.chat.completions.create({
+          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: 'Return only valid JSON. No prose, no explanations, no markdown. NEVER use "All of the above" or "None of the above" options.'
+            },
+            {
+              role: 'user',
+              content: retryPrompt
+            }
+          ],
+          temperature: 0.3,
+          top_p: 0.8,
+          max_tokens: 1500
+        });
+
+        const retryContent = retryResponse.choices[0].message.content;
+        let retryParsed = JSON.parse(retryContent);
+        if (retryParsed.questions && hasForbiddenOptions(retryParsed.questions)) {
+          throw new Error('Retry still contained forbidden options');
+        }
+        return quizGenerationSchema.parse(retryParsed);
+      } catch (retryError) {
+        const failure = new Error(`QUIZ_LLM_OUTPUT_INVALID: ${retryError.message}`);
+        failure.rawContent = retryContent || content;
+        throw failure;
+      }
+    }
+  } catch (error) {
+    if (error.message.includes('QUIZ_LLM_OUTPUT_INVALID')) {
+      throw error;
+    }
+    const apiError = new Error(`QUIZ_API_ERROR: ${error.message}`);
+    apiError.rawContent = error.response?.data?.choices?.[0]?.message?.content;
+    throw apiError;
+  }
+};
+
 // Generate quiz using LLM
 const generateQuiz = async (moduleTitle, difficulty, questionCount) => {
   try {
@@ -405,6 +532,9 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
     const validatedData = quizSubmitRequestSchema.parse(req.body);
     const { sessionId, moduleId, answers } = validatedData;
     
+    // Check if this is a revision quiz (no moduleId)
+    const isRevision = !moduleId;
+    
     // Load session
     const session = await Session.findById(sessionId);
     if (!session) {
@@ -430,8 +560,8 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
       });
     }
 
-    // Enforce session boundaries
-    if (['pre', 'assessing'].includes(session.phase) || !session.plan || session.plan.length === 0) {
+    // Enforce session boundaries (skip for revision quizzes)
+    if (!isRevision && (['pre', 'assessing'].includes(session.phase) || !session.plan || session.plan.length === 0)) {
       req.logger.warn('Session not ready for quiz submit', { 
         sessionId, 
         phase: session.phase,
@@ -461,17 +591,25 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
       });
     }
     
-    // Find the latest draft attempt for this module
+    // Find the latest draft attempt (for module quizzes or revision quizzes)
     const latestAttempt = session.quizAttempts
-      .filter(attempt => attempt.moduleId === moduleId && attempt.status === 'draft')
+      .filter(attempt => {
+        if (isRevision) {
+          return attempt.isRevision && attempt.status === 'draft';
+        } else {
+          return attempt.moduleId === moduleId && attempt.status === 'draft';
+        }
+      })
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
     
     if (!latestAttempt) {
-      req.logger.warn('No draft attempt found', { sessionId, moduleId });
+      req.logger.warn('No draft attempt found', { sessionId, moduleId, isRevision });
       return res.status(409).json({
         success: false,
         code: 'ILLEGAL_PHASE',
-        message: 'No draft quiz found for this module. Please start a new quiz.'
+        message: isRevision 
+          ? 'No draft revision quiz found. Please start a new revision quiz.'
+          : 'No draft quiz found for this module. Please start a new quiz.'
       });
     }
     
@@ -522,9 +660,14 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
     const scorePct = Math.round((numCorrect / total) * 100);
     const passed = scorePct >= 60;
     
-    // Find module to get points
-    const module = session.plan.find(m => m.id === moduleId);
-    const modulePoints = module ? module.points : 0;
+    // For revision quizzes, no points are awarded
+    let modulePoints = 0;
+    let module = null;
+    if (!isRevision) {
+      // Find module to get points (only for regular quizzes)
+      module = session.plan.find(m => m.id === moduleId);
+      modulePoints = module ? module.points : 0;
+    }
     
     req.logger.info('Module points debug', {
       sessionId,
@@ -533,20 +676,24 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
       modulePoints
     });
     
-    // Check if this module was already passed (for idempotency)
-    const previousPassedAttempts = session.quizAttempts.filter(
-      attempt => attempt.moduleId === moduleId && 
-                attempt.status === 'submitted' && 
-                attempt.passed
-    );
-    
-    const pointsEarned = (passed && previousPassedAttempts.length === 0) ? modulePoints : 0;
+    // Check if this module was already passed (for idempotency) - skip for revision quizzes
+    let pointsEarned = 0;
+    let previousPassedAttempts = [];
+    if (!isRevision) {
+      previousPassedAttempts = session.quizAttempts.filter(
+        attempt => attempt.moduleId === moduleId && 
+                  attempt.status === 'submitted' && 
+                  attempt.passed
+      );
+      pointsEarned = (passed && previousPassedAttempts.length === 0) ? modulePoints : 0;
+    }
     
     // Debug logging
     req.logger.info('Points calculation debug', {
       sessionId,
       moduleId,
       passed,
+      isRevision,
       previousPassedAttempts: previousPassedAttempts.length,
       modulePoints,
       pointsEarned
@@ -560,8 +707,8 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
     latestAttempt.pointsEarned = pointsEarned;
     latestAttempt.submittedAt = new Date();
     
-    // Update module status if passed (before progress update)
-    if (passed) {
+    // Update module status if passed (before progress update) - skip for revision quizzes
+    if (passed && !isRevision && module) {
       module.status = 'passed';
       
       // Advance to next module
@@ -592,7 +739,7 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
         // All modules completed
         req.logger.info('All modules completed', { sessionId });
       }
-    } else {
+    } else if (!isRevision) {
       // Quiz failed - use LLM to identify which milestones need review
       try {
         const groqClient = getGroqClient();
@@ -690,17 +837,22 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
       }
     }
     
-    // Update progress using the new service (after marking module as passed)
-    // If all modules are passed, force recalculation
-    const allModulesPassed = session.plan.every(m => m.status === 'passed');
-    const progressResult = updateProgress(session, { 
-      moduleId, 
-      pointsDelta: pointsEarned,
-      forceRecalc: allModulesPassed
-    });
+    // Update progress using the new service (after marking module as passed) - skip for revision quizzes
+    let progressResult = { completed: false };
+    if (!isRevision) {
+      const allModulesPassed = session.plan.every(m => m.status === 'passed');
+      progressResult = updateProgress(session, { 
+        moduleId, 
+        pointsDelta: pointsEarned,
+        forceRecalc: allModulesPassed
+      });
+    }
     
     // Set phase based on quiz result
-    if (passed) {
+    if (isRevision) {
+      // For revision quizzes, always go to feedback phase
+      session.phase = 'feedback';
+    } else if (passed) {
       // If passed, move to feedback phase (brief feedback before next module)
       if (!progressResult.completed) {
         session.phase = 'feedback';
@@ -763,31 +915,42 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
       
       req.logger.info('Feedback generated with explanations', {
         sessionId,
-        moduleId,
+        moduleId: moduleId || 'revision',
+        isRevision,
         totalItems: feedbackItems.length,
         itemsWithExplanations: feedbackItems.filter(item => item.explanation).length
       });
     }
     
     if (passed) {
-      feedbackMarkdown += `**You passed — move on to the next module.**`;
-    } else {
-      // Include which milestones need review if LLM identified them
-      const milestonesToReview = session.meta?.milestonesToReview || [];
-      if (milestonesToReview.length > 0 && module.milestones) {
-        const milestoneNames = milestonesToReview
-          .map(i => `${i + 1}. ${module.milestones[i]?.text || 'Milestone ' + (i + 1)}`)
-          .join(', ');
-        feedbackMarkdown += `**Score: ${scorePct}% - Need to review the following milestones:**\n${milestoneNames}\n\nWe'll go through these topics again with the feedback and assessment loop, then retake the quiz.`;
+      if (isRevision) {
+        feedbackMarkdown += `**You passed the revision quiz! Great job reviewing "${session.topic}".**`;
       } else {
-        feedbackMarkdown += `**Score: ${scorePct}% - Need to review this module. Let's go through the milestones again.**`;
+        feedbackMarkdown += `**You passed — move on to the next module.**`;
+      }
+    } else {
+      if (isRevision) {
+        // For revision quizzes, just show the score
+        feedbackMarkdown += `**Score: ${scorePct}% - Keep practicing! Review the explanations above and try again.**`;
+      } else {
+        // Include which milestones need review if LLM identified them
+        const milestonesToReview = session.meta?.milestonesToReview || [];
+        if (milestonesToReview.length > 0 && module && module.milestones) {
+          const milestoneNames = milestonesToReview
+            .map(i => `${i + 1}. ${module.milestones[i]?.text || 'Milestone ' + (i + 1)}`)
+            .join(', ');
+          feedbackMarkdown += `**Score: ${scorePct}% - Need to review the following milestones:**\n${milestoneNames}\n\nWe'll go through these topics again with the feedback and assessment loop, then retake the quiz.`;
+        } else {
+          feedbackMarkdown += `**Score: ${scorePct}% - Need to review this module. Let's go through the milestones again.**`;
+        }
       }
     }
     
     
     req.logger.info('Quiz submitted successfully', {
       sessionId,
-      moduleId,
+      moduleId: moduleId || 'revision',
+      isRevision,
       attemptNo: latestAttempt.attemptNo,
       scorePct,
       passed,
@@ -835,6 +998,153 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
       error: 'Internal server error',
       details: process.env.NODE_ENV === 'test' ? error.message : undefined,
       stack: process.env.NODE_ENV === 'test' ? error.stack : undefined
+    });
+  }
+});
+
+// POST /v1/quiz/revision - Generate revision quiz for a topic
+router.post('/v1/quiz/revision', requireAuth, addRequestId, async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    req.logger.info('Revision quiz request received', { body: req.body });
+    
+    // Validate request body
+    const { sessionId, topic } = req.body;
+    
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Session ID is required'
+      });
+    }
+    
+    if (!topic || topic.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Topic is required'
+      });
+    }
+    
+    // Load session
+    const session = await Session.findById(sessionId);
+    if (!session) {
+      req.logger.warn('Session not found', { sessionId });
+      return res.status(404).json({
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'Session not found'
+      });
+    }
+    
+    // Verify session belongs to authenticated user
+    if (session.userId.toString() !== req.userId) {
+      req.logger.warn('Access denied - session ownership mismatch', { 
+        sessionId, 
+        sessionUserId: session.userId, 
+        reqUserId: req.userId 
+      });
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN',
+        message: 'Access denied. You do not have permission to access this session.'
+      });
+    }
+    
+    // Verify session is in revision mode
+    if (session.mode !== 'reviewing') {
+      req.logger.warn('Session not in revision mode', { 
+        sessionId, 
+        mode: session.mode,
+        topic: topic
+      });
+      return res.status(409).json({
+        success: false,
+        code: 'ILLEGAL_MODE',
+        message: 'Revision quiz can only be generated for sessions in revision mode',
+        currentMode: session.mode,
+        hint: 'Please ensure you selected "Revision" mode before requesting a quiz'
+      });
+    }
+    
+    // Allow revision quiz generation even if phase is already 'quizzing' (set by chat route)
+    // This handles the case where chat route already set phase to quizzing
+    if (!['pre', 'quizzing'].includes(session.phase)) {
+      req.logger.warn('Session not in valid phase for revision quiz', { 
+        sessionId, 
+        phase: session.phase 
+      });
+      return res.status(409).json({
+        success: false,
+        code: 'ILLEGAL_PHASE',
+        message: 'Revision quiz can only be generated in pre or quizzing phase',
+        currentPhase: session.phase
+      });
+    }
+    
+    // Generate revision quiz
+    const questionCount = 5;
+    req.logger.info('Generating revision quiz', { sessionId, topic, questionCount });
+    
+    const quizData = await generateRevisionQuiz(topic.trim(), questionCount);
+    
+    // Create a temporary quiz attempt for revision (not tied to a module)
+    const attemptId = uuidv4();
+    const revisionAttempt = {
+      id: attemptId,
+      moduleId: null, // No module for revision quizzes
+      attemptNo: 1,
+      status: 'draft',
+      items: quizData.questions,
+      answers: [],
+      createdAt: new Date(),
+      isRevision: true, // Mark as revision quiz
+      revisionTopic: topic.trim()
+    };
+    
+    session.quizAttempts.push(revisionAttempt);
+    session.phase = 'quizzing';
+    await session.save();
+    
+    req.logger.info('Revision quiz generated successfully', {
+      sessionId,
+      topic,
+      questionCount: quizData.questions.length,
+      duration: Date.now() - startTime
+    });
+    
+    res.json({
+      success: true,
+      questions: quizData.questions,
+      topic: topic.trim(),
+      isRevision: true
+    });
+    
+  } catch (error) {
+    req.logger.error({
+      err: error,
+      sessionId: req.body?.sessionId,
+      topic: req.body?.topic,
+      rawContent: typeof error.rawContent === 'string' ? error.rawContent.slice(0, 500) : undefined,
+      duration: Date.now() - startTime
+    }, 'Revision quiz generation failed');
+    
+    // LLM output validation failures → 502 LLM_PROVIDER_ERROR
+    if (error.message.includes('QUIZ_LLM_OUTPUT_INVALID') || 
+        error.message.includes('QUIZ_API_ERROR')) {
+      return res.status(502).json({
+        success: false,
+        code: 'LLM_PROVIDER_ERROR',
+        message: 'Quiz generation service unavailable'
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'test' ? error.message : undefined
     });
   }
 });

@@ -16,7 +16,7 @@ function ChatHistory() {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [modeFilter, setModeFilter] = useState('all'); // 'all', 'study', 'revision'
   const navigate = useNavigate();
-  const { resumeSessionFromServer } = useSessionStore();
+  const { resumeSessionFromServer, startRevisionQuiz } = useSessionStore();
 
   // Fetch sessions from API
   const loadSessions = useCallback(async (searchTerm = '') => {
@@ -200,12 +200,27 @@ function ChatHistory() {
     }
   };
 
-  const handleSessionClick = async (sessionId) => {
+  const handleSessionClick = async (sessionId, sessionMode, sessionTopic) => {
     try {
       // Resume the session
-      await resumeSessionFromServer(sessionId);
-      // Navigate to chat interface
-      navigate('/chat', { replace: true });
+      const session = await resumeSessionFromServer(sessionId);
+      
+      // If it's a revision session and has a topic, open quiz overlay
+      const isRevision = sessionMode === 'reviewing' || sessionMode === 'revision';
+      if (isRevision && sessionTopic) {
+        // Start revision quiz and navigate to chat (quiz overlay will show)
+        try {
+          await startRevisionQuiz(sessionTopic);
+          navigate('/chat', { replace: true });
+        } catch (quizError) {
+          console.error('Failed to start revision quiz:', quizError);
+          // Fallback: just navigate to chat
+          navigate('/chat', { replace: true });
+        }
+      } else {
+        // Regular study session - navigate to chat interface
+        navigate('/chat', { replace: true });
+      }
     } catch (err) {
       console.error('Failed to resume session:', err);
       setError(err.message || 'Failed to resume session');
@@ -356,7 +371,7 @@ function ChatHistory() {
                             key={sessionId}
                             className="chat-history-search-result-item"
                             onClick={() => {
-                              handleSessionClick(sessionId);
+                              handleSessionClick(sessionId, session.mode, session.topic);
                               setShowSearchModal(false);
                               setSearchQuery('');
                               // Reload all sessions when selecting a result
@@ -419,7 +434,7 @@ function ChatHistory() {
                       className="chat-history-item"
                       onMouseEnter={() => setHoveredSessionId(sessionId)}
                       onMouseLeave={() => setHoveredSessionId(null)}
-                      onClick={() => !isEditing && handleSessionClick(sessionId)}
+                      onClick={() => !isEditing && handleSessionClick(sessionId, session.mode, session.topic)}
                     >
                       <svg className="chat-history-item-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>

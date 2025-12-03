@@ -34,7 +34,7 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
     console.log('Chat request received', { body: req.body });
     
     // Read sanitized message if available, otherwise use body
-    const { sessionId } = req.body;
+    const { sessionId, mode: requestedMode } = req.body;
     const userMessage = req.sanitized?.message || req.body.userMessage;
     
     // Validate sessionId exists
@@ -101,9 +101,51 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
     console.log('Session loaded successfully', { 
       sessionId, 
       phase: session.phase,
-      topic: session.topic 
+      topic: session.topic,
+      mode: session.mode,
+      requestedMode
     });
     
+    // Update session mode if frontend requests a different mode
+    if (requestedMode && requestedMode !== session.mode) {
+      console.log('Updating session mode from', session.mode, 'to', requestedMode);
+      session.mode = requestedMode;
+      await session.save();
+    }
+    
+    // Handle revision mode - if in revision mode and pre phase, generate revision quiz
+    if (session.mode === 'reviewing' && session.phase === 'pre') {
+      // Extract topic from user message
+      const topic = userMessage.trim();
+      
+      if (topic && topic.length > 0) {
+        // Add user message to session
+        const userMsg = {
+          id: `msg_${Date.now()}`,
+          role: 'user',
+          content: userMessage,
+          timestamp: new Date(),
+          metadata: { intent: 'revision', phaseAtSend: 'pre' }
+        };
+        session.messages.push(userMsg);
+        session.topic = topic;
+        session.chatTitle = `Revision: ${topic}`;
+        // Don't set phase to 'quizzing' yet - let the revision quiz endpoint handle it
+        // This ensures the revision quiz endpoint can properly validate and set up the quiz
+        await session.save();
+        
+        return res.json({
+          success: true,
+          data: {
+            message: `I'll generate a revision quiz for "${topic}".`,
+            nextAction: 'START_REVISION_QUIZ',
+            topic: topic,
+            isRevision: true
+          }
+        });
+      }
+    }
+
     // Handle 'pre' phase - LLM analyzes intent and decides action
         if (session.phase === 'pre') {
         // If we've already entered quizzing or the user explicitly asks to start the quiz

@@ -215,6 +215,8 @@ const useSessionStore = create(
           console.warn(`Invalid mode: ${mode}. Must be one of: ${validModes.join(', ')}`);
           return;
         }
+        // Map frontend 'revision' to backend 'reviewing' when creating/updating session
+        // But store as 'revision' in frontend state
         set({ mode });
       },
 
@@ -299,10 +301,13 @@ const useSessionStore = create(
         // Always update plan if provided to ensure milestone states are synced
         const updatedPlan = Array.isArray(payload.plan) ? payload.plan : get().plan;
         
+        // Map backend 'reviewing' to frontend 'revision'
+        const mappedMode = payload.mode === 'reviewing' ? 'revision' : (payload.mode || prev.mode || 'studying');
+        
         set(prev => ({
           sessionId: resolvedSessionId,
           phase: payload.phase || prev.phase || 'pre',
-          mode: payload.mode || prev.mode || 'studying',
+          mode: mappedMode,
           topic: payload.topic ?? prev.topic ?? '',
           chatTitle: payload.chatTitle ?? prev.chatTitle ?? '',
           plan: updatedPlan, // Always use updated plan to sync milestone states
@@ -428,8 +433,16 @@ const useSessionStore = create(
         console.log('Creating new session with profile:', profileToUse);
         set({ loading: true, error: null });
         
+        // Map frontend 'revision' to backend 'reviewing' when creating session
+        const currentMode = get().mode;
+        const backendMode = currentMode === 'revision' ? 'reviewing' : (currentMode || 'studying');
+        const profileWithMode = {
+          ...profileToUse,
+          mode: backendMode
+        };
+        
         try {
-          const response = await sessionApi.createSession(profileToUse);
+          const response = await sessionApi.createSession(profileWithMode);
           console.log('Session API response:', response);
           
           if (response.success) {
@@ -438,11 +451,14 @@ const useSessionStore = create(
             // IMPORTANT: Load the actual session state from backend, not assume 'pre'
             const actualSession = response.data;
             
+            // Map backend 'reviewing' to frontend 'revision'
+            const sessionMode = actualSession.mode === 'reviewing' ? 'revision' : (actualSession.mode || 'studying');
+            
             set({
               sessionId: actualSession.id,
               profile: actualSession.profile,
               phase: actualSession.phase || 'pre',  // Use actual phase from backend
-              mode: actualSession.mode || 'studying',
+              mode: sessionMode,
               topic: actualSession.topic || '',
               chatTitle: actualSession.chatTitle || '',
               plan: Array.isArray(actualSession.plan) ? actualSession.plan : [],
@@ -628,9 +644,12 @@ const useSessionStore = create(
 
         try {
           console.log('Sending request to backend...');
+          // Map frontend 'revision' to backend 'reviewing'
+          const backendMode = state.mode === 'revision' ? 'reviewing' : (state.mode || 'studying');
           const response = await chatApi.sendMessage({
             sessionId: state.sessionId,
-            userMessage
+            userMessage,
+            mode: backendMode
           });
           
           console.log('Backend response:', JSON.stringify(response, null, 2));
@@ -716,6 +735,28 @@ const useSessionStore = create(
               }
               // If intent is 'general' or 'admin', do not mutate points/gems
 
+          // Handle revision quiz start when backend returns nextAction: 'START_REVISION_QUIZ'
+          if (response.data?.nextAction === 'START_REVISION_QUIZ' || response.nextAction === 'START_REVISION_QUIZ') {
+            const topic = response.data?.topic || userMessage;
+            console.log('Revision quiz start requested by backend', { topic, sessionId: state.sessionId });
+            try {
+              // Refresh session state first to ensure mode is updated
+              await get().resumeSessionFromServer(state.sessionId);
+              // Small delay to ensure state is synced
+              await new Promise(resolve => setTimeout(resolve, 100));
+              await get().startRevisionQuiz(topic);
+            } catch (quizError) {
+              console.error('Failed to start revision quiz after backend request:', quizError);
+              console.error('Quiz error details:', {
+                message: quizError.message,
+                stack: quizError.stack,
+                sessionId: state.sessionId,
+                topic: topic
+              });
+              set({ error: quizError.message || 'Failed to start revision quiz. Please try again.' });
+            }
+          }
+          
           // Handle quiz start when backend returns nextAction: 'START_QUIZ'
           if (response.data?.nextAction === 'START_QUIZ' || response.nextAction === 'START_QUIZ') {
             const moduleForQuiz = response.data?.moduleId || response.moduleId || get().activeModuleId;
@@ -846,10 +887,66 @@ const useSessionStore = create(
         }
       },
 
+      startRevisionQuiz: async (topic) => {
+        const state = get();
+        if (!state.sessionId) {
+          throw new Error('No active session');
+        }
+        if (state.quizDraft && state.quizDraft.length > 0 && state.meta?.isRevision) {
+          console.log('startRevisionQuiz skipped - draft already present');
+          return { questions: state.quizDraft, topic, isRevision: true };
+        }
+
+        try {
+          console.log('startRevisionQuiz invoked', { 
+            topic, 
+            sessionId: state.sessionId,
+            currentMode: state.mode,
+            currentPhase: state.phase
+          });
+          
+          const response = await quizApi.startRevisionQuiz({
+            sessionId: state.sessionId,
+            topic: topic.trim()
+          });
+          
+          console.log('startRevisionQuiz response:', response);
+
+          // Store quiz draft with revision flag
+          set({ 
+            quizDraft: response.questions,
+            quizResult: null,
+            isQuizSubmitting: false,
+            loading: false,
+            phase: 'quizzing',
+            topic: topic.trim(),
+            meta: {
+              ...state.meta,
+              isRevision: true,
+              revisionTopic: topic.trim()
+            }
+          });
+
+          return response;
+        } catch (error) {
+          set({ 
+            error: error.message, 
+            loading: false 
+          });
+          throw error;
+        }
+      },
+
       submitQuiz: async (answers) => {
         const state = get();
-        if (!state.sessionId || !state.activeModuleId) {
-          throw new Error('No active session or module');
+        if (!state.sessionId) {
+          throw new Error('No active session');
+        }
+        
+        // For revision quizzes, moduleId is not required
+        const isRevision = state.meta?.isRevision;
+        if (!isRevision && !state.activeModuleId) {
+          throw new Error('No active module');
         }
 
         set({ isQuizSubmitting: true, error: null });
@@ -857,7 +954,7 @@ const useSessionStore = create(
         try {
           const response = await quizApi.submitQuiz({
             sessionId: state.sessionId,
-            moduleId: state.activeModuleId,
+            moduleId: isRevision ? undefined : state.activeModuleId,
             answers
           });
 

@@ -9,7 +9,7 @@ const quizStartRequestSchema = z.object({
 // Quiz submit request schema
 const quizSubmitRequestSchema = z.object({
   sessionId: z.string().min(1, 'Session ID is required'),
-  moduleId: z.string().min(1, 'Module ID is required'),
+  moduleId: z.string().min(1, 'Module ID is required').optional(), // Optional for revision quizzes
   answers: z.array(z.object({
     id: z.string().min(1, 'Answer ID is required'),
     userIndex: z.number().int('User index must be integer').min(0).max(3, 'User index must be 0-3')
