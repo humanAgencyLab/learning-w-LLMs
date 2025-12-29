@@ -13,6 +13,7 @@ const QuizOverlay = () => {
   const isQuizSubmitting = useSessionStore((state) => state.isQuizSubmitting);
   const clearQuizState = useSessionStore((state) => state.clearQuizState);
   const startQuizFromChat = useSessionStore((state) => state.startQuizFromChat);
+  const startRevisionQuiz = useSessionStore((state) => state.startRevisionQuiz);
   const sendChatMessage = useSessionStore((state) => state.sendChatMessage);
   const resumeSessionFromServer = useSessionStore((state) => state.resumeSessionFromServer);
   const sessionId = useSessionStore((state) => state.sessionId);
@@ -169,8 +170,15 @@ const QuizOverlay = () => {
 
   // Handle close for fail - reset to first milestone and show message
   const handleCloseFail = () => {
-    // Show warning first
-    setShowCloseWarning(true);
+    if (isRevision) {
+      // For revision quizzes, directly close without warning
+      clearQuizState();
+      setAnswers({});
+      setError(null);
+    } else {
+      // For study quizzes, show warning first
+      setShowCloseWarning(true);
+    }
   };
 
   const confirmCloseFail = async () => {
@@ -205,11 +213,30 @@ const QuizOverlay = () => {
     setError(null);
     
     try {
-      // Just start the quiz - milestones stay checked
-      await startQuizFromChat(activeModuleId);
+      if (isRevision) {
+        // For revision quizzes, restart the revision quiz
+        await startRevisionQuiz(revisionTopic);
+      } else {
+        // For study quizzes, just start the quiz - milestones stay checked
+        await startQuizFromChat(activeModuleId);
+      }
     } catch (error) {
       console.error('Failed to retake quiz:', error);
       setError('Failed to start quiz. Please try again.');
+    }
+  };
+
+  // Handle redo revision quiz
+  const handleRedoRevision = async () => {
+    clearQuizState();
+    setAnswers({});
+    setError(null);
+    
+    try {
+      await startRevisionQuiz(revisionTopic);
+    } catch (error) {
+      console.error('Failed to restart revision quiz:', error);
+      setError('Failed to restart revision quiz. Please try again.');
     }
   };
 
@@ -422,7 +449,9 @@ const QuizOverlay = () => {
               </div>
               <p className="mt-3 text-sm leading-6 text-current">
                 {passed
-                  ? "Great work! You're ready to move on to the next module."
+                  ? isRevision
+                    ? "Great work! You've successfully completed the revision quiz."
+                    : "Great work! You're ready to move on to the next module."
                   : "Let's review the areas that need more attention, then you can retake this quiz."}
               </p>
             </>
@@ -478,13 +507,17 @@ const QuizOverlay = () => {
                 type="button"
                 onClick={handleCloseFail}
                 className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-                title="If you close the quiz window, your current module progress will be reset. You have to do a fresh start."
+                title={
+                  isRevision
+                    ? 'Close revision quiz. To revise this topic again, say "restart revision" in the chat.'
+                    : 'If you close the quiz window, your current module progress will be reset. You have to do a fresh start.'
+                }
               >
                 Close
               </button>
             </>
           )}
-          {passed && !isLastModule && (
+          {passed && !isLastModule && !isRevision && (
             <button
               type="button"
               onClick={handleMoveToNextModule}
@@ -498,7 +531,16 @@ const QuizOverlay = () => {
               {nextModule ? 'Move to Next Module' : 'All Modules Complete'}
             </button>
           )}
-          {passed && isLastModule && (
+          {passed && isRevision && (
+            <button
+              type="button"
+              onClick={handleRedoRevision}
+              className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            >
+              Redo Revision
+            </button>
+          )}
+          {passed && isLastModule && !isRevision && (
             <>
               {certificateGenerated ? (
                 <div className="flex flex-col gap-2 w-full sm:w-auto">
@@ -553,8 +595,9 @@ const QuizOverlay = () => {
         <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 flex-shrink-0 mb-4">
           <div className="flex flex-col gap-1 text-sm text-slate-600">
             <span>
-              Complete every question below to unlock the next module. You need
-              at least 60% to pass.
+              {isRevision
+                ? "Complete every question below to test your knowledge. You need at least 60% to pass."
+                : "Complete every question below to unlock the next module. You need at least 60% to pass."}
             </span>
             <span className="font-medium text-slate-800">
               {answeredCount}/{questions.length} questions answered
@@ -656,8 +699,8 @@ const QuizOverlay = () => {
         </div>
       )}
       
-      {/* Warning Dialog */}
-      {showCloseWarning && (
+      {/* Warning Dialog - Only for study quizzes */}
+      {showCloseWarning && !isRevision && (
         <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-slate-900/60 px-4">
           <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl p-6">
             <div className="mb-4">
@@ -699,9 +742,9 @@ const QuizOverlay = () => {
             </h2>
             {!isResultView && (
               <p className="mt-2 max-w-xl text-sm text-slate-600">
-                This quiz locks in what you just learned. Answer every question
-                carefully—if your score is below 60%, we'll revisit the tricky
-                milestones together before retrying.
+                {isRevision
+                  ? "Complete every question below to test your knowledge. You need at least 60% to pass."
+                  : "This quiz locks in what you just learned. Answer every question carefully—if your score is below 60%, we'll revisit the tricky milestones together before retrying."}
               </p>
             )}
           </div>
@@ -710,7 +753,15 @@ const QuizOverlay = () => {
               type="button"
               onClick={quizResult?.passed ? handleClosePass : handleCloseFail}
               className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:bg-slate-100 flex-shrink-0"
-              title={quizResult?.passed ? 'Close' : 'If you close the quiz window, your current module progress will be reset. You have to do a fresh start.'}
+              title={
+                isRevision
+                  ? quizResult?.passed
+                    ? 'Close'
+                    : 'Close revision quiz. To revise this topic again, say "restart revision" in the chat.'
+                  : quizResult?.passed
+                  ? 'Close'
+                  : 'If you close the quiz window, your current module progress will be reset. You have to do a fresh start.'
+              }
             >
               <span className="sr-only">Close</span>
               ×

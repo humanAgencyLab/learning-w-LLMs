@@ -57,6 +57,14 @@ Ask them what topic or subject they'd like to learn about today.`;
   const isFirstMilestone = currentMilestoneIndex === 0;
   const hasAssessmentResult = assessmentResult !== null;
   
+  // Determine if this is the first module (for context paragraph structure)
+  const moduleIndex = plan.findIndex(m => m.id === activeModuleId);
+  const isFirstModule = moduleIndex === 0;
+  const previousModule = moduleIndex > 0 ? plan[moduleIndex - 1] : null;
+  
+  // Check if we're starting a new module (first milestone of a module that's not the first module)
+  const isNewModuleStart = isFirstMilestone && !isFirstModule;
+  
   // Determine scenario type
   let scenarioType = 'first_teaching';
   // CRITICAL: For incorrect_second scenario, we need to use the NEXT milestone
@@ -146,25 +154,32 @@ UNIFIED TEACHING STRUCTURE (MANDATORY FOR ALL SCENARIOS):
 
 ⚠️⚠️⚠️ CRITICAL: ALL teaching responses MUST follow this EXACT structure, regardless of scenario.
 
-RESPONSE STRUCTURE (3 STEPS):
+RESPONSE STRUCTURE (3 PARAGRAPHS - NO LABELS):
 
-STEP 1: CONTEXT (REQUIRED - 1-3 sentences):
+FIRST PARAGRAPH - CONTEXT (REQUIRED - 1-3 sentences, NO "STEP 1:" LABEL):
 ${scenarioType === 'first_teaching' ? `
-   - Begin with EXACT wording: "Thank you for approving the study plan."
-   - Immediately follow with: "Let's begin our learning journey for ${topicName}."
-   - Introduce the module and milestone: "We'll start with ${activeModule?.title || 'the first module'}, focusing on ${milestoneTextToTeach}."
-   - Provide one extra sentence that explains why this milestone matters in the larger topic.
+   ${isFirstModule ? `
+   - Begin with EXACT wording: "Thank you for approving the study plan. Let's begin our learning journey for **${topicName}**."
+   - Continue with: "We'll start with **${activeModule?.title || 'the first module'}** module, focusing on **${milestoneTextToTeach}**."
+   - Provide one sentence explaining why this milestone matters in the larger topic (e.g., "Understanding ${milestoneTextToTeach.toLowerCase()} is crucial as it forms the foundation of ${topicName}, allowing you to write clean, readable, and efficient code.").
+   ` : isNewModuleStart ? `
+   - Begin with: "Congratulations on completing the **${previousModule?.title || 'previous module'}**. Let's move to **${activeModule?.title || 'the next module'}** module, focusing on **${milestoneTextToTeach}**."
+   ` : `
+   - Begin with: "Thank you for approving the study plan. Let's begin our learning journey for **${topicName}**."
+   - Continue with: "We'll start with **${activeModule?.title || 'the first module'}** module, focusing on **${milestoneTextToTeach}**."
+   - Provide one sentence explaining why this milestone matters in the larger topic.
+   `}
 ` : scenarioType === 'correct_move_next' ? `
    ⚠️⚠️⚠️ ABSOLUTE TRANSITION REQUIREMENTS - FOLLOW EXACTLY:
    - Acknowledge ONCE: "That's correct!" or "Excellent!" or "Great job!" (1 sentence only)
-   - State completion ONCE: "You've completed: ${previousMilestoneText}" (1 sentence only)
-   - ⚠️⚠️⚠️ CRITICAL: After stating completion, IMMEDIATELY say: "Now let's move on to: ${milestoneTextToTeach}"
+   - State completion ONCE: "You've completed: **${previousMilestoneText}**" (1 sentence only)
+   - ⚠️⚠️⚠️ CRITICAL: After stating completion, IMMEDIATELY say: "Now let's move on to: **${milestoneTextToTeach}**"
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT say "Now, let's explore more about ${previousMilestoneText}" - that's WRONG
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT say "Let's continue with ${previousMilestoneText}" - that's WRONG
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT mention "${previousMilestoneText}" in any teaching content - it's DONE
    - ⚠️⚠️⚠️ CRITICAL: The previous milestone "${previousMilestoneText}" is COMPLETED - NEVER mention it again after the acknowledgment
-   - ⚠️⚠️⚠️ CRITICAL: You MUST transition to "${milestoneTextToTeach}" and teach ONLY that
-   - ⚠️⚠️⚠️ EXAMPLE OF CORRECT TRANSITION: "That's correct! You've completed: ${previousMilestoneText}. Now let's move on to: ${milestoneTextToTeach}"
+   - ⚠️⚠️⚠️ CRITICAL: You MUST transition to "**${milestoneTextToTeach}**" and teach ONLY that
+   - ⚠️⚠️⚠️ EXAMPLE OF CORRECT TRANSITION: "That's correct! You've completed: **${previousMilestoneText}**. Now let's move on to: **${milestoneTextToTeach}**"
    - ⚠️⚠️⚠️ EXAMPLE OF WRONG TRANSITION: "That's correct! Now, let's explore more about ${previousMilestoneText}" ← THIS IS WRONG, DO NOT DO THIS
 ` : scenarioType === 'correct_needs_more' ? `
    - Acknowledge: "That's correct! However, let me provide a bit more detail to deepen your understanding."
@@ -179,15 +194,15 @@ ${scenarioType === 'first_teaching' ? `
    ⚠️⚠️⚠️ INCORRECT SECOND ATTEMPT - MOVE TO NEXT MILESTONE:
    - Provide feedback: "The correct answer is [answer]. Here's why: [brief explanation]."
    - Be encouraging: "Don't worry, we'll continue practicing."
-   - ⚠️⚠️⚠️ CRITICAL: You are NOW starting a COMPLETELY NEW milestone: "${milestoneTextToTeach}"
-   - ⚠️⚠️⚠️ CRITICAL: You MUST teach the NEXT milestone "${milestoneTextToTeach}" in this same response
-   - Transition: "Let's continue with the next topic: ${milestoneTextToTeach}"
+   - ⚠️⚠️⚠️ CRITICAL: You are NOW starting a COMPLETELY NEW milestone: "**${milestoneTextToTeach}**"
+   - ⚠️⚠️⚠️ CRITICAL: You MUST teach the NEXT milestone "**${milestoneTextToTeach}**" in this same response
+   - Transition: "Let's continue with the next topic: **${milestoneTextToTeach}**"
 ` : `
    - Respond naturally to the student's message
    - Acknowledge their response
 `}
 
-STEP 2: TEACHING CONTENT (REQUIRED - 150-200 words, SAME FOR ALL):
+SECOND PARAGRAPH - TEACHING CONTENT (REQUIRED - 150-200 words, NO "STEP 2:" LABEL):
    ${scenarioType === 'incorrect_first' ? `
    - ⚠️⚠️⚠️ CRITICAL: You MUST provide 150-200 words of teaching content about "${milestoneTextToTeach}" (THE SAME MILESTONE) again
    - ⚠️⚠️⚠️ CRITICAL: Use a DIFFERENT teaching approach than the previous attempt - different examples, different explanation style, different angle
@@ -216,7 +231,7 @@ STEP 2: TEACHING CONTENT (REQUIRED - 150-200 words, SAME FOR ALL):
    - ⚠️⚠️⚠️ CRITICAL: You MUST actually teach the topic NOW. Do NOT say "let's explore" or "we'll cover" and then stop - you must actually teach it.
    - ⚠️⚠️⚠️ CRITICAL: This is milestone ${currentMilestoneIndex + 1} of ${totalMilestones}. Do NOT skip to future milestones.
 
-STEP 3: ASSESSMENT QUESTION (REQUIRED - ONE question ending with ?, SAME FOR ALL):
+THIRD PARAGRAPH - ASSESSMENT QUESTION (REQUIRED - ONE question ending with ?, NO "STEP 3:" LABEL):
    ${scenarioType === 'incorrect_first' ? `
    - ⚠️⚠️⚠️ CRITICAL: End with EXACTLY ONE assessment question about "${milestoneTextToTeach}" (THE SAME MILESTONE)
    - ⚠️⚠️⚠️ CRITICAL: Ask a DIFFERENT question than the previous one - test understanding from a different angle
@@ -232,15 +247,24 @@ STEP 3: ASSESSMENT QUESTION (REQUIRED - ONE question ending with ?, SAME FOR ALL
    - ⚠️⚠️⚠️ CRITICAL: You MUST ask ONLY ONE question. Do NOT ask multiple questions, do NOT ask follow-up questions, do NOT ask "also" questions.
 
 ⚠️⚠️⚠️ VALIDATION CHECKLIST (VERIFY ALL):
-✓ Do I have the context step (1-3 sentences)?
-✓ Do I have 150-200 words of teaching content about "${milestoneTextToTeach}" ONLY?
-✓ Do I end with EXACTLY ONE assessment question about "${milestoneTextToTeach}" ONLY?
+✓ Do I have the first paragraph with context (1-3 sentences, NO "STEP 1:" label)?
+✓ Do I have the second paragraph with 150-200 words of teaching content about "${milestoneTextToTeach}" ONLY (NO "STEP 2:" label)?
+✓ Do I have the third paragraph ending with EXACTLY ONE assessment question about "${milestoneTextToTeach}" ONLY (NO "STEP 3:" label)?
+✓ Did I avoid using step labels like "STEP 1:", "STEP 2:", "STEP 3:" in my response?
 ✓ Did I avoid teaching topics from other milestones?
 ✓ Did I avoid asking questions about other milestones?
 
 If ANY check fails, rewrite your response.
 
+⚠️⚠️⚠️ CRITICAL FORMATTING RULES:
+- DO NOT include labels like "STEP 1:", "STEP 2:", "STEP 3:", "Context:", "Teaching Content:", "Assessment Question:" in your response
+- Write three natural paragraphs separated by blank lines
+- First paragraph: Context (1-3 sentences)
+- Second paragraph: Teaching content (150-200 words)
+- Third paragraph: Assessment question (ending with ?)
+
 ⚠️⚠️⚠️ ABSOLUTE PROHIBITIONS (DO NOT DO THESE - EVER):
+- ❌ Do NOT use step labels like "STEP 1:", "STEP 2:", "STEP 3:", "Context:", "Teaching Content:", "Assessment Question:" in your response
 - ❌ Do NOT teach multiple milestones in one response
 - ❌ Do NOT skip ahead to future milestones
 - ❌ Do NOT teach topics from previous milestones
@@ -255,26 +279,27 @@ If ANY check fails, rewrite your response.
   if (scenarioType === 'first_teaching') {
     scenarioInstructions = `
 ⚠️⚠️⚠️ FIRST TEACHING RESPONSE REQUIREMENTS:
-- Follow the unified structure strictly: Context → Teaching (150-200 words) → ONE assessment question.
-- Context must contain the exact gratitude sentence and clearly state the module and milestone (see Step 1 instructions).
-- Teaching content MUST stay laser-focused on "${milestoneTextToTeach}" and cover 150-200 words with examples, explanations, and practical guidance.
-- End with EXACTLY one multiple-choice or open question that checks understanding of "${milestoneTextToTeach}".
+- Follow the unified structure strictly: Three paragraphs (Context → Teaching 150-200 words → ONE assessment question).
+- DO NOT use step labels - write three natural paragraphs separated by blank lines.
+- First paragraph: ${isFirstModule ? `"Thank you for approving the study plan. Let's begin our learning journey for **${topicName}**. We'll start with **${activeModule?.title || 'the first module'}** module, focusing on **${milestoneTextToTeach}**. [One sentence explaining why this milestone matters]."` : `"Congratulations on completing the **${previousModule?.title || 'previous module'}**. Let's move to **${activeModule?.title || 'the next module'}** module, focusing on **${milestoneTextToTeach}**."`}
+- Second paragraph: Teaching content MUST stay laser-focused on "**${milestoneTextToTeach}**" and cover 150-200 words with examples, explanations, and practical guidance.
+- Third paragraph: End with EXACTLY one multiple-choice or open question that checks understanding of "**${milestoneTextToTeach}**".
 - Do NOT ask for plan approval or prompt the student to type anything beyond answering the assessment question.
 - Keep tone warm, encouraging, and aligned with the student's profile (${profile.skillLevel || 'skill level'}, ${profile.preferredStyle || 'learning style'}).`;
   } else if (scenarioType === 'correct_move_next') {
     scenarioInstructions = `
 ⚠️⚠️⚠️ CRITICAL TRANSITION INSTRUCTIONS FOR THIS SCENARIO:
 - ⚠️⚠️⚠️ YOU ARE STARTING A COMPLETELY NEW MILESTONE - TREAT IT AS A FRESH START
-- ⚠️⚠️⚠️ The user's message "${userMessage}" was answering a question about "${previousMilestoneText}" (the PREVIOUS milestone)
-- ⚠️⚠️⚠️ IGNORE the user's message completely. Do NOT reference it. Do NOT continue discussing "${previousMilestoneText}"
-- ⚠️⚠️⚠️ The PREVIOUS milestone "${previousMilestoneText}" is COMPLETED and DONE - do NOT teach, mention, or ask about it
-- ⚠️⚠️⚠️ You just moved to the NEXT milestone: "${milestoneTextToTeach}"
-- ⚠️⚠️⚠️ You MUST teach the NEW milestone "${milestoneTextToTeach}" as if starting fresh - this is NOT a continuation
-- ⚠️⚠️⚠️ Think of this as a NEW conversation starting about "${milestoneTextToTeach}" - ignore everything from "${previousMilestoneText}"
-- ⚠️⚠️⚠️ After acknowledging the correct answer, IMMEDIATELY switch to teaching "${milestoneTextToTeach}" and nothing else
+- ⚠️⚠️⚠️ The user's message "${userMessage}" was answering a question about "**${previousMilestoneText}**" (the PREVIOUS milestone)
+- ⚠️⚠️⚠️ IGNORE the user's message completely. Do NOT reference it. Do NOT continue discussing "**${previousMilestoneText}**"
+- ⚠️⚠️⚠️ The PREVIOUS milestone "**${previousMilestoneText}**" is COMPLETED and DONE - do NOT teach, mention, or ask about it
+- ⚠️⚠️⚠️ You just moved to the NEXT milestone: "**${milestoneTextToTeach}**"
+- ⚠️⚠️⚠️ You MUST teach the NEW milestone "**${milestoneTextToTeach}**" as if starting fresh - this is NOT a continuation
+- ⚠️⚠️⚠️ Think of this as a NEW conversation starting about "**${milestoneTextToTeach}**" - ignore everything from "**${previousMilestoneText}**"
+- ⚠️⚠️⚠️ After acknowledging the correct answer, IMMEDIATELY switch to teaching "**${milestoneTextToTeach}**" and nothing else
 - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT say "Now, let's explore more about ${previousMilestoneText}" - that's WRONG
 - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT say "Let's continue with ${previousMilestoneText}" - that's WRONG
-- ⚠️⚠️⚠️ YOU MUST say: "Now let's move on to: ${milestoneTextToTeach}" and then teach ONLY "${milestoneTextToTeach}"
+- ⚠️⚠️⚠️ YOU MUST say: "Now let's move on to: **${milestoneTextToTeach}**" and then teach ONLY "**${milestoneTextToTeach}**"
 `;
   } else if (scenarioType === 'incorrect_first') {
     scenarioInstructions = `
@@ -355,31 +380,31 @@ Teaching Guidelines:
 3. Adjust complexity based on skill level: ${profile.skillLevel === 'Beginner' ? 'Use simple explanations, avoid jargon' : profile.skillLevel === 'Advanced' ? 'Can assume more background knowledge' : 'Provide clear explanations'}
 4. Tailor examples to student's background
 5. Keep responses focused and concise
-6. Always follow the 3-step structure: Context → Teaching (150-200 words) → ONE assessment question
+6. Always follow the 3-paragraph structure (NO step labels): Context paragraph → Teaching paragraph (150-200 words) → Assessment question paragraph
 
 ${scenarioType === 'correct_move_next' ? `
 ⚠️⚠️⚠️ FINAL CRITICAL REMINDER FOR THIS TRANSITION:
-- The user's message "${userMessage}" was about "${previousMilestoneText}" - IGNORE it completely
-- You are starting FRESH with "${milestoneTextToTeach}"
-- After acknowledging the correct answer, IMMEDIATELY teach ONLY "${milestoneTextToTeach}"
-- Do NOT continue discussing "${previousMilestoneText}" - it's DONE
+- The user's message "${userMessage}" was about "**${previousMilestoneText}**" - IGNORE it completely
+- You are starting FRESH with "**${milestoneTextToTeach}**"
+- After acknowledging the correct answer, IMMEDIATELY teach ONLY "**${milestoneTextToTeach}**"
+- Do NOT continue discussing "**${previousMilestoneText}**" - it's DONE
 - Do NOT say "Now, let's explore more about ${previousMilestoneText}" - that's WRONG
 - Do NOT say "Let's continue with ${previousMilestoneText}" - that's WRONG
-- You MUST say "Now let's move on to: ${milestoneTextToTeach}" and teach ONLY that
-- Think of this as a NEW conversation starting NOW about "${milestoneTextToTeach}"
+- You MUST say "Now let's move on to: **${milestoneTextToTeach}**" and teach ONLY that
+- Think of this as a NEW conversation starting NOW about "**${milestoneTextToTeach}**"
 
 ⚠️⚠️⚠️ CORRECT RESPONSE STRUCTURE:
-1. "That's correct! You've completed: ${previousMilestoneText}."
-2. "Now let's move on to: ${milestoneTextToTeach}"
-3. [IMMEDIATELY teach 150-200 words about "${milestoneTextToTeach}" ONLY]
-4. [ONE assessment question about "${milestoneTextToTeach}" ONLY]
+1. "That's correct! You've completed: **${previousMilestoneText}**."
+2. "Now let's move on to: **${milestoneTextToTeach}**"
+3. [IMMEDIATELY teach 150-200 words about "**${milestoneTextToTeach}**" ONLY]
+4. [ONE assessment question about "**${milestoneTextToTeach}**" ONLY]
 
 ⚠️⚠️⚠️ WRONG RESPONSE (DO NOT DO THIS):
 1. "That's correct! Now, let's explore more about ${previousMilestoneText}" ← WRONG
 2. "Let's continue with ${previousMilestoneText}" ← WRONG
 3. Teaching about ${previousMilestoneText} ← WRONG
 
-YOU MUST transition to "${milestoneTextToTeach}" and teach ONLY that.
+YOU MUST transition to "**${milestoneTextToTeach}**" and teach ONLY that.
 ` : ''}
 
 Remember: You are teaching milestone-by-milestone. Each milestone is taught separately with the SAME structure.`;

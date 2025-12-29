@@ -81,6 +81,9 @@ function Profile() {
   const [newCourse, setNewCourse] = useState('');
   const [certificates, setCertificates] = useState([]);
   const [loadingCertificates, setLoadingCertificates] = useState(false);
+  const [gemsCount, setGemsCount] = useState(0);
+  const [modulesCompleted, setModulesCompleted] = useState(0);
+  const [topicsCompleted, setTopicsCompleted] = useState(0);
 
   // Refs for dropdowns
   const skillDropdownRef = useRef(null);
@@ -134,7 +137,21 @@ function Profile() {
         // Load profile data from API
         const profileData = await profileApi.getProfile();
         console.log('Loaded profile data:', profileData);
+        console.log('Profile stats:', profileData?.stats);
         console.log('Profile mobile field:', profileData?.profile?.mobile);
+        
+        // Set stats immediately if available
+        if (profileData?.stats) {
+          console.log('Setting stats from profileData:', profileData.stats);
+          console.log('Gems:', profileData.stats.gemsTotal);
+          console.log('Modules:', profileData.stats.modulesCompleted);
+          console.log('Topics:', profileData.stats.topicsCompleted);
+          setGemsCount(profileData.stats.gemsTotal || 0);
+          setModulesCompleted(profileData.stats.modulesCompleted ?? 0);
+          setTopicsCompleted(profileData.stats.topicsCompleted ?? 0);
+        } else {
+          console.warn('No stats found in profileData:', profileData);
+        }
         
         if (profileData?.profile) {
           const profile = profileData.profile;
@@ -248,6 +265,13 @@ function Profile() {
           setSelectedStyle(learningType);
           setDaysPerWeek(profile.daysPerWeek || 3);
           setMinutesPerSession(profile.minutesPerSession || 40);
+          
+          // Set stats if available (fallback case)
+          if (user?.stats) {
+            setGemsCount(user.stats.gemsTotal || 0);
+            setModulesCompleted(user.stats.modulesCompleted || 0);
+            setTopicsCompleted(user.stats.topicsCompleted || 0);
+          }
         }
       } catch (err) {
         console.error('Failed to load profile:', err);
@@ -295,6 +319,13 @@ function Profile() {
           setDaysPerWeek(profile.daysPerWeek || 3);
           setMinutesPerSession(profile.minutesPerSession || 40);
           setMobile(profile.mobile || '');
+          
+          // Set stats if available (fallback case)
+          if (user?.stats) {
+            setGemsCount(user.stats.gemsTotal || 0);
+            setModulesCompleted(user.stats.modulesCompleted || 0);
+            setTopicsCompleted(user.stats.topicsCompleted || 0);
+          }
         } else if (!user) {
           setError('Failed to load profile. Please refresh the page.');
         }
@@ -346,6 +377,7 @@ function Profile() {
   };
 
   // View certificate in new tab
+
   const handleViewCertificate = async (certificateId, topic) => {
     try {
       const blob = await profileApi.downloadCertificate(certificateId);
@@ -902,6 +934,30 @@ function Profile() {
             <p className="profile-name">{name || user?.name || 'User'}</p>
           </div>
 
+          {/* Stats Row: Gems, Modules Completed, Topics Completed */}
+          <div className="profile-row">
+            <div className="profile-field-group">
+              <label className="profile-field-label">Gems</label>
+              <div className="profile-stats-display">
+                <span className="profile-stats-value">💎 {gemsCount}</span>
+              </div>
+            </div>
+
+            <div className="profile-field-group">
+              <label className="profile-field-label">Modules Completed</label>
+              <div className="profile-stats-display">
+                <span className="profile-stats-value">📚 {modulesCompleted}</span>
+              </div>
+            </div>
+
+            <div className="profile-field-group">
+              <label className="profile-field-label">Topics Completed</label>
+              <div className="profile-stats-display">
+                <span className="profile-stats-value">✅ {topicsCompleted}</span>
+              </div>
+            </div>
+          </div>
+
           {/* Avatar Dropdown */}
           {showAvatarDropdown && isEditing && (
             <div className="profile-avatar-dropdown" ref={avatarDropdownRef}>
@@ -1064,6 +1120,7 @@ function Profile() {
               )}
             </div>
           </div>
+
         </div>
 
         {/* Second Card: Course & Goal Section */}
@@ -1355,8 +1412,10 @@ function Profile() {
         {/* Fourth Card: Achieved Certificates Section */}
         <div className="profile-card">
           <div className="profile-card-header">
-            <h2 className="profile-section-title">Achieved Certificates</h2>
-            <p className="profile-subtitle">Your course completion certificates</p>
+            <div>
+              <h2 className="profile-section-title">Achieved Certificates</h2>
+              <p className="profile-subtitle">Your course completion certificates</p>
+            </div>
           </div>
 
           {loadingCertificates ? (

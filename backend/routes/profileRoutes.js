@@ -29,6 +29,47 @@ router.get('/', requireAuth, async (req, res) => {
     
     const userData = user.toJSON();
     
+    // Calculate additional stats from sessions and certificates
+    let modulesCompleted = 0;
+    let topicsCompleted = 0;
+    
+    try {
+      const sessions = await Session.find({ userId: req.userId }).lean();
+      
+      // Count modules completed (modules with status 'passed')
+      if (sessions && sessions.length > 0) {
+        sessions.forEach(session => {
+          if (session.plan && Array.isArray(session.plan)) {
+            const passedModules = session.plan.filter(module => module && module.status === 'passed');
+            modulesCompleted += passedModules.length;
+          }
+        });
+      }
+      
+      // Count topics completed using certificates (each certificate = one completed topic)
+      topicsCompleted = (user.certificates && Array.isArray(user.certificates)) ? user.certificates.length : 0;
+      
+      logger.info({
+        requestId: req.requestId,
+        userId: req.userId,
+        sessionsCount: sessions ? sessions.length : 0,
+        modulesCompleted,
+        topicsCompleted,
+        certificatesCount: user.certificates ? user.certificates.length : 0,
+        gemsTotal: userData.stats?.gemsTotal || 0
+      }, 'Calculated user stats');
+    } catch (statsError) {
+      logger.error({
+        requestId: req.requestId,
+        userId: req.userId,
+        error: statsError.message,
+        stack: statsError.stack
+      }, 'Failed to calculate additional stats, using defaults');
+      // Use defaults (0) if calculation fails
+      modulesCompleted = 0;
+      topicsCompleted = (user.certificates && Array.isArray(user.certificates)) ? user.certificates.length : 0;
+    }
+    
     // Ensure mobile is included in the response
     const profileResponse = {
       name: userData.name,
@@ -37,11 +78,21 @@ router.get('/', requireAuth, async (req, res) => {
       ...userData.profile
     };
     
+    // Enhanced stats with calculated metrics
+    const enhancedStats = {
+      ...userData.stats,
+      modulesCompleted,
+      topicsCompleted
+    };
+    
     logger.info({
       requestId: req.requestId,
       userId: req.userId,
       profileFields: Object.keys(profileResponse),
-      hasMobile: 'mobile' in profileResponse
+      hasMobile: 'mobile' in profileResponse,
+      modulesCompleted,
+      topicsCompleted,
+      gemsTotal: userData.stats?.gemsTotal || 0
     }, 'Get profile');
     
     res.json({
@@ -49,7 +100,7 @@ router.get('/', requireAuth, async (req, res) => {
       data: {
         profile: profileResponse,
         preferences: userData.preferences,
-        stats: userData.stats
+        stats: enhancedStats
       }
     });
   } catch (error) {
@@ -775,6 +826,82 @@ router.post('/certificates/generate', requireAuth, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to generate certificate',
+      code: 'SERVER_ERROR'
+    });
+  }
+});
+
+/**
+ * POST /v1/profile/certificates/test
+ * Generate a test certificate for testing purposes (doesn't save to database)
+ */
+router.post('/certificates/test', requireAuth, async (req, res) => {
+  let filePath = null;
+  try {
+    const user = await User.findById(req.userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+    
+    logger.info({
+      requestId: req.requestId,
+      userId: req.userId
+    }, 'Starting test certificate generation');
+    
+    // Generate test certificate with dummy data - don't save to database
+    const result = await generateCertificatePDF({
+      userName: user.name || 'Test User',
+      topic: 'Swift Programming', // Use a realistic topic name
+      issuedAt: new Date()
+    });
+    
+    filePath = result.filePath;
+    
+    // Read the file and send it directly
+    const fileBuffer = await fsPromises.readFile(filePath);
+    
+    // Set headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Test_Certificate_${Date.now()}.pdf"`);
+    res.setHeader('Content-Length', fileBuffer.length);
+    
+    // Send the PDF file
+    res.send(fileBuffer);
+    
+    // Clean up the temporary file after sending
+    fsPromises.unlink(filePath).catch(err => {
+      logger.warn({ error: err.message, filePath }, 'Failed to delete temporary test certificate file');
+    });
+    
+    logger.info({
+      requestId: req.requestId,
+      userId: req.userId,
+      filePath
+    }, 'Test certificate generated and sent successfully');
+  } catch (error) {
+    logger.error({
+      requestId: req.requestId,
+      userId: req.userId,
+      error: error.message,
+      stack: error.stack,
+      filePath
+    }, 'Test certificate generation error');
+    
+    // Clean up file if it was created but error occurred
+    if (filePath) {
+      fsPromises.unlink(filePath).catch(err => {
+        logger.warn({ error: err.message, filePath }, 'Failed to delete error certificate file');
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to generate test certificate',
       code: 'SERVER_ERROR'
     });
   }

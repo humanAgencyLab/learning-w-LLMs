@@ -113,7 +113,7 @@ function ResetPassword() {
         {/* Logo and Title */}
         <div className="resetpassword-header">
           <img
-            src="/logo.png"
+            src="/icons/logo.svg"
             alt="AI Study Assistant Logo"
             className="resetpassword-logo"
           />

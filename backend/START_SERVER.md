@@ -31,8 +31,8 @@ MONGODB_URI=mongodb://localhost:27017/learning-w-llms
 
 # Recommended (will use defaults if not set)
 JWT_SECRET=your_jwt_secret_here
-JWT_ACCESS_EXPIRES_IN=15m
-JWT_REFRESH_EXPIRES_IN=7d
+JWT_ACCESS_EXPIRES_IN=2h  # Default: 2 hours (can be adjusted: 15m, 30m, 1h, 2h, etc.)
+JWT_REFRESH_EXPIRES_IN=7d  # Default: 7 days
 ```
 
 ## 🔍 If Server Won't Start

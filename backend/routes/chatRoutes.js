@@ -591,6 +591,127 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
         }
       }
       
+      // Handle revision mode - after quiz completion, only allow restart commands
+      if (session.mode === 'reviewing' && session.phase === 'feedback') {
+        // Check if message is a restart command
+        const isRestartCommand = typeof userMessage === 'string' && 
+          /^\s*(restart\s+revision|restart|start\s+revision|revision)\s*$/i.test(userMessage.trim());
+        
+        if (!isRestartCommand) {
+          // User sent a message that's not a restart command - show generic message
+          const revisionTopic = session.topic || 'this topic';
+          const genericMessage = `This thread is only for revision of "${revisionTopic}". To revise again, say "restart revision".`;
+          
+          const userMessageObj = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: userMessage,
+            timestamp: new Date(),
+            metadata: { type: 'chat', tokensIn: userMessage.length, intent: 'non_restart_after_revision_quiz', phaseAtSend: session.phase }
+          };
+          
+          session.messages.push(userMessageObj);
+          
+          const assistantMessageObj = {
+            id: `msg_${Date.now() + 1}`,
+            role: 'assistant',
+            content: genericMessage,
+            timestamp: new Date(),
+            metadata: { type: 'system', tokensOut: genericMessage.length, phaseAtSend: session.phase }
+          };
+          
+          session.messages.push(assistantMessageObj);
+          await session.save();
+          
+          return res.json({
+            success: true,
+            data: {
+              message: genericMessage,
+              tokensIn: userMessage.length,
+              tokensOut: genericMessage.length,
+              hadCheckInReply: false,
+              followedUpOutstanding: false,
+              phase: session.phase
+            }
+          });
+        } else {
+          // Handle restart revision command - automatically start quiz with thread's original topic
+          const revisionTopic = session.topic || 'the topic';
+          
+          if (!revisionTopic || revisionTopic.trim().length === 0) {
+            // Fallback if no topic found
+            session.phase = 'pre';
+            const restartMessage = `Revision quiz restarted. Please enter the topic you'd like to revise.`;
+            
+            const userMessageObj = {
+              id: `msg_${Date.now()}`,
+              role: 'user',
+              content: userMessage,
+              timestamp: new Date(),
+              metadata: { type: 'chat', tokensIn: userMessage.length, intent: 'restart_revision', phaseAtSend: session.phase }
+            };
+            
+            session.messages.push(userMessageObj);
+            
+            const assistantMessageObj = {
+              id: `msg_${Date.now() + 1}`,
+              role: 'assistant',
+              content: restartMessage,
+              timestamp: new Date(),
+              metadata: { type: 'system', tokensOut: restartMessage.length, phaseAtSend: session.phase }
+            };
+            
+            session.messages.push(assistantMessageObj);
+            await session.save();
+            
+            return res.json({
+              success: true,
+              data: {
+                message: restartMessage,
+                tokensIn: userMessage.length,
+                tokensOut: restartMessage.length,
+                hadCheckInReply: false,
+                followedUpOutstanding: false,
+                phase: session.phase
+              }
+            });
+          }
+          
+          // Reset phase and clear previous revision attempts
+          session.phase = 'quizzing';
+          session.meta = session.meta || {};
+          // Remove any previous revision quiz attempts for a clean restart
+          session.quizAttempts = session.quizAttempts.filter(attempt => !attempt.isRevision);
+          
+          const userMessageObj = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: userMessage,
+            timestamp: new Date(),
+            metadata: { type: 'chat', tokensIn: userMessage.length, intent: 'restart_revision', phaseAtSend: session.phase }
+          };
+          
+          session.messages.push(userMessageObj);
+          await session.save();
+          
+          // Return response that triggers automatic quiz start
+          return res.json({
+            success: true,
+            data: {
+              message: `I'll generate a revision quiz for "${revisionTopic}".`,
+              nextAction: 'START_REVISION_QUIZ',
+              topic: revisionTopic.trim(),
+              isRevision: true,
+              tokensIn: userMessage.length,
+              tokensOut: 0,
+              hadCheckInReply: false,
+              followedUpOutstanding: false,
+              phase: session.phase
+            }
+          });
+        }
+      }
+      
       // Handle "start" message - move to next module's first milestone (if passed)
       // NOTE: If quiz was passed, activeModuleId was already advanced during quiz submission
       // So we need to check if we're already on the next module before advancing

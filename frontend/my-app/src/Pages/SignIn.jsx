@@ -54,7 +54,7 @@ function SignIn() {
         {/* Logo and Title */}
         <div className="signin-header">
           <img
-            src="/logo.png"
+            src="/icons/logo.svg"
             alt="AI Study Assistant Logo"
             className="signin-logo"
           />

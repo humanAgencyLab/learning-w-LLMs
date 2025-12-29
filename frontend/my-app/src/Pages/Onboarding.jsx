@@ -155,7 +155,7 @@ function Onboarding() {
       <div className="onboarding-modal">
         {/* Header */}
         <div className="onboarding-header">
-          <img src="/logo.png" alt="AI Study Assistant" className="onboarding-logo" />
+          <img src="/icons/logo.svg" alt="AI Study Assistant" className="onboarding-logo" />
           <p className="onboarding-brand">AI Study Assistant</p>
         </div>
 

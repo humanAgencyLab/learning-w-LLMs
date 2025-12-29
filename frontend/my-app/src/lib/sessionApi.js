@@ -1,13 +1,14 @@
 import { API_BASE } from '../config';
 import { getAuthHeaders } from './authApi';
 import { safeReadResponse, extractErrorMessage } from './responseUtils';
+import { interceptedFetch } from './apiInterceptor';
 
 export async function createSession(profile) {
   const url = `${API_BASE}/v1/sessions`;
   console.log('sessionApi.createSession - Making request to:', url);
   console.log('Payload:', profile || {});
   
-  const response = await fetch(url, {
+  const response = await interceptedFetch(url, {
     method: 'POST',
     headers: getAuthHeaders(),
     credentials: 'include',

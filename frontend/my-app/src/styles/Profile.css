@@ -310,6 +310,27 @@
   color: #030712;
 }
 
+/* Stats Display */
+.profile-stats-display {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 10px 20px;
+  background: #ffffff;
+  border: none;
+  border-radius: 12px;
+  min-height: 44px;
+}
+
+.profile-stats-value {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 24px;
+  color: #030712;
+  letter-spacing: -0.25px;
+}
+
 .profile-dropdown-menu {
   position: absolute;
   top: calc(100% + 4px);

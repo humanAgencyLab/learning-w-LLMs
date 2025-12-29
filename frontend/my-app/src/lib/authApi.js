@@ -195,6 +195,8 @@ export async function refreshToken() {
  * @returns {Promise<{user: Object}>}
  */
 export async function getCurrentUser() {
+  // Note: Don't use interceptedFetch here to avoid circular dependency
+  // This function is called during token refresh, so we handle 401s manually
   const response = await fetch(`${API_PREFIX}/me`, {
     method: 'GET',
     headers: getAuthHeaders(),

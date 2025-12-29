@@ -714,9 +714,10 @@ router.post('/v1/assessment/approve', requireAuth, addRequestId, async (req, res
           });
           
           const structureFixDirectives = [
-            '- Include all three sections with the exact headings: "**Step 1 – Context**", "**Step 2 – Teaching Content**", "**Step 3 – Assessment Question**".',
-            '- Step 2 must contain a focused explanation of the milestone topic between 150 and 200 words.',
-            '- Step 3 must contain exactly ONE question related to the milestone topic and must end with a question mark.',
+            '- Write three paragraphs separated by blank lines (DO NOT use step labels like "STEP 1:", "STEP 2:", "STEP 3:").',
+            '- First paragraph: Context (1-3 sentences) - "Thank you for approving the study plan. Let\'s begin our learning journey for **topic**. We\'ll start with **moduleName** module, focusing on **milestoneName**. [One sentence explaining why this milestone matters]." (Use **text** for bold formatting of topic, module, and milestone names).',
+            '- Second paragraph: Teaching content (150-200 words) with focused explanation of the milestone topic.',
+            '- Third paragraph: Exactly ONE question related to the milestone topic ending with a question mark.',
             '- Do not stop early; produce the full response before finishing.'
           ];
           

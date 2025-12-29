@@ -253,3 +253,44 @@ export async function downloadCertificate(certificateId) {
   return await response.blob();
 }
 
+/**
+ * Generate a test certificate for testing purposes
+ * Returns a blob that can be downloaded directly
+ * @returns {Promise<Blob>}
+ */
+export async function generateTestCertificate() {
+  // Import interceptedFetch dynamically to avoid circular dependencies
+  const { interceptedFetch } = await import('./apiInterceptor');
+  
+  const url = `${API_PREFIX}/certificates/test`;
+  console.log('[Test Certificate] Calling URL:', url);
+  console.log('[Test Certificate] API_PREFIX:', API_PREFIX);
+  console.log('[Test Certificate] API_BASE:', API_BASE);
+  
+  const response = await interceptedFetch(url, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    // For error responses, try to read as JSON first
+    let errorData;
+    try {
+      const text = await response.text();
+      try {
+        errorData = JSON.parse(text);
+      } catch {
+        errorData = text;
+      }
+    } catch {
+      errorData = null;
+    }
+    const errorMessage = extractErrorMessage(response, 'Failed to generate test certificate', errorData);
+    throw new Error(errorMessage);
+  }
+
+  // Return the PDF blob directly
+  return await response.blob();
+}
+

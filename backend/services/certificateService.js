@@ -72,7 +72,7 @@ async function generateCertificatePDF({ userName, topic, issuedAt = new Date() }
       
       // Calculate center X position for content area
       const centerXPos = contentX + contentWidth / 2;
-      const maxTextWidth = contentWidth - 80; // Leave 40px margin on each side
+      const maxTextWidth = contentWidth - 120; // Leave 60px margin on each side for spacing
       
       // Helper function to center text
       const centerText = (text, fontSize, font, y, color) => {
@@ -85,87 +85,136 @@ async function generateCertificatePDF({ userName, topic, issuedAt = new Date() }
         return { x, width: textWidth };
       };
       
-      // Title - "CERTIFICATE OF COMPLETION"
-      centerText('CERTIFICATE OF COMPLETION', 42, 'Helvetica-Bold', contentY + 60, '#1e40af');
+      // Title - "CERTIFICATE OF COMPLETION" - moved up with font size 35
+      centerText('CERTIFICATE OF COMPLETION', 35, 'Helvetica-Bold', contentY + 70, '#1e40af');
       
       // Subtitle - "This is to certify that"
-      centerText('This is to certify that', 18, 'Helvetica', contentY + 140, '#475569');
+      // Equal spacing: 50pt between each line
+      centerText('This is to certify that', 18, 'Helvetica', contentY + 120, '#475569');
       
-      // User name (with decorative plus sign)
-      const nameY = contentY + 200;
-      const plusSize = 16;
-      const plusColor = '#cbd5e1';
-      
-      // Calculate name width first to position plus signs correctly
-      doc.fillColor('#1e40af')
-         .fontSize(38)
-         .font('Helvetica-Bold');
-      const nameWidth = doc.widthOfString(userName);
-      const nameStartX = centerXPos - nameWidth / 2;
-      
-      // Left decorative plus sign (positioned relative to name)
-      doc.fillColor(plusColor)
-         .fontSize(plusSize)
-         .font('Helvetica')
-         .text('+', nameStartX - 30, nameY + 5);
-      
-      // Right decorative plus sign
-      doc.text('+', nameStartX + nameWidth + 10, nameY + 5);
+      // User name - font size 30 (50pt gap from previous line)
+      const nameY = contentY + 160;
+      const nameFontSize = 30;
       
       // User name (bold, dark blue) - centered
       doc.fillColor('#1e40af')
-         .fontSize(38)
+         .fontSize(nameFontSize)
+         .font('Helvetica-Bold');
+      const nameWidth = doc.widthOfString(userName);
+      const nameStartX = centerXPos - nameWidth / 2;
+      doc.text(userName, nameStartX, nameY);
+      
+      // Course description - "has successfully completed the course" (50pt gap from name)
+      centerText('has successfully completed the course', 18, 'Helvetica', contentY + 210, '#475569');
+      
+      // Topic (purple color, bold) - font size 28 (50pt gap from previous line)
+      centerText(topic, 28, 'Helvetica-Bold', contentY + 260, '#9333ea');
+      
+      // Bottom section: Provided by (left), Logo (center), Date (right) - three columns
+      // Positioned with enough space below the course name to avoid overlap
+      // Course name is at contentY + 280 with 28pt font (~40pt height), logo is 60pt tall
+      // So we need: 280 + 40 (course name) + 50 (gap) = 370
+      const bottomSectionY = contentY + 370;
+      const sectionWidth = contentWidth / 3;
+      const leftSectionX = contentX;
+      const centerSectionX = contentX + sectionWidth;
+      const rightSectionX = contentX + (sectionWidth * 2);
+      
+      // Left section - "Provided by Study Assist"
+      doc.fillColor('#475569')
+         .fontSize(12)
+         .font('Helvetica')
+         .text('Provided by', leftSectionX + 30, bottomSectionY, {
+           width: sectionWidth - 60,
+           align: 'left'
+         });
+      doc.fillColor('#1e40af')
+         .fontSize(20)
          .font('Helvetica-Bold')
-         .text(userName, nameStartX, nameY);
+         .text('Study Assist', leftSectionX + 30, bottomSectionY + 18, {
+           width: sectionWidth - 60,
+           align: 'left'
+         });
       
-      // Course description - "has successfully completed the course"
-      centerText('has successfully completed the course', 18, 'Helvetica', contentY + 280, '#475569');
+      // Center section - Logo (PDFKit doesn't support SVG, so use PNG)
+      // Try multiple possible logo paths (prioritize PNG, then check build/public folders)
+      const possibleLogoPaths = [
+        path.join(__dirname, '../../frontend/my-app/public/logo.png'),
+        path.join(__dirname, '../../frontend/my-app/build/logo.png'),
+      ];
       
-      // Topic (purple color, bold) - centered
-      centerText(topic, 32, 'Helvetica-Bold', contentY + 330, '#9333ea');
+      let logoLoaded = false;
+      for (const logoPath of possibleLogoPaths) {
+        try {
+          if (fs.existsSync(logoPath)) {
+            const logoSize = 60;
+            const logoX = centerSectionX + sectionWidth/2 - logoSize/2;
+            const logoY = bottomSectionY;
+            doc.image(logoPath, logoX, logoY, { 
+              width: logoSize, 
+              height: logoSize,
+              fit: [logoSize, logoSize]
+            });
+            logoLoaded = true;
+            logger.info({ logoPath }, 'Logo loaded successfully for certificate');
+            break;
+          }
+        } catch (logoError) {
+          // Log error but continue to next path
+          logger.warn({ error: logoError.message, logoPath }, 'Failed to load logo, trying next path');
+          continue;
+        }
+      }
       
-      // Date
+      // Fallback to text logo if image not found
+      if (!logoLoaded) {
+        logger.warn('No logo image found, using text fallback');
+        const logoText = 'SA';
+        doc.fillColor('#1e40af')
+           .fontSize(42)
+           .font('Helvetica-Bold')
+           .text(logoText, centerSectionX + sectionWidth/2, bottomSectionY + 10, {
+             width: 60,
+             align: 'center'
+           });
+      }
+      
+      // Right section - Date
       const dateStr = issuedAt.toLocaleDateString('en-US', { 
         year: 'numeric', 
         month: 'long', 
         day: 'numeric' 
       });
-      const dateText = `Issued on ${dateStr}`;
-      centerText(dateText, 16, 'Helvetica', contentY + 400, '#475569');
-      
-      // Certificate ID (small, bottom) - centered
-      const certIdText = `Certificate ID: ${certificateId}`;
-      centerText(certIdText, 10, 'Helvetica', contentY + contentHeight - 50, '#94a3b8');
-      
-      // Decorative plus signs at corners
-      const cornerPlusSize = 20;
-      const cornerPlusColor = '#cbd5e1';
-      
-      // Top left corner plus
-      doc.fillColor(cornerPlusColor)
-         .fontSize(cornerPlusSize)
-         .text('+', {
-           x: contentX + 30,
-           y: contentY + 30
+      doc.fillColor('#475569')
+         .fontSize(12)
+         .font('Helvetica')
+         .text('Date', rightSectionX + 30, bottomSectionY, {
+           width: sectionWidth - 60,
+           align: 'right'
+         });
+      doc.fillColor('#475569')
+         .fontSize(14)
+         .font('Helvetica')
+         .text(dateStr, rightSectionX + 30, bottomSectionY + 18, {
+           width: sectionWidth - 60,
+           align: 'right'
          });
       
-      // Top right corner plus
-      doc.text('+', {
-        x: contentX + contentWidth - 50,
-        y: contentY + 30
-      });
+      // Certificate ID - centered below the three sections, within content area
+      // Position it properly below the logo and text sections with significant spacing
+      // Logo is 60pt tall, "Provided by"/"Date" text extends to ~bottomSectionY + 38
+      // Adding much more space to ensure no overlap
+      const certIdText = `Certificate ID: ${certificateId}`;
+      const logoBottom = bottomSectionY + 60; // Logo ends here (60pt tall)
+      const textBottom = bottomSectionY + 38; // Text sections end here (18pt spacing + 20pt font for "Study Assist")
+      const bottomSectionEnd = Math.max(logoBottom, textBottom); // Use the lower point
+      const certIdY = bottomSectionEnd + 100; // 100pt gap after bottom section to prevent overlap
+      // Ensure it's within content area bounds (contentY + contentHeight - 15pt margin from bottom)
+      const maxCertIdY = contentY + contentHeight - 15;
+      const finalCertIdY = Math.min(certIdY, maxCertIdY);
+      centerText(certIdText, 10, 'Helvetica', finalCertIdY, '#94a3b8');
       
-      // Bottom left corner plus
-      doc.text('+', {
-        x: contentX + 30,
-        y: contentY + contentHeight - 50
-      });
-      
-      // Bottom right corner plus
-      doc.text('+', {
-        x: contentX + contentWidth - 50,
-        y: contentY + contentHeight - 50
-      });
+      // Decorative plus signs removed as per user request
       
       doc.end();
       

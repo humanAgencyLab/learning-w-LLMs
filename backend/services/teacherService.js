@@ -194,6 +194,20 @@ const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validati
     return 'I apologize, but I encountered an issue generating a response. Please try again in a moment.';
   }
 
+  // Clean up any step labels that might have been included despite instructions
+  let cleanedContent = content;
+  // Remove step labels (case-insensitive, with or without bold/formatting)
+  cleanedContent = cleanedContent.replace(/\*\*?STEP\s*[123]:?\s*\*\*?/gi, '');
+  cleanedContent = cleanedContent.replace(/\*\*?Step\s*[123]:?\s*\*\*?/gi, '');
+  cleanedContent = cleanedContent.replace(/STEP\s*[123]:?\s*/gi, '');
+  cleanedContent = cleanedContent.replace(/Step\s*[123]:?\s*/gi, '');
+  // Remove section headers like "CONTEXT:", "TEACHING CONTENT:", "ASSESSMENT QUESTION:"
+  cleanedContent = cleanedContent.replace(/\*\*?(?:STEP\s*[123]\s*[-–—]?\s*)?(?:Context|CONTEXT|Teaching\s+Content|TEACHING\s+CONTENT|Assessment\s+Question|ASSESSMENT\s+QUESTION):?\s*\*\*?/gi, '');
+  // Clean up multiple blank lines
+  cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n');
+  // Trim whitespace
+  cleanedContent = cleanedContent.trim();
+
   // Validate response structure if validation context provided
   if (validationContext) {
     const { scenario, currentMilestone, nextMilestone } = validationContext;
@@ -214,7 +228,7 @@ const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validati
     }
   }
 
-  return content;
+  return cleanedContent;
 };
 
 module.exports = {

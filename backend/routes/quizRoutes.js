@@ -1069,9 +1069,12 @@ router.post('/v1/quiz/revision', requireAuth, addRequestId, async (req, res) => 
       });
     }
     
-    // Allow revision quiz generation even if phase is already 'quizzing' (set by chat route)
-    // This handles the case where chat route already set phase to quizzing
-    if (!['pre', 'quizzing'].includes(session.phase)) {
+    // Allow revision quiz generation from pre, quizzing, or feedback phases
+    // - 'pre': Initial quiz start
+    // - 'quizzing': Already in quiz (edge case)
+    // - 'feedback': Restarting/redoing the quiz after completion
+    // NOTE: This phase validation is REVISION-SPECIFIC. Study quiz endpoint (/v1/quiz/start) has separate validation.
+    if (!['pre', 'quizzing', 'feedback'].includes(session.phase)) {
       req.logger.warn('Session not in valid phase for revision quiz', { 
         sessionId, 
         phase: session.phase 
@@ -1079,9 +1082,19 @@ router.post('/v1/quiz/revision', requireAuth, addRequestId, async (req, res) => 
       return res.status(409).json({
         success: false,
         code: 'ILLEGAL_PHASE',
-        message: 'Revision quiz can only be generated in pre or quizzing phase',
+        message: 'Revision quiz can only be generated in pre, quizzing, or feedback phase',
         currentPhase: session.phase
       });
+    }
+    
+    // If coming from feedback phase (redo scenario), reset to quizzing and clear previous attempts
+    // NOTE: This logic is REVISION-SPECIFIC only. Study quiz logic in /v1/quiz/start remains unchanged.
+    if (session.phase === 'feedback') {
+      session.phase = 'quizzing';
+      // Remove any previous revision quiz attempts for a clean restart
+      // IMPORTANT: This only removes revision attempts (isRevision: true), preserving all study quiz attempts
+      session.quizAttempts = session.quizAttempts.filter(attempt => !attempt.isRevision);
+      req.logger.info('Resetting phase from feedback to quizzing for revision quiz restart', { sessionId });
     }
     
     // Generate revision quiz

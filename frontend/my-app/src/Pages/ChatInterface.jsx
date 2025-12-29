@@ -87,6 +87,11 @@ function ChatInterface() {
   const isActiveLearning = ['assessing', 'planning', 'learning', 'quizzing', 'feedback', 'completed'].includes(phase) || (phase === 'pre' && sessionMessages.length > 0);
   const hasMessages = sessionMessages.length > 0;
   
+  // Determine placeholder text based on mode
+  const chatPlaceholder = learningStyle === 'revision' 
+    ? 'What you want to revise...' 
+    : 'What you want to learn/study...';
+  
   // Debug logging
   console.log('ChatInterface render - sessionMessages:', sessionMessages);
   console.log('ChatInterface render - hasMessages:', hasMessages);
@@ -280,7 +285,7 @@ function ChatInterface() {
                 inputValue.trim() ? 'border-[#4e81ee]' : 'border-[#e6e7e8]'
               }`}>
                 <textarea
-                  placeholder="Ask anything..."
+                  placeholder={chatPlaceholder}
                   className="w-full resize-none border-none outline-none bg-transparent text-lg leading-[28px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.4px]"
                   style={{ minHeight: "28px" }}
                   value={inputValue}
@@ -494,31 +499,59 @@ function ChatInterface() {
                           } ${message.isError ? 'border-red-200 bg-red-50 text-red-700 p-4 rounded-2xl' : ''}`}
                         >
                           <div className={`leading-relaxed whitespace-pre-wrap ${
-                            message.role === 'user' ? 'text-sm' : 'text-base'
+message.role === 'user' ? 'text-sm' : 'text-base'
                           }`}>
                             {message.role === 'assistant' ? (
                               <div className="prose prose-sm max-w-none">
                                 {message.content.split('\n').map((line, lineIndex) => {
-                                  // Handle bold text formatting
-                                  if (line.startsWith('**') && line.endsWith('**')) {
+                                  // Handle bold text formatting (entire line)
+                                  if (line.trim().startsWith('**') && line.trim().endsWith('**') && line.trim().split('**').length === 3) {
                                     return (
                                       <div key={lineIndex} className="font-bold text-[#030712] mb-2">
-                                        {line.slice(2, -2)}
+                                        {line.trim().slice(2, -2)}
                                       </div>
                                     );
                                   }
+                                  // Handle inline bold formatting within text
+                                  const renderWithBold = (text) => {
+                                    const parts = [];
+                                    const regex = /\*\*([^*]+)\*\*/g;
+                                    let lastIndex = 0;
+                                    let match;
+                                    
+                                    while ((match = regex.exec(text)) !== null) {
+                                      // Add text before the bold
+                                      if (match.index > lastIndex) {
+                                        parts.push(text.substring(lastIndex, match.index));
+                                      }
+                                      // Add bold text
+                                      parts.push(
+                                        <strong key={match.index} className="font-semibold">
+                                          {match[1]}
+                                        </strong>
+                                      );
+                                      lastIndex = regex.lastIndex;
+                                    }
+                                    // Add remaining text
+                                    if (lastIndex < text.length) {
+                                      parts.push(text.substring(lastIndex));
+                                    }
+                                    
+                                    return parts.length > 0 ? parts : text;
+                                  };
+                                  
                                   // Handle bullet points
                                   if (line.startsWith('- ')) {
                                     return (
                                       <div key={lineIndex} className="ml-4 mb-1">
-                                        • {line.slice(2)}
+                                        • {renderWithBold(line.slice(2))}
                                       </div>
                                     );
                                   }
-                                  // Regular text
+                                  // Regular text with inline bold support
                                   return (
                                     <div key={lineIndex} className={lineIndex === 0 ? 'mb-2' : 'mb-1'}>
-                                      {line}
+                                      {renderWithBold(line)}
                                     </div>
                                   );
                                 })}
@@ -573,7 +606,7 @@ function ChatInterface() {
                     <div className="flex items-center gap-3 max-w-4xl mx-auto">
                       <div className="flex-1 relative">
                         <textarea
-                          placeholder="Ask anything..."
+                          placeholder={chatPlaceholder}
                           className="w-full resize-none rounded-[24px] border border-[#e6e7e8] bg-white p-4 pr-24 text-lg leading-[28px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.4px] focus:border-[#4e81ee] focus:outline-none"
                           style={{ minHeight: "56px", maxHeight: "120px" }}
                           value={inputValue}

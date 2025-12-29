@@ -11,7 +11,7 @@ function LeftNav() {
       {/* Header with logo */}
       <div className="nav-header">
         <div className="nav-logo">
-          <img src="/logo.png" alt="Study Assist" className="logo-img" />
+          <img src="/icons/logo.svg" alt="Study Assist" className="logo-img" />
           <span className="nav-title">Study Assist</span>
         </div>
       </div>

@@ -74,7 +74,7 @@ function SignUp() {
         {/* Logo and Title */}
         <div className="signup-header">
           <img
-            src="/logo.png"
+            src="/icons/logo.svg"
             alt="AI Study Assistant Logo"
             className="signup-logo"
           />

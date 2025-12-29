@@ -1,9 +1,10 @@
 import { API_BASE } from '../config';
 import { getAuthHeaders } from './authApi';
 import { safeReadResponse, extractErrorMessage } from './responseUtils';
+import { interceptedFetch } from './apiInterceptor';
 
 export async function startQuiz({ sessionId, moduleId }) {
-  const response = await fetch(`${API_BASE}/v1/quiz/start`, {
+  const response = await interceptedFetch(`${API_BASE}/v1/quiz/start`, {
     method: 'POST',
     headers: getAuthHeaders(),
     credentials: 'include',
@@ -24,7 +25,7 @@ export async function startQuiz({ sessionId, moduleId }) {
 }
 
 export async function submitQuiz({ sessionId, moduleId, answers }) {
-  const response = await fetch(`${API_BASE}/v1/quiz/submit`, {
+  const response = await interceptedFetch(`${API_BASE}/v1/quiz/submit`, {
     method: 'POST',
     headers: getAuthHeaders(),
     credentials: 'include',
@@ -46,7 +47,7 @@ export async function submitQuiz({ sessionId, moduleId, answers }) {
 }
 
 export async function startRevisionQuiz({ sessionId, topic }) {
-  const response = await fetch(`${API_BASE}/v1/quiz/revision`, {
+  const response = await interceptedFetch(`${API_BASE}/v1/quiz/revision`, {
     method: 'POST',
     headers: getAuthHeaders(),
     credentials: 'include',

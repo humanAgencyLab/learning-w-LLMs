@@ -51,7 +51,7 @@ function LandingPage() {
 
         {/* Logo Section */}
         <div className="logo-section">
-          <img src="/logo.png" alt="AI Study Assistant" className="logo-img" />
+          <img src="/icons/logo.svg" alt="AI Study Assistant" className="logo-img" />
         </div>
 
         {/* Hero Section */}
