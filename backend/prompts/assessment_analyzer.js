@@ -23,13 +23,34 @@ Your task:
    - Do they demonstrate comprehension of the key concepts?
    - Are there signs of confusion or misunderstanding?
    - Does the message indicate they don't understand or need help? (based on context and intent, not specific words)
+   - ⚠️⚠️⚠️ CRITICAL: If the student REPEATS the question (verbatim or near-verbatim), this is a CLARIFICATION REQUEST, not an answer
+   - ⚠️⚠️⚠️ CRITICAL: If the student gives a PARTIALLY CORRECT answer (correct but incomplete), recognize the correctness but note it needs more detail
    - If the message indicates confusion, lack of understanding, or a request for explanation → understood = false, recommendation = "clarify_again"
 
-CRITICAL: Use your understanding of natural language and intent. If the student's message indicates they don't understand, are confused, or need explanation (regardless of how they express it), you MUST set:
-- understood = false
-- recommendation = "clarify_again"
-- confidence = "high" (we're confident they don't understand)
-- reasoning = "Student's message indicates lack of understanding or need for explanation"
+CRITICAL DETECTION RULES:
+1. **Question Repetition Detection**: If the student's answer is the same as or very similar to the assessment question (repeating the question back), this is a CLARIFICATION REQUEST, not an answer attempt. Set:
+   - understood = false
+   - recommendation = "clarify_again"
+   - confidence = "high"
+   - reasoning = "Student repeated the question, indicating they don't understand and need clarification"
+
+2. **Incomplete but Correct Answer Detection**: If the student's answer is CORRECT but INCOMPLETE (e.g., "The int data type is used to store integer values" when a more detailed answer is expected), recognize the correctness:
+   - understood = true (they understand the concept)
+   - recommendation = "move_forward" (accept and move forward, or optionally "clarify_again" if you want to ask for more detail)
+   - confidence = "medium" to "high" (depending on how complete the answer is)
+   - reasoning = "Student demonstrates understanding but answer is brief. Consider accepting or asking for more detail."
+
+3. **Clarification Request Detection**: If the student's message indicates they don't understand, are confused, or need explanation (regardless of how they express it), you MUST set:
+   - understood = false
+   - recommendation = "clarify_again"
+   - confidence = "high" (we're confident they don't understand)
+   - reasoning = "Student's message indicates lack of understanding or need for explanation"
+
+4. **Wrong Answer Detection**: If the student's answer is incorrect or shows misunderstanding:
+   - understood = false
+   - recommendation = "clarify_again" (if first attempt) or "move_forward_anyway" (if second attempt)
+   - confidence = "high"
+   - reasoning = "Student's answer is incorrect or shows misunderstanding"
 
 Return ONLY valid JSON in this exact format:
 {
@@ -44,7 +65,13 @@ Rules:
 - If understood = false AND milestoneRetryCount = 0: Clarify and retry (max 1 retry)
 - If understood = false AND milestoneRetryCount >= 1: Move forward anyway (don't loop)
 
-Be fair but strict. A vague "yes" or "ok" without substance should generally be understood = false unless context clearly shows understanding.`;
+⚠️⚠️⚠️ ASSESSMENT GUIDELINES:
+- **Question Repetition**: Always treat as clarification request (understood = false, recommendation = "clarify_again")
+- **Incomplete but Correct**: Accept if the core concept is understood, even if brief. Only mark as "needs more detail" if the answer is too vague to confirm understanding.
+- **Vague Responses**: "yes", "ok", "I think so" without substance → understood = false unless context clearly shows understanding
+- **Partial Understanding**: If student shows partial understanding (correct on some aspects, wrong on others), evaluate based on whether they grasp the core concept. If core concept is understood → understood = true, otherwise → understood = false
+
+Be fair but accurate. Recognize when students understand the concept even if their answer is brief, but also identify when they're genuinely confused or don't understand.`;
 };
 
 const buildQuizFailureAnalysisPrompt = (quizResults, moduleMilestones) => {
