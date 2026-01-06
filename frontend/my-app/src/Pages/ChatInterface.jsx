@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Confetti from 'react-confetti';
 import QuizOverlay from '../components/quiz/QuizOverlay';
 import useSessionStore from '../state/sessionStore';
+import * as sessionApi from '../lib/sessionApi';
 
 function ChatInterface() {
   // Session store
@@ -25,11 +26,14 @@ function ChatInterface() {
     createSession,
     resumeSessionFromServer,
     clearError,
-    appendMessage
+    appendMessage,
+    startRevisionQuiz
   } = useSessionStore();
   const [inputValue, setInputValue] = useState('');
   const [modificationRequest, setModificationRequest] = useState('');
   const [showConfetti, setShowConfetti] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summary, setSummary] = useState(null);
 
   // Initialize session if none exists
   useEffect(() => {
@@ -78,7 +82,19 @@ function ChatInterface() {
     return () => {
       isMounted = false;
     };
-  }, []); // Only run once on mount
+  }, [sessionId, learningStyle]); // Re-run when sessionId or learningStyle changes
+  
+  // Also check for completed state when sessionId or phase changes (for when resuming from ChatHistory)
+  useEffect(() => {
+    if (sessionId && phase === 'completed' && plan && plan.length > 0 && plan.every(m => m.status === 'passed')) {
+      // Small delay to ensure state is fully synced
+      const timer = setTimeout(() => {
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 5000);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [sessionId, phase, plan]);
   
   // Determine UI state based on phase
   const isPreSurface = phase === 'pre' && sessionMessages.length === 0; // Only show pre-surface when there are no messages
@@ -86,11 +102,67 @@ function ChatInterface() {
   const isPlanning = phase === 'planning';
   const isActiveLearning = ['assessing', 'planning', 'learning', 'quizzing', 'feedback', 'completed'].includes(phase) || (phase === 'pre' && sessionMessages.length > 0);
   const hasMessages = sessionMessages.length > 0;
+  const isCompleted = phase === 'completed' && plan && plan.length > 0 && plan.every(m => m.status === 'passed');
   
   // Determine placeholder text based on mode
   const chatPlaceholder = learningStyle === 'revision' 
     ? 'What you want to revise...' 
     : 'What you want to learn/study...';
+  
+  // Handle Revision button click
+  const handleRevision = async () => {
+    if (!sessionId || !topic) {
+      setToast({ type: 'error', message: 'Session or topic not available' });
+      return;
+    }
+    
+    try {
+      // Start revision quiz WITHOUT changing the learning style/mode
+      // This is just a feature of a completed study topic, not a mode change
+      await startRevisionQuiz(topic);
+      setToast({ type: 'success', message: 'Starting revision quiz...' });
+    } catch (error) {
+      console.error('Failed to start revision:', error);
+      setToast({ type: 'error', message: error.message || 'Failed to start revision' });
+    }
+  };
+  
+  // Handle Summarize button click
+  const handleSummarize = async () => {
+    if (!sessionId) {
+      setToast({ type: 'error', message: 'Session not available' });
+      return;
+    }
+    
+    try {
+      setIsSummarizing(true);
+      const response = await sessionApi.summarizeSession(sessionId);
+      console.log('Summarize response:', response);
+      
+      // Handle different response structures
+      const summaryText = response?.data?.summary || response?.summary || response?.data?.data?.summary || 'Summary generated successfully';
+      
+      if (!summaryText || summaryText === 'Summary generated successfully.') {
+        throw new Error('No summary content received from server');
+      }
+      
+      setSummary(summaryText);
+      setToast({ type: 'success', message: 'Session summarized successfully' });
+      // Append summary as a system message
+      appendMessage({
+        role: 'system',
+        content: summaryText,
+        timestamp: Date.now(),
+        metadata: { summaryVersion: 1 }
+      });
+    } catch (error) {
+      console.error('Failed to summarize session:', error);
+      const errorMessage = error.message || 'Failed to generate summary';
+      setToast({ type: 'error', message: errorMessage });
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
   
   // Debug logging
   console.log('ChatInterface render - sessionMessages:', sessionMessages);
@@ -249,6 +321,8 @@ function ChatInterface() {
       setShowConfetti(true);
       const timer = setTimeout(() => setShowConfetti(false), 5000);
       return () => clearTimeout(timer);
+    } else {
+      setShowConfetti(false);
     }
   }, [phase, plan]);
 
@@ -359,7 +433,18 @@ function ChatInterface() {
                 
                 <button
                   type="button"
-                  onClick={() => setLearningStyle("revision")}
+                  onClick={async () => {
+                    // Set mode first
+                    setLearningStyle("revision");
+                    // Clear current session when switching to revision mode
+                    // A new session will be created when the user sends their first message
+                    // This ensures revision sessions are separate from study sessions
+                    const { sessionId: currentSessionId } = useSessionStore.getState();
+                    if (currentSessionId) {
+                      // Clear current session - new one will be created on first message
+                      useSessionStore.setState({ sessionId: null, phase: 'pre', topic: '', chatTitle: '', plan: [], messages: [] });
+                    }
+                  }}
                   className={`flex gap-3 items-center justify-center px-5 py-2.5 rounded-lg border bg-white transition-all duration-200 ${
                     learningStyle === "revision" 
                       ? "border-[#4e81ee] text-[#4e81ee]" 
@@ -600,57 +685,81 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                   </div>
                 </div>
 
-                {/* Composer - Fixed at bottom when there are messages (hide in planning phase) */}
-                {!isViewOnly && !isPlanning && (
+                {/* Completed Topic Actions - Show Revision and Summarize buttons when topic is completed */}
+                {isCompleted ? (
                   <div className="flex-shrink-0 bg-[#f7f8f8] p-6">
-                    <div className="flex items-center gap-3 max-w-4xl mx-auto">
-                      <div className="flex-1 relative">
-                        <textarea
-                          placeholder={chatPlaceholder}
-                          className="w-full resize-none rounded-[24px] border border-[#e6e7e8] bg-white p-4 pr-24 text-lg leading-[28px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.4px] focus:border-[#4e81ee] focus:outline-none"
-                          style={{ minHeight: "56px", maxHeight: "120px" }}
-                          value={inputValue}
-                          onChange={(e) => setInputValue(e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
-                          disabled={loading}
-                        />
-                        
-                        {/* Model Selector Dropdown - Inside textarea */}
-                        <div className="absolute bottom-[18px] right-[72px] flex items-center gap-1">
-                          <select 
-                            value={model}
-                            onChange={(e) => setModel(e.target.value)}
-                            className="bg-transparent border-none outline-none text-base leading-[21px] text-[#424855] tracking-[-0.25px] cursor-pointer appearance-none font-normal"
-                          >
-                            <option value="llama">Llama</option>
-                            <option value="gpt">ChatGPT</option>
-                          </select>
-                          <svg className="w-3 h-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </div>
-                        
-                        {/* Send Button - Inside textarea */}
-                        <button 
-                          className={`absolute bottom-[8px] right-[8px] flex h-12 w-12 items-center justify-center rounded-[50px] transition-all duration-200 ${
-                            inputValue.trim() && !loading
-                              ? 'bg-[#4e81ee] hover:bg-blue-600' 
-                              : 'bg-gray-300 cursor-not-allowed'
-                          }`}
-                          onClick={handleSubmit} 
-                          disabled={loading || !inputValue.trim()}
-                        >
-                          <img 
-                            src="/icons/send-arrow.svg" 
-                            alt="send" 
-                            className={`w-6 h-6 ${
-                              inputValue.trim() ? 'filter-none' : 'filter grayscale opacity-50'
-                            }`}
-                          />
-                        </button>
-                      </div>
+                    <div className="flex items-center justify-center gap-4 max-w-4xl mx-auto">
+                      <button
+                        onClick={handleRevision}
+                        disabled={loading || !sessionId || !topic}
+                        className="flex items-center gap-2 px-6 py-3 bg-[#4e81ee] text-white rounded-[24px] font-medium text-base hover:bg-blue-600 transition-all duration-200 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      >
+                        <span>🔄</span>
+                        <span>Revision</span>
+                      </button>
+                      <button
+                        onClick={handleSummarize}
+                        disabled={isSummarizing || !sessionId}
+                        className="flex items-center gap-2 px-6 py-3 bg-[#10b981] text-white rounded-[24px] font-medium text-base hover:bg-green-600 transition-all duration-200 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      >
+                        <span>📝</span>
+                        <span>{isSummarizing ? 'Summarizing...' : 'Summarize'}</span>
+                      </button>
                     </div>
                   </div>
+                ) : (
+                  /* Composer - Fixed at bottom when there are messages (hide in planning phase) */
+                  !isViewOnly && !isPlanning && (
+                    <div className="flex-shrink-0 bg-[#f7f8f8] p-6">
+                      <div className="flex items-center gap-3 max-w-4xl mx-auto">
+                        <div className="flex-1 relative">
+                          <textarea
+                            placeholder={chatPlaceholder}
+                            className="w-full resize-none rounded-[24px] border border-[#e6e7e8] bg-white p-4 pr-24 text-lg leading-[28px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.4px] focus:border-[#4e81ee] focus:outline-none"
+                            style={{ minHeight: "56px", maxHeight: "120px" }}
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
+                            disabled={loading}
+                          />
+                          
+                          {/* Model Selector Dropdown - Inside textarea */}
+                          <div className="absolute bottom-[18px] right-[72px] flex items-center gap-1">
+                            <select 
+                              value={model}
+                              onChange={(e) => setModel(e.target.value)}
+                              className="bg-transparent border-none outline-none text-base leading-[21px] text-[#424855] tracking-[-0.25px] cursor-pointer appearance-none font-normal"
+                            >
+                              <option value="llama">Llama</option>
+                              <option value="gpt">ChatGPT</option>
+                            </select>
+                            <svg className="w-3 h-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                          
+                          {/* Send Button - Inside textarea */}
+                          <button 
+                            className={`absolute bottom-[8px] right-[8px] flex h-12 w-12 items-center justify-center rounded-[50px] transition-all duration-200 ${
+                              inputValue.trim() && !loading
+                                ? 'bg-[#4e81ee] hover:bg-blue-600' 
+                                : 'bg-gray-300 cursor-not-allowed'
+                            }`}
+                            onClick={handleSubmit} 
+                            disabled={loading || !inputValue.trim()}
+                          >
+                            <img 
+                              src="/icons/send-arrow.svg" 
+                              alt="send" 
+                              className={`w-6 h-6 ${
+                                inputValue.trim() ? 'filter-none' : 'filter grayscale opacity-50'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
                 )}
               </>
             ) : null}

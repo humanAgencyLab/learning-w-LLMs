@@ -167,6 +167,53 @@
   white-space: nowrap;
 }
 
+.favorites-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.favorites-action-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+}
+
+.favorites-action-button:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+.favorites-action-button.favorites-delete-button:hover {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+.favorites-edit-input {
+  flex: 1;
+  border: 1px solid #4e81ee;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #111827;
+  background: #ffffff;
+  outline: none;
+}
+
+.favorites-edit-input:focus {
+  border-color: #3b6fd8;
+  box-shadow: 0 0 0 2px rgba(78, 129, 238, 0.1);
+}
+
 .favorites-bookmark-button {
   background: none;
   border: none;

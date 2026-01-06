@@ -15,6 +15,7 @@ function ChatHistory() {
   const [editTitle, setEditTitle] = useState('');
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [modeFilter, setModeFilter] = useState('all'); // 'all', 'study', 'revision'
+  const [completionFilter, setCompletionFilter] = useState('all'); // 'all', 'completed', 'uncompleted' (only for study mode)
   const navigate = useNavigate();
   const { resumeSessionFromServer, startRevisionQuiz } = useSessionStore();
 
@@ -247,12 +248,28 @@ function ChatHistory() {
     );
   }
 
-  // Get filtered sessions based on mode filter
+  // Check if a study session is completed
+  const isSessionCompleted = (session) => {
+    // Session is completed if phase is 'completed' and all modules are passed
+    if (session.phase !== 'completed') {
+      return false;
+    }
+    // Check if plan exists and all modules are passed
+    if (session.plan && Array.isArray(session.plan) && session.plan.length > 0) {
+      return session.plan.every(m => m.status === 'passed');
+    }
+    // If no plan but phase is completed, consider it completed
+    return true;
+  };
+
+  // Get filtered sessions based on mode filter and completion filter
   const getFilteredSessions = () => {
+    let sessionsToFilter = [];
+    
     if (modeFilter === 'study') {
-      return sessions.study || [];
+      sessionsToFilter = sessions.study || [];
     } else if (modeFilter === 'revision') {
-      return sessions.revision || [];
+      sessionsToFilter = sessions.revision || [];
     } else {
       // Combine both, maintaining date grouping
       const combined = {};
@@ -264,6 +281,28 @@ function ChatHistory() {
       });
       return Object.values(combined);
     }
+    
+    // Apply completion filter only for study mode
+    if (modeFilter === 'study' && completionFilter !== 'all') {
+      const filtered = sessionsToFilter.map(group => {
+        const filteredSessions = (group.sessions || []).filter(session => {
+          const completed = isSessionCompleted(session);
+          if (completionFilter === 'completed') {
+            return completed;
+          } else {
+            return !completed;
+          }
+        });
+        return {
+          ...group,
+          sessions: filteredSessions
+        };
+      }).filter(group => group.sessions && group.sessions.length > 0); // Remove empty groups
+      console.log('Filtered sessions:', { completionFilter, filteredCount: filtered.length, totalGroups: sessionsToFilter.length });
+      return filtered;
+    }
+    
+    return sessionsToFilter;
   };
 
   const filteredSessions = getFilteredSessions();
@@ -287,23 +326,56 @@ function ChatHistory() {
         <div className="chat-history-mode-filters">
           <button
             className={`chat-history-mode-filter ${modeFilter === 'all' ? 'active' : ''}`}
-            onClick={() => setModeFilter('all')}
+            onClick={() => {
+              setModeFilter('all');
+              setCompletionFilter('all'); // Reset completion filter when switching modes
+            }}
           >
             All
           </button>
           <button
             className={`chat-history-mode-filter ${modeFilter === 'study' ? 'active' : ''}`}
-            onClick={() => setModeFilter('study')}
+            onClick={() => {
+              setModeFilter('study');
+              setCompletionFilter('all'); // Reset completion filter when switching modes
+            }}
           >
             Study
           </button>
           <button
             className={`chat-history-mode-filter ${modeFilter === 'revision' ? 'active' : ''}`}
-            onClick={() => setModeFilter('revision')}
+            onClick={() => {
+              setModeFilter('revision');
+              setCompletionFilter('all'); // Reset completion filter when switching modes
+            }}
           >
             Revision
           </button>
         </div>
+
+        {/* Completion Filter Toggle - Only show for Study mode */}
+        {modeFilter === 'study' && (
+          <div className="chat-history-completion-filters">
+            <button
+              className={`chat-history-completion-filter ${completionFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setCompletionFilter('all')}
+            >
+              All
+            </button>
+            <button
+              className={`chat-history-completion-filter ${completionFilter === 'completed' ? 'active' : ''}`}
+              onClick={() => setCompletionFilter('completed')}
+            >
+              Completed
+            </button>
+            <button
+              className={`chat-history-completion-filter ${completionFilter === 'uncompleted' ? 'active' : ''}`}
+              onClick={() => setCompletionFilter('uncompleted')}
+            >
+              In Progress
+            </button>
+          </div>
+        )}
 
         {/* Search Bar */}
         <div className="chat-history-search-wrapper">
@@ -361,11 +433,17 @@ function ChatHistory() {
               {/* Search Results */}
               {searchResults.length > 0 ? (
                 <div className="chat-history-search-results">
-                  {searchResults.map((group, index) => (
+                      {searchResults.map((group, index) => (
                     <div key={index} className="chat-history-search-result-group">
                       {group.sessions.map((session) => {
                         const sessionId = session.id || session._id;
-                        const displayTitle = session.chatTitle || session.topic || 'Untitled Chat';
+                        // Remove "Revision: " prefix from chatTitle for revision sessions
+                        let displayTitle = session.chatTitle || session.topic || 'Untitled Chat';
+                        if (session.mode === 'reviewing' || session.mode === 'revision') {
+                          displayTitle = displayTitle.replace(/^Revision:\s*/i, '');
+                        }
+                        // Capitalize first letter
+                        displayTitle = displayTitle.charAt(0).toUpperCase() + displayTitle.slice(1);
                         return (
                           <div
                             key={sessionId}
@@ -425,7 +503,13 @@ function ChatHistory() {
                 {group.sessions.map((session) => {
                   const sessionId = session.id || session._id;
                   const isFavorite = session.isFavorite || false;
-                  const displayTitle = session.chatTitle || session.topic || 'Untitled Chat';
+                  // Remove "Revision: " prefix from chatTitle for revision sessions
+                  let displayTitle = session.chatTitle || session.topic || 'Untitled Chat';
+                  if (session.mode === 'reviewing' || session.mode === 'revision') {
+                    displayTitle = displayTitle.replace(/^Revision:\s*/i, '');
+                  }
+                  // Capitalize first letter
+                  displayTitle = displayTitle.charAt(0).toUpperCase() + displayTitle.slice(1);
                   const isHovered = hoveredSessionId === sessionId;
                   const isEditing = editingSessionId === sessionId;
                   return (

@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import useSessionStore from '../../state/sessionStore';
 
 function TopBar({ onStartNewChat }) {
-  const { phase, chatTitle, sessionId } = useSessionStore();
+  const { phase, chatTitle, sessionId, mode } = useSessionStore();
   const location = useLocation();
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   
@@ -23,9 +23,42 @@ function TopBar({ onStartNewChat }) {
     setShowConfirmDialog(false);
   };
 
+  // Capitalize all words in a string (title case)
+  const toTitleCase = (str) => {
+    if (!str) return str;
+    // Remove "Revision: " prefix if present
+    let cleaned = str.replace(/^Revision:\s*/i, '');
+    // Capitalize first letter of each word
+    return cleaned.split(' ').map(word => {
+      if (word.length === 0) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }).join(' ');
+  };
+
   // Only show title when on /chat route and in active learning phases
   const isChatRoute = location.pathname === '/chat';
   const showTitle = isChatRoute && ['learning', 'quizzing', 'feedback', 'completed'].includes(phase);
+  
+  // Determine title text based on mode
+  const getTitleText = () => {
+    if (!chatTitle) return null;
+    const isRevision = mode === 'reviewing' || mode === 'revision';
+    const titleCaseTitle = toTitleCase(chatTitle);
+    
+    if (isRevision) {
+      return (
+        <span>
+          You are <strong>Revisioning</strong>: {titleCaseTitle} 💬
+        </span>
+      );
+    } else {
+      return (
+        <span>
+          You are <strong>Studying</strong>: {titleCaseTitle} 💪
+        </span>
+      );
+    }
+  };
 
   return (
     <>
@@ -34,9 +67,7 @@ function TopBar({ onStartNewChat }) {
           {showTitle && chatTitle ? (
             <div className="flex items-center gap-2">
                   <img src="/icons/studying.svg" alt="graduation cap" className="h-6 w-6" />
-              <span>
-                You are <strong>Studying</strong> {chatTitle} 💪
-              </span>
+              {getTitleText()}
             </div>
           ) : null}
         </div>

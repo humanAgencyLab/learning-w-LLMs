@@ -201,3 +201,23 @@ export async function updateSessionNotes(sessionId, notes) {
 
   return data;
 }
+
+export async function summarizeSession(sessionId) {
+  const response = await interceptedFetch(`${API_BASE}/v1/sessions/${sessionId}/summarize`, {
+    method: 'POST',
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json'
+    },
+    credentials: 'include',
+  });
+
+  const data = await safeReadResponse(response);
+  
+  if (!response.ok) {
+    const errorMessage = extractErrorMessage(response, 'Failed to summarize session', data);
+    throw new Error(errorMessage);
+  }
+
+  return data;
+}

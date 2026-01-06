@@ -8,15 +8,9 @@ const User = require('../models/User');
 const { createSessionSchema, resumeSessionSchema } = require('../validation/sessionValidation');
 const { requireAuth, requireOwnership } = require('../middleware/auth');
 
-// Initialize Pino logger
+// Initialize Pino logger (no transport in production - pino-pretty is dev-only)
 const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true
-    }
-  }
+  level: process.env.LOG_LEVEL || 'info'
 });
 
 // Middleware to add request ID to logger
@@ -91,11 +85,16 @@ router.get('/v1/sessions', requireAuth, addRequestId, async (req, res) => {
       status 
     });
     
-    // Build query - only sessions with plan and chatTitle (saved chats)
+    // Build query - only sessions with chatTitle (saved chats)
+    // For study sessions: must have a plan
+    // For revision sessions: may not have a plan (they're just quizzes)
     const query = { 
       userId: req.userId,
       chatTitle: { $ne: '', $exists: true }, // Must have a chat title
-      'plan.0': { $exists: true } // Must have at least one module in plan
+      $or: [
+        { 'plan.0': { $exists: true } }, // Study sessions must have a plan
+        { mode: 'reviewing' } // Revision sessions don't need a plan
+      ]
     };
     
     // Filter by favorites if requested
@@ -270,6 +269,309 @@ router.post('/v1/sessions', requireAuth, addRequestId, async (req, res) => {
       error: 'Internal server error',
       message: process.env.NODE_ENV === 'development' ? error.message : undefined,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+/**
+ * POST /v1/sessions/:id/summarize
+ * Generate a summary of the completed learning session
+ * NOTE: This route must be defined BEFORE /v1/sessions/:id to ensure proper matching
+ */
+router.post('/v1/sessions/:id/summarize', requireAuth, addRequestId, requireOwnership(async (req) => {
+  req.logger.info('requireOwnership check for summarize', { 
+    sessionId: req.params.id,
+    userId: req.userId 
+  });
+  const session = await Session.findById(req.params.id);
+  if (!session) {
+    req.logger.warn('Session not found in requireOwnership', { sessionId: req.params.id });
+    return null;
+  }
+  req.logger.info('Session found in requireOwnership', { 
+    sessionId: session._id,
+    sessionUserId: session.userId,
+    reqUserId: req.userId
+  });
+  return session?.userId;
+}), async (req, res) => {
+  const startTime = Date.now();
+  
+  req.logger.info('Summarize route handler called', { 
+    sessionId: req.params.id,
+    method: req.method,
+    path: req.path,
+    url: req.url
+  });
+  
+  try {
+    req.logger.info('Starting summarize process', { sessionId: req.params.id });
+    
+    const session = await Session.findById(req.params.id);
+    
+    if (!session) {
+      req.logger.warn('Session not found for summarize', { sessionId: req.params.id });
+      return res.status(404).json({
+        success: false,
+        error: 'Session not found',
+        code: 'NOT_FOUND'
+      });
+    }
+    
+    req.logger.info('Session found', { 
+      sessionId: session._id,
+      phase: session.phase,
+      messageCount: (session.messages || []).length,
+      planCount: (session.plan || []).length
+    });
+    
+    // Only allow summarization for completed sessions
+    if (session.phase !== 'completed') {
+      req.logger.warn('Session not completed', { 
+        sessionId: session._id,
+        phase: session.phase 
+      });
+      return res.status(400).json({
+        success: false,
+        error: 'Session must be completed to generate summary',
+        code: 'INVALID_PHASE',
+        currentPhase: session.phase
+      });
+    }
+    
+    // Get all messages from the session
+    const messages = session.messages || [];
+    const plan = session.plan || [];
+    
+    req.logger.info('Processing messages and plan', {
+      messageCount: messages.length,
+      planCount: plan.length
+    });
+    
+    // Build summary prompt
+    const { getGroqClient } = require('../lib/llmClient');
+    let groqClient;
+    try {
+      req.logger.info('Initializing Groq client');
+      groqClient = getGroqClient();
+      req.logger.info('Groq client initialized successfully');
+    } catch (error) {
+      req.logger.error('Failed to get Groq client', { 
+        error: error.message,
+        stack: error.stack,
+        errorName: error.name
+      });
+      return res.status(500).json({
+        success: false,
+        error: `LLM service unavailable: ${error.message}`,
+        code: 'LLM_UNAVAILABLE'
+      });
+    }
+    
+    const planSummary = plan.length > 0 
+      ? plan.map((m, i) => {
+          const milestones = (m.milestones || []).map(mil => mil.text || mil).join(', ');
+          const status = m.status === 'passed' ? 'Completed' : m.status || 'Not started';
+          return `${i + 1}. ${m.title || 'Untitled Module'} (${status})
+   Milestones: ${milestones || 'No milestones'}`;
+        }).join('\n\n')
+      : 'No learning plan available.';
+    
+    let messagesSummary;
+    try {
+      messagesSummary = messages
+        .filter(msg => {
+          // Filter out system messages that are summaries, and ensure message has content
+          if (!msg || !msg.role) return false;
+          if (msg.role === 'system' && msg.metadata?.summaryVersion) {
+            return false;
+          }
+          return msg.content && (typeof msg.content === 'string' || typeof msg.content === 'number');
+        })
+        .slice(-20) // Last 20 messages for context
+        .map(msg => {
+          try {
+            const role = msg.role === 'user' ? 'User' : 'Assistant';
+            const content = String(msg.content || '').substring(0, 200);
+            return `${role}: ${content}`;
+          } catch (mapError) {
+            req.logger.warn('Error processing message', {
+              messageId: msg.id,
+              error: mapError.message
+            });
+            return null;
+          }
+        })
+        .filter(msg => msg && msg.length > 0) // Remove null and empty messages
+        .join('\n\n');
+      
+      if (!messagesSummary || messagesSummary.trim().length === 0) {
+        if (messages.length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'No messages found in session to summarize',
+            code: 'NO_MESSAGES'
+          });
+        }
+        // If we have messages but they're all filtered out, use a default message
+        messagesSummary = 'No conversation content available for summary.';
+      }
+    } catch (processError) {
+      req.logger.error('Error processing messages', {
+        error: processError.message,
+        stack: processError.stack
+      });
+      throw new Error(`Failed to process messages: ${processError.message}`);
+    }
+    
+    const summaryPrompt = `You are creating a concise study guide summary of a completed learning session. Focus on summarizing the actual content and concepts learned, not the learning process.
+
+Topic: ${session.topic}
+Learning Plan:
+${planSummary}
+
+Key Conversations:
+${messagesSummary}
+
+Create a brief, content-focused summary that:
+1. Briefly explains what the topic is about (2-3 sentences)
+2. For each module, list the key concepts and milestones covered (be specific about what was learned)
+3. Keep it concise and study-guide style - focus on the actual knowledge/content, not the learning journey
+
+Format:
+- Start with a brief topic overview
+- Then list each module with its key concepts and milestones
+- Keep it under 300 words total
+- Write in a clear, educational tone like a study guide
+
+Example format:
+"Python Basics is a programming language known for its simple syntax and readability. It uses indentation to define code blocks and supports multiple data types.
+
+Module 1: Introduction to Python Basics
+- Basic syntax and indentation rules
+- Variables and data types (strings, numbers, booleans)
+- Operators (arithmetic, comparison, logical)
+- Control structures (if/else, for/while loops)
+
+Module 2: Python Fundamentals
+- Functions: defining with def keyword, parameters, return values
+- Data structures: Lists (mutable), Tuples (immutable), Dictionaries (key-value pairs)
+- Practical applications and small projects"`;
+
+    req.logger.info('Generating session summary', { 
+      sessionId: session._id,
+      topic: session.topic,
+      messageCount: messages.length,
+      moduleCount: plan.length
+    });
+    
+    let summaryResponse;
+    const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    
+    try {
+      req.logger.info('Calling Groq API', {
+        model: model,
+        promptLength: summaryPrompt.length
+      });
+      
+      summaryResponse = await groqClient.chat.completions.create({
+        model: model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a learning assistant that creates clear, structured summaries of learning sessions.'
+          },
+          {
+            role: 'user',
+            content: summaryPrompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 1000,
+        top_p: 0.9
+      });
+      
+      req.logger.info('Groq API call successful', {
+        hasChoices: !!summaryResponse?.choices,
+        choicesCount: summaryResponse?.choices?.length || 0
+      });
+    } catch (llmError) {
+      req.logger.error('LLM API call failed', {
+        sessionId: session._id,
+        error: llmError.message,
+        errorName: llmError.name,
+        stack: llmError.stack,
+        errorCode: llmError.code,
+        errorStatus: llmError.status,
+        model: model
+      });
+      
+      // Check for model permission errors
+      if (llmError.message && llmError.message.includes('model_permission_blocked')) {
+        const errorMsg = `The model "${model}" is blocked in your Groq project. Please enable it in your project settings at https://console.groq.com/settings/project/limits or set GROQ_MODEL environment variable to an available model.`;
+        throw new Error(errorMsg);
+      }
+      
+      // Check for other API errors
+      if (llmError.response?.data?.error) {
+        const apiError = llmError.response.data.error;
+        if (apiError.code === 'model_permission_blocked_project') {
+          const errorMsg = `The model "${model}" is blocked in your Groq project. Please enable it in your project settings at https://console.groq.com/settings/project/limits or set GROQ_MODEL environment variable to an available model.`;
+          throw new Error(errorMsg);
+        }
+      }
+      
+      throw new Error(`LLM service error: ${llmError.message}`);
+    }
+    
+    const summary = summaryResponse?.choices?.[0]?.message?.content?.trim();
+    
+    if (!summary) {
+      req.logger.warn('Empty summary response from LLM', {
+        sessionId: session._id,
+        response: JSON.stringify(summaryResponse)
+      });
+      throw new Error('Received empty summary from LLM service');
+    }
+    
+    req.logger.info('Session summary generated', {
+      sessionId: session._id,
+      summaryLength: summary.length,
+      duration: Date.now() - startTime
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        summary,
+        sessionId: session._id.toString(),
+        topic: session.topic,
+        modulesCompleted: plan.filter(m => m.status === 'passed').length,
+        totalModules: plan.length
+      }
+    });
+    
+  } catch (error) {
+    req.logger.error('Summary generation failed', {
+      sessionId: req.params.id,
+      error: error.message,
+      stack: error.stack,
+      errorName: error.name,
+      duration: Date.now() - startTime
+    });
+    
+    // Log full error details
+    console.error('Summary generation error details:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack
+    });
+    
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to generate summary',
+      code: 'SERVER_ERROR',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -663,11 +965,20 @@ router.get('/v1/sessions/search', requireAuth, addRequestId, async (req, res) =>
     const query = { 
       userId: req.userId,
       chatTitle: { $ne: '', $exists: true },
-      'plan.0': { $exists: true },
-      $or: [
-        { topic: searchRegex },
-        { chatTitle: searchRegex },
-        { 'messages.content': searchRegex }
+      $and: [
+        {
+          $or: [
+            { 'plan.0': { $exists: true } }, // Study sessions must have a plan
+            { mode: 'reviewing' } // Revision sessions don't need a plan
+          ]
+        },
+        {
+          $or: [
+            { topic: searchRegex },
+            { chatTitle: searchRegex },
+            { 'messages.content': searchRegex }
+          ]
+        }
       ]
     };
     
