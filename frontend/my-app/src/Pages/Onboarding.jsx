@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../state/authStore';
 import * as profileApi from '../lib/profileApi';
+import * as authApi from '../lib/authApi';
 import { getRandomAvatar } from '../utils/avatars';
 import '../styles/Onboarding.css';
 
@@ -33,6 +34,7 @@ function Onboarding() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false); // Track if we're in the middle of submission
   const [topicInput, setTopicInput] = useState('');
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [courseInput, setCourseInput] = useState('');
@@ -41,11 +43,15 @@ function Onboarding() {
   // Redirect them to chat instead of showing onboarding page
   // But only if we're not in the middle of onboarding flow (no pendingSignup)
   useEffect(() => {
+    // Don't redirect if we're currently submitting (handled by handleSubmit)
+    if (isSubmitting) return;
+    
     const pendingSignup = sessionStorage.getItem('pendingSignup');
-    if (isAuthenticated && !pendingSignup) {
+    // Only redirect if authenticated AND no pending signup AND not currently loading/submitting
+    if (isAuthenticated && !pendingSignup && !isLoading) {
       navigate('/chat', { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, isLoading, isSubmitting]);
 
   const handleNext = () => {
     if (currentStep < 4) {
@@ -72,6 +78,7 @@ function Onboarding() {
   };
 
   const handleSubmit = async () => {
+    setIsSubmitting(true); // Mark that we're submitting
     setIsLoading(true);
     setError('');
     
@@ -82,19 +89,63 @@ function Onboarding() {
       let signupData = null;
       
       if (pendingSignupStr) {
-        signupData = JSON.parse(pendingSignupStr);
-        shouldCreateAccount = true;
+        try {
+          signupData = JSON.parse(pendingSignupStr);
+          // Validate that signupData has required fields
+          if (signupData && signupData.email && signupData.password && signupData.name) {
+            shouldCreateAccount = true;
+          } else {
+            // Invalid pending signup data - clear it
+            sessionStorage.removeItem('pendingSignup');
+            throw new Error('Invalid signup data. Please start the signup process again.');
+          }
+        } catch (parseError) {
+          // If we can't parse or validate, clear it and show error
+          sessionStorage.removeItem('pendingSignup');
+          throw new Error('Invalid signup data. Please start the signup process again.');
+        }
       }
       
       // If user needs to create account, do it first
       if (shouldCreateAccount && signupData) {
-        await signup({
-          name: signupData.name,
-          email: signupData.email,
-          password: signupData.password
-        });
-        // Clear pending signup data
-        sessionStorage.removeItem('pendingSignup');
+        try {
+          // Double-check email doesn't exist in DB (race condition protection)
+          // This is a backup check in case someone else registered with this email
+          // between the signup page check and onboarding completion
+          const emailCheck = await authApi.checkEmail(signupData.email);
+          if (emailCheck.exists) {
+            setError('This email was registered while you were completing onboarding. Please sign in instead.');
+            setIsLoading(false);
+            setIsSubmitting(false);
+            // Ensure we stay on step 4 to show the error
+            setCurrentStep(4);
+            // DON'T clear pendingSignup here - let user see the error
+            // Only clear it if they navigate away or successfully complete onboarding
+            return;
+          }
+          
+          await signup({
+            name: signupData.name,
+            email: signupData.email,
+            password: signupData.password
+          });
+          // Clear pending signup data immediately after signup succeeds
+          sessionStorage.removeItem('pendingSignup');
+        } catch (signupError) {
+          // Handle duplicate email error specifically
+          if (signupError.code === 'EMAIL_EXISTS' || signupError.message.toLowerCase().includes('already registered') || signupError.message.toLowerCase().includes('email already')) {
+            setError('This email is already registered. Please use a different email address or sign in instead.');
+            setIsLoading(false);
+            setIsSubmitting(false);
+            // Ensure we stay on step 4 to show the error
+            setCurrentStep(4);
+            // DON'T clear pendingSignup here - let user see the error and decide what to do
+            // Only clear it if they navigate away or successfully complete onboarding
+            return; // Stop here, don't proceed with profile update
+          }
+          // Re-throw other errors to be caught by outer catch
+          throw signupError;
+        }
       }
       
       // Assign a random avatar if user doesn't have one
@@ -124,11 +175,17 @@ function Onboarding() {
         onboardingCompleted: true, // Mark onboarding as completed
       });
       
-      // Redirect to chat (onboardingCompleted is already set in profile update above)
+      // Clear loading state
+      setIsLoading(false);
+      
+      // Navigate immediately - don't wait, and use replace to prevent back navigation
       navigate('/chat', { replace: true });
     } catch (err) {
       setError(err.message || 'Failed to save profile');
       setIsLoading(false);
+      setIsSubmitting(false); // Reset submitting flag on error
+      // Ensure we stay on step 4 to show the error (don't reset to step 1)
+      setCurrentStep(4);
     }
   };
 

@@ -11,6 +11,68 @@ const router = express.Router();
 router.use(cookieParser());
 
 /**
+ * POST /v1/auth/check-email
+ * Check if email already exists (for signup validation)
+ */
+router.post('/check-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email is required',
+        code: 'VALIDATION_ERROR'
+      });
+    }
+    
+    // Validate email format
+    const emailRegex = /^\S+@\S+\.\S+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid email format',
+        code: 'VALIDATION_ERROR'
+      });
+    }
+    
+    // Check if user already exists
+    const normalizedEmail = email.toLowerCase().trim();
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    
+    if (existingUser) {
+      return res.json({
+        success: true,
+        data: {
+          exists: true,
+          message: 'Email already registered'
+        }
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        exists: false,
+        message: 'Email is available'
+      }
+    });
+  } catch (error) {
+    logger.error({
+      requestId: req.requestId,
+      error: error.message,
+      stack: error.stack
+    }, 'Check email error');
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check email',
+      code: 'SERVER_ERROR'
+    });
+  }
+});
+
+/**
  * POST /v1/auth/signup
  * Create a new user account
  */
@@ -56,9 +118,14 @@ router.post('/signup', async (req, res) => {
       });
     }
     
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    // Check if user already exists (case-insensitive)
+    const normalizedEmail = email.toLowerCase().trim();
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
+      logger.warn({
+        requestId: req.requestId,
+        email: normalizedEmail
+      }, 'Attempted signup with existing email');
       return res.status(409).json({
         success: false,
         error: 'Email already registered',
@@ -69,15 +136,34 @@ router.post('/signup', async (req, res) => {
     // Hash password
     const passwordHash = await hashPassword(password);
     
-    // Create user
+    // Create user (use normalized email)
     const user = new User({
-      email: email.toLowerCase().trim(),
+      email: normalizedEmail,
       passwordHash,
       name: name.trim(),
       emailVerified: false // For MVP, skip email verification
     });
     
-    await user.save();
+    // Save user - MongoDB unique index will also catch duplicates (race condition protection)
+    try {
+      await user.save();
+    } catch (saveError) {
+      // Handle duplicate key error (MongoDB unique index violation)
+      if (saveError.code === 11000 || saveError.name === 'MongoServerError') {
+        logger.warn({
+          requestId: req.requestId,
+          email: normalizedEmail,
+          error: saveError.message
+        }, 'Duplicate email detected during save (race condition)');
+        return res.status(409).json({
+          success: false,
+          error: 'Email already registered',
+          code: 'EMAIL_EXISTS'
+        });
+      }
+      // Re-throw other errors
+      throw saveError;
+    }
     
     // Generate tokens (convert ObjectId to string)
     const accessToken = generateAccessToken({ userId: user._id.toString(), email: user.email });

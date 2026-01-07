@@ -79,12 +79,81 @@ export async function signup({ email, password, name }) {
   }
 
   if (!response.ok) {
+    // Handle specific error codes
+    if (response.status === 409 || data.code === 'EMAIL_EXISTS') {
+      const error = new Error(data.error || 'Email already registered');
+      error.code = 'EMAIL_EXISTS';
+      error.status = 409;
+      throw error;
+    }
     throw new Error(data.error || data.message || 'Signup failed');
   }
 
   // Store access token
   if (data.data?.accessToken) {
     setAccessToken(data.data.accessToken);
+  }
+
+  return data.data;
+}
+
+/**
+ * Check if email already exists
+ * @param {string} email - Email to check
+ * @returns {Promise<{exists: boolean}>}
+ */
+export async function checkEmail(email) {
+  let response;
+  const url = `${API_PREFIX}/check-email`;
+  
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ email }),
+    });
+  } catch (networkError) {
+    // Network error (connection failed, CORS, etc.)
+    console.error('Network error checking email:', networkError);
+    throw new Error('Network error: Unable to connect to server. Please check your connection.');
+  }
+
+  let data;
+  const contentType = response.headers.get('content-type');
+  
+  try {
+    if (contentType && contentType.includes('application/json')) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      console.error('Non-JSON response from check-email:', text.substring(0, 200));
+      throw new Error(`Server error: ${text.substring(0, 100)}`);
+    }
+  } catch (parseError) {
+    if (parseError.message.startsWith('Server error:')) {
+      throw parseError;
+    }
+    console.error('Parse error checking email:', parseError);
+    throw new Error('Invalid response from server. Please try again.');
+  }
+
+  if (!response.ok) {
+    // Handle specific error codes
+    if (response.status === 404) {
+      console.error(`404 Error: Route not found at ${url}. Status: ${response.status}`);
+      throw new Error('Email check endpoint not found. Please ensure the backend server is running.');
+    }
+    console.error(`API error checking email:`, data);
+    throw new Error(data.error || data.message || `Failed to check email (${response.status})`);
+  }
+
+  // Ensure data.data exists
+  if (!data || !data.data) {
+    console.error('Invalid response structure from check-email:', data);
+    throw new Error('Invalid response from server. Please try again.');
   }
 
   return data.data;

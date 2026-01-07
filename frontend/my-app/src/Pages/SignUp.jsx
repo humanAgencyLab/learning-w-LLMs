@@ -5,6 +5,7 @@ import EmailIcon from '../components/SignIn/EmailIcon';
 import LockIcon from '../components/SignIn/LockIcon';
 import useAuthStore from '../state/authStore';
 import Loader from '../components/Loader';
+import * as authApi from '../lib/authApi';
 
 function SignUp() {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ function SignUp() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -51,11 +53,48 @@ function SignUp() {
       return;
     }
 
+    // Validate email format
+    const emailRegex = /^\S+@\S+\.\S+$/;
+    if (!emailRegex.test(email)) {
+      setLocalError('Please enter a valid email address');
+      return;
+    }
+
+    setIsCheckingEmail(true);
     try {
-      // Store signup data temporarily in sessionStorage (will create account after onboarding)
+      const normalizedEmail = email.trim().toLowerCase();
+      
+      // FIRST: Check sessionStorage for pending signup with same email
+      // This prevents duplicate signups when user hasn't completed onboarding yet
+      const existingPendingSignup = sessionStorage.getItem('pendingSignup');
+      if (existingPendingSignup) {
+        try {
+          const pendingData = JSON.parse(existingPendingSignup);
+          if (pendingData.email && pendingData.email.toLowerCase() === normalizedEmail) {
+            setLocalError('You already have a signup in progress with this email. Please complete the onboarding process or use a different email.');
+            setIsCheckingEmail(false);
+            return;
+          }
+        } catch (parseError) {
+          // If we can't parse existing pending signup, clear it and continue
+          sessionStorage.removeItem('pendingSignup');
+        }
+      }
+      
+      // SECOND: Check database for existing registered users
+      const emailCheck = await authApi.checkEmail(normalizedEmail);
+      
+      if (emailCheck.exists) {
+        setLocalError('This email is already registered. Please use a different email or sign in instead.');
+        setIsCheckingEmail(false);
+        return;
+      }
+
+      // Email is available - store signup data temporarily in sessionStorage
+      // Use normalized email (lowercase) for consistency
       const signupData = {
         name: `${firstName} ${lastName}`,
-        email: email.trim(),
+        email: normalizedEmail,
         password: password
       };
       sessionStorage.setItem('pendingSignup', JSON.stringify(signupData));
@@ -63,7 +102,23 @@ function SignUp() {
       // Redirect to onboarding - account will be created after onboarding is complete
       navigate('/onboarding', { replace: true });
     } catch (err) {
-      setLocalError(err.message || 'Failed to proceed. Please try again.');
+      // Provide more specific error messages
+      let errorMessage = 'Failed to check email. Please try again.';
+      const errMsg = err.message || '';
+      
+      console.error('Error checking email:', err);
+      
+      if (errMsg.includes('endpoint not found') || errMsg.includes('Route not found')) {
+        errorMessage = 'Backend server may not be running. Please ensure the backend is started on port 5001.';
+      } else if (errMsg.includes('Network error') || errMsg.includes('Unable to connect')) {
+        errorMessage = 'Network error: Unable to connect to server. Please check your connection and ensure the backend server is running.';
+      } else if (errMsg.includes('404')) {
+        errorMessage = 'Email check endpoint not found. Please ensure the backend server is running and the route is available.';
+      } else {
+        errorMessage = errMsg || errorMessage;
+      }
+      setLocalError(errorMessage);
+      setIsCheckingEmail(false);
     }
   };
 
@@ -180,12 +235,14 @@ function SignUp() {
             <button 
               type="submit" 
               className="signup-button"
-              disabled={isLoading}
+              disabled={isLoading || isCheckingEmail}
             >
-              Continue to Onboarding
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '12px' }}>
-                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              {isCheckingEmail ? 'Checking...' : 'Continue to Onboarding'}
+              {!isCheckingEmail && (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '12px' }}>
+                  <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
             </button>
           </form>
 
