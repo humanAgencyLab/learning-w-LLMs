@@ -748,15 +748,18 @@ const useSessionStore = create(
             const chatTitle = response.data?.chatTitle || topic;
             console.log('Revision quiz start requested by backend', { topic, chatTitle, sessionId: state.sessionId });
             
-            // Update session store with the LLM-generated topic and chatTitle
-            set({ 
-              topic: topic,
-              chatTitle: chatTitle
-            });
-            
             try {
-              // Refresh session state first to ensure mode is updated
-              await get().resumeSessionFromServer(state.sessionId);
+              // Refresh session state first to ensure mode and chatTitle are updated from backend
+              const resumedSession = await get().resumeSessionFromServer(state.sessionId);
+              
+              // Update with LLM-generated topic and chatTitle if provided (backend may have saved it, but ensure it's set)
+              if (topic || chatTitle) {
+                set({ 
+                  topic: topic || resumedSession?.topic || state.topic,
+                  chatTitle: chatTitle || resumedSession?.chatTitle || topic || state.chatTitle
+                });
+              }
+              
               // Small delay to ensure state is synced
               await new Promise(resolve => setTimeout(resolve, 100));
               await get().startRevisionQuiz(topic);
