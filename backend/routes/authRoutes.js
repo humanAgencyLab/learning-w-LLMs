@@ -10,11 +10,15 @@ const crypto = require('crypto');
 const router = express.Router();
 router.use(cookieParser());
 
+// Log route registration
+logger.info({}, 'Registering /check-email route');
+
 /**
  * POST /v1/auth/check-email
  * Check if email already exists (for signup validation)
  */
 router.post('/check-email', async (req, res) => {
+  logger.info({ requestId: req.requestId, email: req.body.email }, 'Check email endpoint called');
   try {
     const { email } = req.body;
     
