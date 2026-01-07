@@ -476,13 +476,30 @@ router.post('/forgot-password', async (req, res) => {
         resetToken // REMOVE IN PRODUCTION - only for MVP testing
       }, 'Password reset token generated');
       
+      // Determine frontend URL based on environment
+      let frontendUrl;
+      if (process.env.NODE_ENV === 'production') {
+        // In production, use CORS_ORIGINS (first origin) or default Firebase hosting URL
+        if (process.env.CORS_ORIGINS) {
+          const corsOrigins = process.env.CORS_ORIGINS.split(',').map(origin => origin.trim());
+          frontendUrl = corsOrigins[0] || 'https://study-assist-prod.web.app';
+        } else {
+          // Fallback to default production URL
+          const projectId = process.env.GOOGLE_CLOUD_PROJECT || 'study-assist-prod';
+          frontendUrl = `https://${projectId}.web.app`;
+        }
+      } else {
+        // Development: use localhost
+        frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      }
+      
       // MVP: Return token in response (remove in production!)
       return res.json({
         success: true,
         message: 'Password reset token generated',
         data: {
           resetToken, // MVP ONLY - remove in production
-          resetLink: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/resetpassword?token=${resetToken}`
+          resetLink: `${frontendUrl}/resetpassword?token=${resetToken}`
         }
       });
     }

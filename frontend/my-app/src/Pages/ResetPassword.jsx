@@ -219,7 +219,7 @@ function ResetPassword() {
               {success && resetToken && (
                 <div className="reset-token-section">
                   <div className="success-message">
-                    Password reset token generated! (MVP - token shown below)
+                    Password reset token generated!
                   </div>
                   <div className="token-display">
                     <label className="token-label">Reset Link:</label>
