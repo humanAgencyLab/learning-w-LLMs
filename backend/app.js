@@ -120,15 +120,16 @@ if (process.env.NODE_ENV === 'production') {
 
 // Mount routes
 app.use('/v1/auth', authRoutes);
-// Log registered auth routes in production
+// Log registered auth routes in production for debugging
 if (process.env.NODE_ENV === 'production') {
-  const logger = require('./utils/logger');
-  authRoutes.stack.forEach((layer) => {
+  console.log('🔍 Checking auth routes in production...');
+  authRoutes.stack.forEach((layer, idx) => {
     if (layer.route) {
       const methods = Object.keys(layer.route.methods).join(', ').toUpperCase();
-      logger.info({ route: `/v1/auth${layer.route.path}`, methods }, 'Registered auth route');
+      console.log(`  Route ${idx}: ${methods} /v1/auth${layer.route.path}`);
     }
   });
+  console.log(`✅ Total auth routes registered: ${authRoutes.stack.filter(l => l.route).length}`);
 }
 app.use('/v1/profile', profileRoutes);
 app.use('/', performanceRoutes);
