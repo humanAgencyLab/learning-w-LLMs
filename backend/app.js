@@ -4,22 +4,14 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const Groq = require('groq-sdk');
-const swaggerUi = require('swagger-ui-express');
-const fs = require('fs');
-const yaml = require('js-yaml');
 const helmet = require('helmet');
 // Rate limiting is handled by the new rateLimiter middleware
 const morgan = require('morgan');
 const winston = require('winston');
 const { v4: uuidv4 } = require('uuid');
 
-const StudySession = require('./models/StudySession');
-const ChatLog = require('./models/ChatLog');
-const QuizAttempt = require('./models/QuizAttempt');
-const Quiz = require('./models/Quiz');
 const Session = require('./models/Session');
-const { srlSystemPrompt } = require('./prompts/systemPrompt');
-const { generateQuiz } = require('./prompts/quizGenerator');
+// StudySession and ChatLog are still imported in server.js for index creation
 
 // Import new session routes
 const sessionRoutes = require('./routes/sessionRoutes');
@@ -128,6 +120,16 @@ if (process.env.NODE_ENV === 'production') {
 
 // Mount routes
 app.use('/v1/auth', authRoutes);
+// Log registered auth routes in production
+if (process.env.NODE_ENV === 'production') {
+  const logger = require('./utils/logger');
+  authRoutes.stack.forEach((layer) => {
+    if (layer.route) {
+      const methods = Object.keys(layer.route.methods).join(', ').toUpperCase();
+      logger.info({ route: `/v1/auth${layer.route.path}`, methods }, 'Registered auth route');
+    }
+  });
+}
 app.use('/v1/profile', profileRoutes);
 app.use('/', performanceRoutes);
 app.use('/', sessionRoutes);
