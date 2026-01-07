@@ -153,7 +153,12 @@ function ResetPassword() {
                       type="password"
                       placeholder="Password"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      maxLength={128}
+                      onChange={(e) => {
+                        if (e.target.value.length <= 128) {
+                          setPassword(e.target.value);
+                        }
+                      }}
                       required
                       disabled={isLoading}
                       minLength={8}
@@ -171,7 +176,12 @@ function ResetPassword() {
                       type="password"
                       placeholder="Confirm Password"
                       value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      maxLength={128}
+                      onChange={(e) => {
+                        if (e.target.value.length <= 128) {
+                          setConfirmPassword(e.target.value);
+                        }
+                      }}
                       required
                       disabled={isLoading}
                       minLength={8}
@@ -255,7 +265,12 @@ function ResetPassword() {
                       type="email"
                       placeholder="yourname@mail.com"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      maxLength={255}
+                      onChange={(e) => {
+                        if (e.target.value.length <= 255) {
+                          setEmail(e.target.value);
+                        }
+                      }}
                       required
                       disabled={isLoading || success}
                     />

@@ -14,15 +14,9 @@ const { buildQuizFailureAnalysisPrompt } = require('../prompts/assessment_analyz
 const { getGroqClient } = require('../lib/llmClient');
 const { requireAuth } = require('../middleware/auth');
 
-// Initialize Pino logger
+// Initialize Pino logger (no transport in production - pino-pretty is dev-only)
 const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true
-    }
-  }
+  level: process.env.LOG_LEVEL || 'info'
 });
 
 // Middleware to add request ID to logger
@@ -32,14 +26,22 @@ const addRequestId = (req, res, next) => {
 };
 
 // Quiz generation prompt builder
-const buildQuizPrompt = (moduleTitle, difficulty = 'core', questionCount = 5) => {
-  return `Generate exactly ${questionCount} multiple-choice questions for the module "${moduleTitle}" (difficulty: ${difficulty}).
+const buildQuizPrompt = (moduleTitle, difficulty = 'core', questionCount = 5, milestones = []) => {
+  const milestonesText = milestones.length > 0 
+    ? `\n\nMODULE MILESTONES (Learning Objectives):\n${milestones.map((m, i) => `${i + 1}. ${m.text || m}`).join('\n')}\n\n⚠️⚠️⚠️ CRITICAL: ALL questions MUST be directly related to these milestones. Each question should test understanding of specific concepts covered in these milestones. Do NOT create questions about topics not covered in these milestones.`
+    : '';
+  
+  return `Generate exactly ${questionCount} multiple-choice questions for the module "${moduleTitle}" (difficulty: ${difficulty}).${milestonesText}
 
 CRITICAL REQUIREMENTS:
 - Each question MUST be multiple-choice with exactly 4 options (A, B, C, D) and exactly one correct answer
-- Vary the question focus to cover the breadth of the module (conceptual, practical, scenario-based)
+- ⚠️⚠️⚠️ CRITICAL: Questions MUST be focused on the module's milestones listed above
+- ⚠️⚠️⚠️ CRITICAL: Do NOT create questions about topics not covered in the milestones
+- ⚠️⚠️⚠️ CRITICAL: For the first module (difficulty: "intro"), questions must be basic and foundational - test simple understanding, not advanced concepts
+- Vary the question focus to cover the breadth of the milestones (conceptual, practical, scenario-based)
+- Distribute questions across different milestones to ensure comprehensive coverage
 - Concise, clear question stems
-- Difficulty-appropriate questions
+- Difficulty-appropriate questions (basic for intro, more challenging for core/apply)
 - No trick questions; wording must be unambiguous
 - Focus on practical understanding, not memorization
 - ⚠️ FORBIDDEN: NEVER use "All of the above", "None of the above", "Both A and B", or any similar compound options
@@ -200,10 +202,10 @@ Generate ${questionCount} revision questions for "${topic}". Each option must be
 };
 
 // Generate quiz using LLM
-const generateQuiz = async (moduleTitle, difficulty, questionCount) => {
+const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones = []) => {
   try {
     const groqClient = getGroqClient();
-    const prompt = buildQuizPrompt(moduleTitle, difficulty, questionCount);
+    const prompt = buildQuizPrompt(moduleTitle, difficulty, questionCount, milestones);
     
     const response = await groqClient.chat.completions.create({
       model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
@@ -435,9 +437,11 @@ router.post('/v1/quiz/start', requireAuth, addRequestId, async (req, res) => {
     const questionCount = 5;
     const difficulty = module.difficulty || 'core';
     
-    req.logger.info('Generating new quiz', { sessionId, moduleId, questionCount, difficulty });
+    req.logger.info('Generating new quiz', { sessionId, moduleId, questionCount, difficulty, milestoneCount: (module.milestones || []).length });
     
-    const quizData = await generateQuiz(module.title, difficulty, questionCount);
+    // Pass milestones to quiz generation to ensure questions are focused on them
+    const milestones = module.milestones || [];
+    const quizData = await generateQuiz(module.title, difficulty, questionCount, milestones);
     
     // Log if explanations are present
     const questionsWithExplanations = quizData.questions.filter(q => q.explanation && q.explanation.trim()).length;
@@ -850,8 +854,20 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
     
     // Set phase based on quiz result
     if (isRevision) {
-      // For revision quizzes, always go to feedback phase
-      session.phase = 'feedback';
+      // For revision quizzes from completed study sessions (mode='studying'), 
+      // restore phase to 'completed' so the revision/summarize buttons remain visible
+      // For revision quizzes in 'reviewing' mode, go to 'feedback' phase
+      if (session.mode === 'studying') {
+        // This is a revision quiz from a completed study topic - restore to completed
+        session.phase = 'completed';
+        req.logger.info('Restoring phase to completed for revision quiz from study session', {
+          sessionId,
+          mode: session.mode
+        });
+      } else {
+        // This is a revision quiz in reviewing mode - go to feedback
+        session.phase = 'feedback';
+      }
     } else if (passed) {
       // If passed, move to feedback phase (brief feedback before next module)
       if (!progressResult.completed) {
@@ -1029,7 +1045,7 @@ router.post('/v1/quiz/revision', requireAuth, addRequestId, async (req, res) => 
     }
     
     // Load session
-    const session = await Session.findById(sessionId);
+    let session = await Session.findById(sessionId);
     if (!session) {
       req.logger.warn('Session not found', { sessionId });
       return res.status(404).json({
@@ -1053,28 +1069,63 @@ router.post('/v1/quiz/revision', requireAuth, addRequestId, async (req, res) => 
       });
     }
     
-    // Verify session is in revision mode
-    if (session.mode !== 'reviewing') {
-      req.logger.warn('Session not in revision mode', { 
+    // Store original phase and mode for logging
+    const originalPhase = session.phase;
+    const originalMode = session.mode;
+    
+    req.logger.info('Checking session mode for revision', {
+      sessionId,
+      currentMode: session.mode,
+      currentPhase: session.phase,
+      topic
+    });
+    
+    // Allow revision quiz from completed study sessions WITHOUT changing mode
+    // The revision button on a completed study topic is just a feature, not a mode change
+    // Keep the session in 'studying' mode - only allow if:
+    // 1. Session is in 'reviewing' mode (explicit revision mode from chat start)
+    // 2. Session is in 'studying' mode with 'completed' phase (revision button feature)
+    const isRevisionMode = session.mode === 'reviewing';
+    const isCompletedStudy = session.mode === 'studying' && session.phase === 'completed';
+    
+    if (!isRevisionMode && !isCompletedStudy) {
+      req.logger.warn('Session not in valid state for revision quiz', { 
         sessionId, 
         mode: session.mode,
+        phase: session.phase,
         topic: topic
       });
       return res.status(409).json({
         success: false,
         code: 'ILLEGAL_MODE',
-        message: 'Revision quiz can only be generated for sessions in revision mode',
+        message: 'Revision quiz can only be generated for sessions in revision mode or completed study sessions',
         currentMode: session.mode,
-        hint: 'Please ensure you selected "Revision" mode before requesting a quiz'
+        currentPhase: session.phase,
+        hint: 'Please ensure you selected "Revision" mode before requesting a quiz, or use the revision button on a completed study topic'
       });
     }
     
-    // Allow revision quiz generation from pre, quizzing, or feedback phases
-    // - 'pre': Initial quiz start
+    // For completed study sessions, temporarily set phase to 'pre' for quiz generation
+    // but DON'T change the mode - keep it as 'studying'
+    // We'll restore the phase to 'completed' after the quiz
+    if (isCompletedStudy) {
+      req.logger.info('Starting revision quiz from completed study session (keeping study mode)', { 
+        sessionId, 
+        topic,
+        originalMode: session.mode,
+        originalPhase: session.phase
+      });
+      // Temporarily set phase to 'pre' for quiz generation, but keep mode as 'studying'
+      session.phase = 'pre';
+    }
+    
+    // Allow revision quiz generation from pre, quizzing, feedback, or completed phases
+    // - 'pre': Initial quiz start (including after switching from completed study session)
     // - 'quizzing': Already in quiz (edge case)
     // - 'feedback': Restarting/redoing the quiz after completion
+    // - 'completed': Starting revision from a completed revision session
     // NOTE: This phase validation is REVISION-SPECIFIC. Study quiz endpoint (/v1/quiz/start) has separate validation.
-    if (!['pre', 'quizzing', 'feedback'].includes(session.phase)) {
+    if (!['pre', 'quizzing', 'feedback', 'completed'].includes(session.phase)) {
       req.logger.warn('Session not in valid phase for revision quiz', { 
         sessionId, 
         phase: session.phase 
@@ -1082,19 +1133,28 @@ router.post('/v1/quiz/revision', requireAuth, addRequestId, async (req, res) => 
       return res.status(409).json({
         success: false,
         code: 'ILLEGAL_PHASE',
-        message: 'Revision quiz can only be generated in pre, quizzing, or feedback phase',
+        message: 'Revision quiz can only be generated in pre, quizzing, feedback, or completed phase',
         currentPhase: session.phase
       });
     }
     
-    // If coming from feedback phase (redo scenario), reset to quizzing and clear previous attempts
+    // If coming from feedback phase or completed revision phase (redo scenario), reset to quizzing and clear previous attempts
     // NOTE: This logic is REVISION-SPECIFIC only. Study quiz logic in /v1/quiz/start remains unchanged.
-    if (session.phase === 'feedback') {
+    // For completed study sessions, we already set phase to 'pre' above, so set it to 'quizzing' for the quiz
+    if (originalPhase === 'feedback' || (originalPhase === 'completed' && originalMode === 'reviewing') || 
+        (originalPhase === 'completed' && originalMode === 'studying')) {
       session.phase = 'quizzing';
       // Remove any previous revision quiz attempts for a clean restart
       // IMPORTANT: This only removes revision attempts (isRevision: true), preserving all study quiz attempts
       session.quizAttempts = session.quizAttempts.filter(attempt => !attempt.isRevision);
-      req.logger.info('Resetting phase from feedback to quizzing for revision quiz restart', { sessionId });
+      await session.save(); // Save the phase change
+      req.logger.info(`Resetting phase from ${originalPhase} to quizzing for revision quiz restart`, { 
+        sessionId,
+        originalMode,
+        originalPhase,
+        newPhase: session.phase,
+        newMode: session.mode
+      });
     }
     
     // Generate revision quiz
@@ -1119,6 +1179,14 @@ router.post('/v1/quiz/revision', requireAuth, addRequestId, async (req, res) => 
     
     session.quizAttempts.push(revisionAttempt);
     session.phase = 'quizzing';
+    // Ensure chatTitle is set for revision sessions (should already be set from chat route, but ensure it)
+    if (!session.chatTitle || session.chatTitle.trim() === '') {
+      session.chatTitle = `Revision: ${topic.trim()}`;
+    }
+    // Ensure topic is set
+    if (!session.topic || session.topic.trim() === '') {
+      session.topic = topic.trim();
+    }
     await session.save();
     
     req.logger.info('Revision quiz generated successfully', {
@@ -1163,3 +1231,4 @@ router.post('/v1/quiz/revision', requireAuth, addRequestId, async (req, res) => 
 });
 
 module.exports = router;
+

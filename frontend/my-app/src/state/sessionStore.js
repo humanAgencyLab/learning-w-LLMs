@@ -226,16 +226,23 @@ const useSessionStore = create(
       },
 
       startQuiz: (moduleId) => {
-        const activeModuleId = moduleId || get().activeModuleId;
+        const state = get();
+        const activeModuleId = moduleId || state.activeModuleId;
         if (!activeModuleId) {
           console.warn('No module ID provided for quiz start');
           return;
         }
 
+        // This is a STUDY quiz - ensure revision flags are cleared
         set({
           phase: 'quizzing',
           activeModuleId,
-          error: null
+          error: null,
+          meta: {
+            ...state.meta,
+            isRevision: false, // Explicitly set to false for study quizzes
+            revisionTopic: null // Clear revision topic
+          }
         });
       },
 
@@ -854,25 +861,31 @@ const useSessionStore = create(
         if (!state.sessionId) {
           throw new Error('No active session');
         }
-        if (state.quizDraft && state.quizDraft.length > 0) {
+        if (state.quizDraft && state.quizDraft.length > 0 && !state.meta?.isRevision) {
           console.log('startQuizFromChat skipped - draft already present');
           return { questions: state.quizDraft };
         }
 
         try {
-          console.log('startQuizFromChat invoked', { moduleId, activeModuleId: state.activeModuleId, existingDraft: state.quizDraft?.length });
+          set({ loading: true, error: null });
+          console.log('startQuizFromChat invoked', { moduleId, activeModuleId: state.activeModuleId, existingDraft: state.quizDraft?.length, currentMode: state.mode });
           const response = await quizApi.startQuiz({
             sessionId: state.sessionId,
             moduleId: moduleId || state.activeModuleId
           });
 
-          // Store quiz draft
+          // Store quiz draft and CLEAR revision flags (this is a STUDY quiz, not revision)
           set({ 
             quizDraft: response.questions,
             quizResult: null,
             isQuizSubmitting: false,
             loading: false,
-            pendingQuizModuleId: null 
+            pendingQuizModuleId: null,
+            meta: {
+              ...state.meta,
+              isRevision: false, // Explicitly set to false for study quizzes
+              revisionTopic: null // Clear revision topic
+            }
           });
 
           // Start quiz
@@ -898,6 +911,7 @@ const useSessionStore = create(
         }
 
         try {
+          set({ loading: true, error: null });
           console.log('startRevisionQuiz invoked', { 
             topic, 
             sessionId: state.sessionId,
@@ -963,23 +977,31 @@ const useSessionStore = create(
             throw new Error('Invalid quiz submission response');
           }
 
+          // Set quiz result first
           set(prevState => ({
             quizResult: result,
             quizDraft: null,
-            isQuizSubmitting: false,
-            phase: result.passed ? 'feedback' : prevState.phase === 'quizzing' ? 'learning' : prevState.phase
+            isQuizSubmitting: false
           }));
 
-          // Always refresh session state after quiz submit to sync milestones and activeModuleId
+          // Always refresh session state after quiz submit to sync milestones, activeModuleId, and phase
+          // The backend sets the correct phase (e.g., 'completed' for revision quizzes from study sessions)
+          // resumeSessionFromServer will update the phase automatically via resumeSession
           try {
             const refreshedSession = await get().resumeSessionFromServer(state.sessionId);
             console.log('Session refreshed after quiz submit', {
               activeModuleId: refreshedSession?.activeModuleId,
               phase: refreshedSession?.phase,
+              mode: refreshedSession?.mode,
               planLength: refreshedSession?.plan?.length
             });
           } catch (resumeError) {
             console.error('Failed to refresh session after quiz submit:', resumeError);
+            // If refresh fails, fallback to setting phase manually
+            const fallbackPhase = result.passed ? 'feedback' : state.phase === 'quizzing' ? 'learning' : state.phase;
+            set(prevState => ({
+              phase: fallbackPhase
+            }));
           }
 
           return result;

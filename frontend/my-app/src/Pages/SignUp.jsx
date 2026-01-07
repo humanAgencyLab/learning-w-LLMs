@@ -4,6 +4,7 @@ import '../styles/SignUp.css';
 import EmailIcon from '../components/SignIn/EmailIcon';
 import LockIcon from '../components/SignIn/LockIcon';
 import useAuthStore from '../state/authStore';
+import Loader from '../components/Loader';
 
 function SignUp() {
   const navigate = useNavigate();
@@ -13,7 +14,6 @@ function SignUp() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [researchConsent, setResearchConsent] = useState(false);
   const [localError, setLocalError] = useState('');
 
   // Redirect if already authenticated
@@ -51,18 +51,19 @@ function SignUp() {
       return;
     }
 
-    if (!researchConsent) {
-      setLocalError('Please consent to participate in research');
-      return;
-    }
-
     try {
-      const name = `${firstName} ${lastName}`;
-      await signup({ name, email, password });
-      // Redirect to onboarding after signup
+      // Store signup data temporarily in sessionStorage (will create account after onboarding)
+      const signupData = {
+        name: `${firstName} ${lastName}`,
+        email: email.trim(),
+        password: password
+      };
+      sessionStorage.setItem('pendingSignup', JSON.stringify(signupData));
+      
+      // Redirect to onboarding - account will be created after onboarding is complete
       navigate('/onboarding', { replace: true });
     } catch (err) {
-      setLocalError(err.message || 'Signup failed. Please try again.');
+      setLocalError(err.message || 'Failed to proceed. Please try again.');
     }
   };
 
@@ -100,7 +101,12 @@ function SignUp() {
                     type="text" 
                     placeholder="First Name" 
                     value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
+                    maxLength={50}
+                    onChange={(e) => {
+                      if (e.target.value.length <= 50) {
+                        setFirstName(e.target.value);
+                      }
+                    }}
                     required 
                     disabled={isLoading}
                   />
@@ -113,7 +119,12 @@ function SignUp() {
                     type="text" 
                     placeholder="Last Name" 
                     value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
+                    maxLength={50}
+                    onChange={(e) => {
+                      if (e.target.value.length <= 50) {
+                        setLastName(e.target.value);
+                      }
+                    }}
                     required 
                     disabled={isLoading}
                   />
@@ -130,7 +141,12 @@ function SignUp() {
                   type="email" 
                   placeholder="yourname@mail.com" 
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  maxLength={255}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 255) {
+                      setEmail(e.target.value);
+                    }
+                  }}
                   required 
                   disabled={isLoading}
                 />
@@ -146,7 +162,12 @@ function SignUp() {
                   type="password" 
                   placeholder="Password" 
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  maxLength={128}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 128) {
+                      setPassword(e.target.value);
+                    }
+                  }}
                   required 
                   disabled={isLoading}
                   minLength={8}
@@ -155,25 +176,13 @@ function SignUp() {
               <p className="password-requirements">≥8 chars, 1 letter, 1 number</p>
             </div>
 
-            {/* Research Consent */}
-            <div className="consent-checkbox">
-              <input
-                type="checkbox"
-                id="researchConsent"
-                checked={researchConsent}
-                onChange={(e) => setResearchConsent(e.target.checked)}
-                disabled={isLoading}
-              />
-              <label htmlFor="researchConsent">Research Consent</label>
-            </div>
-
             {/* Submit Button */}
             <button 
               type="submit" 
               className="signup-button"
-              disabled={isLoading || !researchConsent}
+              disabled={isLoading}
             >
-              {isLoading ? 'Creating Account...' : 'Create account'}
+              Continue to Onboarding
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '12px' }}>
                 <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>

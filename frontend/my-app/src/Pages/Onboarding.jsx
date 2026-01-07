@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../state/authStore';
 import * as profileApi from '../lib/profileApi';
+import { getRandomAvatar } from '../utils/avatars';
 import '../styles/Onboarding.css';
 
 function Onboarding() {
   const navigate = useNavigate();
-  const { user, updateProfile } = useAuthStore();
+  const { user, updateProfile, signup, isAuthenticated } = useAuthStore();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
     // Step 1: Profile Basics
@@ -35,6 +36,28 @@ function Onboarding() {
   const [topicInput, setTopicInput] = useState('');
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [courseInput, setCourseInput] = useState('');
+
+  // Check for pending signup data on mount
+  useEffect(() => {
+    // If user is already authenticated and has completed onboarding, redirect to chat
+    if (isAuthenticated && user?.profile?.onboardingCompleted) {
+      navigate('/chat', { replace: true });
+      return;
+    }
+    
+    // Check for pending signup - if exists, allow onboarding to proceed
+    const pendingSignup = sessionStorage.getItem('pendingSignup');
+    if (pendingSignup) {
+      // User has pending signup, allow onboarding to render
+      return;
+    }
+    
+    // If no pending signup and not authenticated, redirect to signup
+    // Only redirect if we're sure user is not in onboarding flow
+    if (!isAuthenticated) {
+      navigate('/signup', { replace: true });
+    }
+  }, [isAuthenticated, user, navigate]);
 
   const handleNext = () => {
     if (currentStep < 4) {
@@ -65,9 +88,34 @@ function Onboarding() {
     setError('');
     
     try {
-      // Update profile with all onboarding data via API
+      // Check if there's pending signup data (user hasn't created account yet)
+      const pendingSignupStr = sessionStorage.getItem('pendingSignup');
+      let shouldCreateAccount = false;
+      let signupData = null;
+      
+      if (pendingSignupStr) {
+        signupData = JSON.parse(pendingSignupStr);
+        shouldCreateAccount = true;
+      }
+      
+      // If user needs to create account, do it first
+      if (shouldCreateAccount && signupData) {
+        await signup({
+          name: signupData.name,
+          email: signupData.email,
+          password: signupData.password
+        });
+        // Clear pending signup data
+        sessionStorage.removeItem('pendingSignup');
+      }
+      
+      // Assign a random avatar if user doesn't have one
+      const randomAvatar = getRandomAvatar();
+      
+      // Update profile with all onboarding data via auth store (which calls API)
       // Backend expects flat structure, not wrapped in profile object
-      await profileApi.updateProfile({
+      await updateProfile({
+        avatarUrl: randomAvatar, // Assign random avatar during onboarding
         skillLevel: formData.skillLevel,
         learningType: formData.learningType,
         major: formData.major || 'Other',
@@ -85,35 +133,10 @@ function Onboarding() {
         goals: ['Improve knowledge'],
         strengths: ['Quick learner'],
         gaps: ['No specific gaps'],
+        onboardingCompleted: true, // Mark onboarding as completed
       });
       
-      // Update auth store
-      await updateProfile({
-        profile: {
-          skillLevel: formData.skillLevel,
-          learningType: formData.learningType,
-          major: formData.major || 'Other',
-          currentCourses: formData.currentCourses,
-          daysPerWeek: formData.daysPerWeek,
-          minutesPerSession: formData.minutesPerSession,
-          recentTopics: formData.recentTopics,
-          selfRating: formData.selfRating,
-          primaryGoal: formData.primaryGoal,
-          defaultMode: formData.defaultMode,
-          explanationLength: formData.explanationLength,
-          examplesPreference: formData.examplesPreference,
-          codeLanguagePreference: formData.codeLanguagePreference,
-          background: 'Student learning with AI assistance',
-          goals: ['Improve knowledge'],
-          strengths: ['Quick learner'],
-          gaps: ['No specific gaps'],
-        }
-      });
-      
-      // Mark onboarding as complete
-      await profileApi.completeOnboarding();
-      
-      // Redirect to chat
+      // Redirect to chat (onboardingCompleted is already set in profile update above)
       navigate('/chat', { replace: true });
     } catch (err) {
       setError(err.message || 'Failed to save profile');
@@ -143,12 +166,7 @@ function Onboarding() {
   };
 
   const progressPercentage = (currentStep / 4) * 100;
-  const progressWidth = {
-    1: 121.5,
-    2: 243,
-    3: 364.5,
-    4: 486
-  }[currentStep] || 0;
+  const progressWidth = progressPercentage; // Use percentage instead of fixed pixels
 
   return (
     <div className="onboarding-overlay">
@@ -166,7 +184,7 @@ function Onboarding() {
             <div className="progress-bar-background">
               <div 
                 className="progress-bar-fill" 
-                style={{ width: `${progressWidth}px` }}
+                style={{ width: `${progressWidth}%` }}
               />
             </div>
             <span className="progress-percentage">{Math.round(progressPercentage)}%</span>
@@ -347,7 +365,12 @@ function Onboarding() {
                       type="text"
                       placeholder="Topic"
                       value={topicInput}
-                      onChange={(e) => setTopicInput(e.target.value)}
+                      maxLength={50}
+                      onChange={(e) => {
+                        if (e.target.value.length <= 50) {
+                          setTopicInput(e.target.value);
+                        }
+                      }}
                       onKeyPress={(e) => {
                         if (e.key === 'Enter') {
                           e.preventDefault();
@@ -518,7 +541,12 @@ function Onboarding() {
                   type="text"
                   placeholder="Enter course name"
                   value={courseInput}
-                  onChange={(e) => setCourseInput(e.target.value)}
+                  maxLength={50}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 50) {
+                      setCourseInput(e.target.value);
+                    }
+                  }}
                   onKeyPress={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();

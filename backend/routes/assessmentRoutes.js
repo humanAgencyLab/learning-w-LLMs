@@ -15,15 +15,9 @@ const { callTeacherAPI } = require('../services/teacherService');
 const { validateFirstTeaching } = require('../utils/responseValidator');
 const { requireAuth } = require('../middleware/auth');
 
-// Initialize Pino logger
+// Initialize Pino logger (no transport in production - pino-pretty is dev-only)
 const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true
-    }
-  }
+  level: process.env.LOG_LEVEL || 'info'
 });
 
 // Middleware to add request ID to logger
@@ -805,11 +799,15 @@ router.post('/v1/assessment/approve', requireAuth, addRequestId, async (req, res
       // Continue anyway - user can still interact and teaching will trigger on next message
     }
     
+    // Update chatTitle to match topic when plan is approved
+    session.chatTitle = session.topic;
+    
     await session.save();
     
     req.logger.info('Plan approved successfully and teaching started', {
       sessionId,
       topic: session.topic,
+      chatTitle: session.chatTitle,
       modulesCount: session.plan.length,
       activeModuleId: session.activeModuleId,
       currentMilestoneIndex: session.meta.currentMilestoneIndex,

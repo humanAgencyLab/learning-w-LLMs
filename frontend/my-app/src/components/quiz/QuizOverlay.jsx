@@ -412,7 +412,7 @@ const QuizOverlay = () => {
             <>
               <div className="text-lg uppercase tracking-wide font-bold mb-3 flex items-center justify-center gap-2">
                 <span className="text-3xl">🎉</span>
-                <span>Course Completed!</span>
+                <span>{isRevision ? 'Revision Completed!' : 'Course Completed!'}</span>
                 <span className="text-3xl">🎉</span>
               </div>
               <div className="mt-3 flex items-baseline justify-center gap-3">
@@ -422,18 +422,26 @@ const QuizOverlay = () => {
                 </span>
               </div>
               <p className="mt-4 text-lg leading-7 text-current font-semibold text-center">
-                🎓 Congratulations! You've successfully completed all modules for <span className="font-bold text-purple-700">"{topic}"</span>.
+                {isRevision ? (
+                  <>🎓 Great work! You've successfully completed the revision quiz for <span className="font-bold text-purple-700">"{topic}"</span>.</>
+                ) : (
+                  <>🎓 Congratulations! You've successfully completed all modules for <span className="font-bold text-purple-700">"{topic}"</span>.</>
+                )}
               </p>
-              {certificateGenerated ? (
-                <div className="mt-4 p-3 bg-green-100 border border-green-300 rounded-lg text-center">
-                  <p className="text-green-800 font-semibold">
-                    ✅ Certificate generated and downloaded! You can also access it from your Profile.
-                  </p>
-                </div>
-              ) : (
-                <p className="mt-3 text-base leading-6 text-current text-center">
-                  Generate your certificate to celebrate this achievement!
-                </p>
+              {!isRevision && (
+                <>
+                  {certificateGenerated ? (
+                    <div className="mt-4 p-3 bg-green-100 border border-green-300 rounded-lg text-center">
+                      <p className="text-green-800 font-semibold">
+                        ✅ Certificate generated and downloaded! You can also access it from your Profile.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-base leading-6 text-current text-center">
+                      Generate your certificate to celebrate this achievement!
+                    </p>
+                  )}
+                </>
               )}
             </>
           ) : (

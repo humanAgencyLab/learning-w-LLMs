@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as sessionApi from '../lib/sessionApi';
 import useSessionStore from '../state/sessionStore';
+import Loader from '../components/Loader';
 import '../styles/ChatHistory.css';
 
 function ChatHistory() {
@@ -16,8 +17,10 @@ function ChatHistory() {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [modeFilter, setModeFilter] = useState('all'); // 'all', 'study', 'revision'
   const [completionFilter, setCompletionFilter] = useState('all'); // 'all', 'completed', 'uncompleted' (only for study mode)
+  const [isResumingSession, setIsResumingSession] = useState(false);
+  const [resumingSessionId, setResumingSessionId] = useState(null);
   const navigate = useNavigate();
-  const { resumeSessionFromServer, startRevisionQuiz } = useSessionStore();
+  const { resumeSessionFromServer, startRevisionQuiz, loading: sessionLoading, sessionId: currentSessionId, topic, chatTitle } = useSessionStore();
 
   // Fetch sessions from API
   const loadSessions = useCallback(async (searchTerm = '') => {
@@ -154,7 +157,14 @@ function ChatHistory() {
   const handleRenameSession = async (e, sessionId, newTitle) => {
     e.stopPropagation();
     try {
-      await sessionApi.updateSessionTitle(sessionId, newTitle);
+      const response = await sessionApi.updateSessionTitle(sessionId, newTitle);
+      // Update local session store if this is the current session
+      if (currentSessionId === sessionId) {
+        useSessionStore.setState({ 
+          topic: newTitle, 
+          chatTitle: newTitle 
+        });
+      }
       setEditingSessionId(null);
       setEditTitle('');
       await loadSessions(searchQuery);
@@ -203,6 +213,9 @@ function ChatHistory() {
 
   const handleSessionClick = async (sessionId, sessionMode, sessionTopic) => {
     try {
+      setIsResumingSession(true);
+      setResumingSessionId(sessionId);
+      
       // Resume the session
       const session = await resumeSessionFromServer(sessionId);
       
@@ -212,11 +225,16 @@ function ChatHistory() {
         // Start revision quiz and navigate to chat (quiz overlay will show)
         try {
           await startRevisionQuiz(sessionTopic);
+          // Small delay to ensure state is set before navigation
+          await new Promise(resolve => setTimeout(resolve, 100));
           navigate('/chat', { replace: true });
         } catch (quizError) {
           console.error('Failed to start revision quiz:', quizError);
-          // Fallback: just navigate to chat
-          navigate('/chat', { replace: true });
+          setIsResumingSession(false);
+          setResumingSessionId(null);
+          setError(quizError.message || 'Failed to start revision quiz');
+          // Don't navigate on error - let user see the error
+          return;
         }
       } else {
         // Regular study session - navigate to chat interface
@@ -224,9 +242,23 @@ function ChatHistory() {
       }
     } catch (err) {
       console.error('Failed to resume session:', err);
+      setIsResumingSession(false);
+      setResumingSessionId(null);
       setError(err.message || 'Failed to resume session');
     }
   };
+  
+  // Clear resuming state when session loading completes
+  useEffect(() => {
+    if (!sessionLoading && isResumingSession) {
+      // Small delay to ensure navigation happens
+      const timer = setTimeout(() => {
+        setIsResumingSession(false);
+        setResumingSessionId(null);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [sessionLoading, isResumingSession]);
 
   if (loading && sessions.study.length === 0 && sessions.revision.length === 0) {
     return (
@@ -320,7 +352,11 @@ function ChatHistory() {
   })();
 
   return (
-    <div className="chat-history-container">
+    <>
+      {(isResumingSession || sessionLoading) && (
+        <Loader overlay message={isResumingSession ? "Opening revision quiz..." : "Loading..."} />
+      )}
+      <div className="chat-history-container">
       <div className="chat-history-content">
         {/* Mode Filter Toggle */}
         <div className="chat-history-mode-filters">
@@ -392,7 +428,12 @@ function ChatHistory() {
               placeholder="Search"
               className="chat-history-search"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              maxLength={100}
+              onChange={(e) => {
+                if (e.target.value.length <= 100) {
+                  setSearchQuery(e.target.value);
+                }
+              }}
               onFocus={() => setShowSearchModal(true)}
             />
           </div>
@@ -420,7 +461,12 @@ function ChatHistory() {
                   placeholder="Search"
                   className="chat-history-search-modal-input"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  maxLength={100}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 100) {
+                      setSearchQuery(e.target.value);
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Escape') {
                       setShowSearchModal(false);
@@ -528,7 +574,12 @@ function ChatHistory() {
                           type="text"
                           className="chat-history-edit-input"
                           value={editTitle}
-                          onChange={(e) => setEditTitle(e.target.value)}
+                          maxLength={100}
+                          onChange={(e) => {
+                            if (e.target.value.length <= 100) {
+                              setEditTitle(e.target.value);
+                            }
+                          }}
                           onBlur={() => {
                             if (editTitle.trim()) {
                               handleRenameSession(null, sessionId, editTitle.trim());
@@ -600,6 +651,7 @@ function ChatHistory() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

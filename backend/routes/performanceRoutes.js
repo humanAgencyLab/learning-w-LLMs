@@ -6,15 +6,9 @@ const { requireAuth } = require('../middleware/auth');
 const Session = require('../models/Session');
 const QuizAttempt = require('../models/QuizAttempt');
 
-// Initialize Pino logger
+// Initialize Pino logger (no transport in production - pino-pretty is dev-only)
 const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true
-    }
-  }
+  level: process.env.LOG_LEVEL || 'info'
 });
 
 // Middleware to add request ID to logger

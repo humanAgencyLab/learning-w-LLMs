@@ -79,20 +79,22 @@ router.post('/signup', async (req, res) => {
     
     await user.save();
     
-    // Generate tokens
-    const accessToken = generateAccessToken({ userId: user._id, email: user.email });
-    const refreshToken = generateRefreshToken({ userId: user._id, email: user.email });
+    // Generate tokens (convert ObjectId to string)
+    const accessToken = generateAccessToken({ userId: user._id.toString(), email: user.email });
+    const refreshToken = generateRefreshToken({ userId: user._id.toString(), email: user.email });
     
     // Set refresh token in httpOnly cookie
+    // For cross-origin requests, sameSite must be 'none' with secure=true
+    const isProduction = process.env.NODE_ENV === 'production';
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
     
     logger.info({
-      requestId: req.requestId,
+      requestId: req.requestId || 'unknown',
       userId: user._id,
       email: user.email
     }, 'User signed up');
@@ -174,15 +176,17 @@ router.post('/login', async (req, res) => {
     // Update last login
     await user.updateLastLogin();
     
-    // Generate tokens
-    const accessToken = generateAccessToken({ userId: user._id, email: user.email });
-    const refreshToken = generateRefreshToken({ userId: user._id, email: user.email });
+    // Generate tokens (convert ObjectId to string)
+    const accessToken = generateAccessToken({ userId: user._id.toString(), email: user.email });
+    const refreshToken = generateRefreshToken({ userId: user._id.toString(), email: user.email });
     
     // Set refresh token in httpOnly cookie
+    // For cross-origin requests, sameSite must be 'none' with secure=true
+    const isProduction = process.env.NODE_ENV === 'production';
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
     
@@ -259,8 +263,8 @@ router.post('/refresh', async (req, res) => {
       });
     }
     
-    // Generate new access token
-    const accessToken = generateAccessToken({ userId: user._id, email: user.email });
+    // Generate new access token (convert ObjectId to string)
+    const accessToken = generateAccessToken({ userId: user._id.toString(), email: user.email });
     
     res.json({
       success: true,

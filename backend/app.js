@@ -60,12 +60,7 @@ const logger = winston.createLogger({
   ]
 });
 
-// Security middleware
-app.use(helmet());
-
-// Rate limiting is handled by the new rateLimiter middleware
-
-// CORS configuration
+// CORS configuration (must be before helmet for proper handling)
 const corsOrigins = process.env.CORS_ORIGINS ? 
   process.env.CORS_ORIGINS.split(',').map(origin => origin.trim()) : 
   ['http://localhost:3000'];
@@ -74,6 +69,14 @@ app.use(cors({
   origin: corsOrigins,
   credentials: true
 }));
+
+// Security middleware (after CORS to avoid conflicts)
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false
+}));
+
+// Rate limiting is handled by the new rateLimiter middleware
 
 // Body parsing with size limit
 app.use(express.json({ limit: '1mb', strict: false, type: 'application/json' }));

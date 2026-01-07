@@ -157,7 +157,8 @@ router.put('/', requireAuth, async (req, res) => {
       defaultMode,
       explanationLength,
       examplesPreference,
-      language
+      language,
+      onboardingCompleted
     } = req.body;
     
     // Update name if provided
@@ -285,6 +286,11 @@ router.put('/', requireAuth, async (req, res) => {
       user.profile.examplesPreference = examplesPreference;
     }
     if (language !== undefined) user.profile.language = language;
+    
+    // Update onboardingCompleted (inside profile object)
+    if (onboardingCompleted !== undefined) {
+      user.profile.onboardingCompleted = onboardingCompleted === true;
+    }
     
     await user.save();
     

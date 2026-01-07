@@ -1,0 +1,54 @@
+# This file specifies files that are *not* uploaded to Google Cloud
+# using gcloud. It follows the same syntax as .gitignore
+
+# Git
+.git
+.gitignore
+
+# Node modules (will be installed in container)
+node_modules
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs
+backend-dev.log
+frontend-dev.log
+backend-server.log
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage
+.nyc_output
+
+# Documentation (optional - remove if you want docs in cloud)
+*.md
+!README.md
+
+# Build artifacts
+dist
+build
+
+# Temporary files
+*.tmp
+*.temp
+
+# Scripts (optional)
+scripts
+
+# Research folder
+research
+

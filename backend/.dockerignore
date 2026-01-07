@@ -1,0 +1,52 @@
+# Dependencies
+node_modules
+npm-debug.log
+package-lock.json
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs
+*.log
+backend-dev.log
+backend-server.log
+
+# Testing
+coverage
+.nyc_output
+jest.config.js
+tests
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+docs
+
+# Scripts (optional - include if needed for production)
+scripts
+
+# Temporary files
+*.tmp
+*.temp
+
+# Build artifacts (if any)
+dist
+build
+

@@ -1,0 +1,66 @@
+# Cloud Build configuration for deploying backend to Cloud Run
+# Usage: gcloud builds submit --config cloudbuild.yaml
+
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/study-assist-backend:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/study-assist-backend:latest'
+      - '.'
+    dir: 'backend'
+
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/study-assist-backend:$SHORT_SHA'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/study-assist-backend:latest'
+
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'study-assist-backend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/study-assist-backend:$SHORT_SHA'
+      - '--platform'
+      - 'managed'
+      - '--region'
+      - 'us-central1'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '2'
+      - '--timeout'
+      - '300'
+      - '--max-instances'
+      - '10'
+      - '--min-instances'
+      - '0'
+      - '--set-env-vars'
+      - 'NODE_ENV=production,LLM_PROVIDER=groq,LLM_MODEL=llama3.1,TRUST_PROXY=1'
+
+# Images to be pushed to the registry
+images:
+  - 'gcr.io/$PROJECT_ID/study-assist-backend:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/study-assist-backend:latest'
+
+# Options
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+# Timeout for the entire build
+timeout: '1200s'
+

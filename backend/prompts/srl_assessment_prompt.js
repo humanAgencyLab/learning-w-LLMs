@@ -198,27 +198,51 @@ Use profile goals to infer the best topic and create a relevant plan.
   * Don't use fixed/equal distribution (like 33, 33, 34) - vary points based on actual module complexity
   * No single module can exceed 60 points
 - Module IDs must be sequential strings starting from "1"
+- **CRITICAL: FIRST MODULE REQUIREMENTS**
+  * The FIRST module (moduleId: "1") MUST be the most basic and foundational introduction
+  * First module should cover ONLY the absolute basics - what the topic is, why it matters, and the simplest starting concepts
+  * First module milestones MUST be easy and basic - suitable for complete beginners
+  * First module should NOT include advanced concepts, complex applications, or intermediate topics
+  * Examples of appropriate first module milestones:
+    - "Understand what [topic] is and its basic purpose"
+    - "Learn the fundamental terminology and key concepts"
+    - "Identify the basic components and structure"
+    - "Recognize simple examples and use cases"
+  * Examples of INAPPROPRIATE first module milestones (too advanced):
+    - "Master complex applications" (too advanced for first module)
+    - "Build practical projects" (too advanced - should be in later modules)
+    - "Optimize performance" (way too advanced)
+    - "Apply advanced techniques" (too advanced)
 - **DYNAMIC MILESTONE COUNT: Each module should have 3-6 learning objectives (targets) based on the module's scope**
+  * First module (moduleId: "1") → 3-4 basic milestones (keep it simple)
   * Simpler modules → 3-4 milestones
   * More complex modules → 4-6 milestones
   * Ensure each module has ENOUGH milestones to cover its content comprehensively
 - **CRITICAL: Each target must be simple, meaningful, and concise (8-15 words)**
-  * Use clear action verbs (learn, build, master, create, understand)
+  * Use clear action verbs (learn, understand, identify, recognize, explain - for basics; build, create, master - for advanced)
   * Be specific about what will be learned
   * Keep it simple and easy to understand
-  * Avoid repetition - each milestone should be unique and meaningful
+  * **ABSOLUTE PROHIBITION: NO REPETITION** - each milestone must cover DIFFERENT content
+  * Each milestone should be unique and distinct from others in the same module
 - Good target format: "Action verb + specific concept/topic + brief outcome"
-- Examples of GOOD simple, meaningful targets:
-  * "Learn Python variables and data types (integers, floats, strings, booleans)"
+- Examples of GOOD simple, meaningful targets for FIRST module:
+  * "Understand what Python is and its basic purpose in programming"
+  * "Learn Python syntax rules and basic code structure"
+  * "Identify Python data types (integers, strings, booleans)"
+  * "Recognize how to write and run simple Python programs"
+- Examples of GOOD targets for LATER modules:
   * "Build interactive programs with user input and error handling"
   * "Master control flow structures (if/else, loops) for decision-making"
   * "Create functions to organize code and reuse logic"
   * "Understand object-oriented programming concepts and classes"
 - **AVOID overly elaborate targets (20+ words)** - they're too verbose and hard to read
 - **AVOID repetitive targets** - each milestone should cover different content
+  * BAD example (repetitive): ["Learn Python basics", "Understand Python fundamentals", "Master Python basics"]
+  * GOOD example (unique): ["Understand what Python is and its purpose", "Learn Python syntax and code structure", "Identify Python data types"]
 - **AVOID generic targets** like "Learn basics", "Understand concepts", "Master fundamentals", "Apply key concepts"
+- **AVOID vague module titles** - first module should have a clear, specific title like "Introduction to [Topic]" or "[Topic] Fundamentals"
 - Each target should be a simple, meaningful sentence (8-15 words) that clearly states what will be learned
-- If the learner lists specific concepts or requirements (e.g., "syntax, data types, loops, functions"), ensure those items appear explicitly in the plan.
+- If the learner lists specific concepts or requirements (e.g., "syntax, data types, loops, functions"), ensure those items appear explicitly in the plan, with basics in the first module and advanced topics in later modules.
 
 **RESPONSE FORMAT - RETURN ONLY JSON:**
 {

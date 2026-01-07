@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Confetti from 'react-confetti';
 import QuizOverlay from '../components/quiz/QuizOverlay';
 import useSessionStore from '../state/sessionStore';
 import * as sessionApi from '../lib/sessionApi';
+import Loader from '../components/Loader';
 
 function ChatInterface() {
   // Session store
@@ -11,8 +12,11 @@ function ChatInterface() {
     mode: learningStyle,
     model,
     topic,
+    chatTitle,
     phase,
     plan,
+    activeModuleId,
+    quizDraft,
     isViewOnly,
     setLearningStyle,
     setModel,
@@ -27,13 +31,156 @@ function ChatInterface() {
     resumeSessionFromServer,
     clearError,
     appendMessage,
-    startRevisionQuiz
+    startRevisionQuiz,
+    startQuizFromChat
   } = useSessionStore();
   const [inputValue, setInputValue] = useState('');
   const [modificationRequest, setModificationRequest] = useState('');
   const [showConfetti, setShowConfetti] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [summary, setSummary] = useState(null);
+  const [expandedModules, setExpandedModules] = useState(new Set([0])); // Expand first module by default
+  const [composerHeight, setComposerHeight] = useState(56); // Track composer height for spacing
+  const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
+  const textareaRef = useRef(null);
+  const preSurfaceTextareaRef = useRef(null);
+  const messageListRef = useRef(null);
+  
+  // Detect predefined messages in last assistant response and generate chips
+  const getActionChips = useCallback(() => {
+    if (sessionMessages.length === 0) return [];
+    
+    const lastMessage = sessionMessages[sessionMessages.length - 1];
+    if (lastMessage.role !== 'assistant') return [];
+    
+    const content = lastMessage.content.toLowerCase();
+    const chips = [];
+    
+    // Check for "start quiz" or similar phrases
+    // Only show for STUDY mode, not revision mode
+    if ((content.includes('start quiz') || content.includes('begin quiz') || content.includes('take quiz') || content.includes('ready for quiz')) && learningStyle === 'studying') {
+      chips.push({
+        label: 'Start Quiz',
+        action: async () => {
+          try {
+            if (activeModuleId) {
+              // This is a STUDY quiz - use startQuizFromChat
+              await startQuizFromChat(activeModuleId);
+            } else {
+              await sendChatMessage('start quiz');
+            }
+          } catch (err) {
+            setToast({ type: 'error', message: err.message || 'Failed to start quiz' });
+          }
+        }
+      });
+    }
+    
+    // Check for "restart revision" or similar phrases
+    if (content.includes('restart revision') || content.includes('revise again') || content.includes('redo revision')) {
+      chips.push({
+        label: 'Restart Revision',
+        action: async () => {
+          try {
+            if (topic) {
+              await startRevisionQuiz(topic);
+            } else {
+              await sendChatMessage('restart revision');
+            }
+          } catch (err) {
+            setToast({ type: 'error', message: err.message || 'Failed to restart revision' });
+          }
+        }
+      });
+    }
+    
+    // Check for "continue" or "next module" phrases
+    if (content.includes('continue') && (content.includes('next module') || content.includes('next lesson'))) {
+      chips.push({
+        label: 'Continue to Next Module',
+        action: async () => {
+          try {
+            await sendChatMessage('continue');
+          } catch (err) {
+            setToast({ type: 'error', message: err.message || 'Failed to continue' });
+          }
+        }
+      });
+    }
+    
+    // Check for "retry" or "try again" phrases
+    if (content.includes('retry') || content.includes('try again') || content.includes('redo')) {
+      chips.push({
+        label: 'Try Again',
+        action: async () => {
+          try {
+            await sendChatMessage('try again');
+          } catch (err) {
+            setToast({ type: 'error', message: err.message || 'Failed to retry' });
+          }
+        }
+      });
+    }
+    
+    return chips;
+  }, [sessionMessages, activeModuleId, topic, learningStyle, startQuizFromChat, startRevisionQuiz, sendChatMessage]);
+  
+  const actionChips = getActionChips();
+  
+  // Auto-resize textarea
+  const adjustTextareaHeight = useCallback(() => {
+    const textarea = textareaRef.current || preSurfaceTextareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      const scrollHeight = textarea.scrollHeight;
+      const maxHeight = 200; // ~8-9 lines
+      const newHeight = Math.min(scrollHeight, maxHeight);
+      textarea.style.height = `${newHeight}px`;
+      // Only update composerHeight for main chat composer (not pre-surface)
+      // Account for: textarea height + padding (16px top + 8px bottom) + control section (~48px) + container padding (32px)
+      if (textareaRef.current) {
+        setComposerHeight(newHeight + 16 + 8 + 48 + 32);
+      }
+    }
+  }, []);
+  
+  // Auto-scroll to bottom (only if user is near bottom)
+  const scrollToBottom = useCallback((smooth = true) => {
+    if (messageListRef.current && !isUserScrolledUp) {
+      messageListRef.current.scrollTo({
+        top: messageListRef.current.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto'
+      });
+    }
+  }, [isUserScrolledUp]);
+  
+  // Check if user scrolled up
+  useEffect(() => {
+    const messageList = messageListRef.current;
+    if (!messageList) return;
+    
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = messageList;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setIsUserScrolledUp(!isNearBottom);
+    };
+    
+    messageList.addEventListener('scroll', handleScroll);
+    return () => messageList.removeEventListener('scroll', handleScroll);
+  }, []);
+  
+  // Auto-scroll when new messages arrive
+  useEffect(() => {
+    if (sessionMessages.length > 0) {
+      // Small delay to ensure DOM is updated
+      setTimeout(() => scrollToBottom(true), 100);
+    }
+  }, [sessionMessages.length, scrollToBottom]);
+  
+  // Auto-resize textarea on input change
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [inputValue, adjustTextareaHeight]);
 
   // Initialize session if none exists
   useEffect(() => {
@@ -246,7 +393,8 @@ function ChatInterface() {
     if (!inputValue.trim() || loading) return;
 
     const message = inputValue.trim();
-    setInputValue('');
+    setInputValue(''); // Clear input immediately
+    adjustTextareaHeight(); // Reset textarea height
 
     try {
       // Ensure we have a valid session before sending
@@ -342,6 +490,9 @@ function ChatInterface() {
         </div>
       )}
       <QuizOverlay />
+      {loading && phase === 'quizzing' && !quizDraft && (
+        <Loader overlay message="Preparing quiz..." />
+      )}
 
       {/* CONTENT COLUMN */}
       <div className="flex h-full min-h-0 flex-col">
@@ -359,12 +510,29 @@ function ChatInterface() {
                 inputValue.trim() ? 'border-[#4e81ee]' : 'border-[#e6e7e8]'
               }`}>
                 <textarea
+                  ref={preSurfaceTextareaRef}
                   placeholder={chatPlaceholder}
-                  className="w-full resize-none border-none outline-none bg-transparent text-lg leading-[28px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.4px]"
-                  style={{ minHeight: "28px" }}
+                  className="w-full resize-none border-none outline-none bg-transparent text-base leading-[24px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.25px] overflow-y-auto"
+                  style={{ 
+                    minHeight: "24px",
+                    maxHeight: "200px",
+                    lineHeight: "24px"
+                  }}
                   value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
+                  maxLength={2000}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 2000) {
+                      setInputValue(e.target.value);
+                      adjustTextareaHeight();
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSubmit(e);
+                    }
+                  }}
+                  rows={1}
                 />
                 
                 {/* Controls at bottom */}
@@ -377,7 +545,6 @@ function ChatInterface() {
                       className="font-normal text-base leading-[21px] text-[#424855] tracking-[-0.25px] bg-transparent border-none outline-none cursor-pointer appearance-none"
                     >
                       <option value="llama">Llama</option>
-                      <option value="gpt">ChatGPT</option>
                     </select>
                     <svg className="w-3 h-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -476,67 +643,178 @@ function ChatInterface() {
             {/* Plan Approval UI - Show when in planning phase, takes full height */}
             {isPlanning && plan && plan.length > 0 ? (
               <div className="flex flex-col flex-1 min-h-0 bg-[#f7f8f8]">
-                {/* Scrollable Plan Review Section */}
-                <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-4 custom-scrollbar">
+                {/* Scrollable Plan Review Section - More space for modules */}
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-2 custom-scrollbar">
                   <div className="max-w-4xl mx-auto">
-                    <div className="bg-white rounded-xl sm:rounded-2xl p-5 sm:p-6 border border-[#e6e7e8] shadow-sm">
-                      <h3 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-[#030712]">Review Your Learning Plan</h3>
-                      {/* Scrollable plan container */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-                        {plan.map((module, index) => (
-                          <div key={module.id} className="bg-gradient-to-br from-[#f7f8f8] to-white rounded-lg p-4 sm:p-5 border border-[#e6e7e8] hover:border-[#4e81ee] hover:shadow-md transition-all duration-200">
-                            <div className="flex items-center justify-between mb-3 sm:mb-4">
-                              <span className="font-semibold text-base sm:text-lg text-[#030712]">
-                                {index + 1}. {module.title}
-                              </span>
-                              <span className="text-xs sm:text-sm font-semibold text-[#4e81ee] bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-full">{module.points} pts</span>
-                            </div>
-                            {module.milestones && module.milestones.length > 0 && (
-                              <ul className="text-sm sm:text-base text-[#424855] space-y-2 sm:space-y-2.5">
-                                {module.milestones.map((milestone, mIndex) => (
-                                  <li key={mIndex} className="leading-relaxed flex items-start gap-2">
-                                    <span className="text-[#4e81ee] mt-1.5 flex-shrink-0">•</span>
-                                    <span className="flex-1">{typeof milestone === 'string' ? milestone : milestone.text}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
+                    {/* Plan Header - More compact */}
+                    <div className="bg-white rounded-xl p-3 sm:p-4 border border-[#e6e7e8] shadow-sm mb-2">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <h2 className="text-xl sm:text-2xl font-bold text-[#030712] mb-1">
+                            Learning Plan {chatTitle ? `(${chatTitle})` : topic ? `(${topic})` : ''}
+                          </h2>
+                          <p className="text-sm text-[#686d77] mb-2">
+                            {plan.length} {plan.length === 1 ? 'Module' : 'Modules'} • Estimated total points: {plan.reduce((sum, m) => sum + (m.points || 0), 0)}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                              Status: Pending approval
+                            </span>
                           </div>
-                        ))}
+                        </div>
+                      </div>
+                      <p className="text-xs text-[#686d77] mt-2 pt-2 border-t border-[#e6e7e8]">
+                        A plan is a sequence of modules. You'll do them one-by-one.
+                      </p>
+                    </div>
+
+                    {/* Plan Container with Modules List - More prominent */}
+                    <div className="bg-white rounded-xl border border-[#e6e7e8] shadow-sm overflow-hidden">
+                      <div className="p-2.5 sm:p-3 border-b border-[#e6e7e8] bg-[#f7f8f8]">
+                        <h3 className="text-base sm:text-lg font-semibold text-[#030712]">Modules</h3>
+                      </div>
+                      
+                      {/* Modules List/Stepper */}
+                      <div className="divide-y divide-[#e6e7e8]">
+                        {plan.map((module, index) => {
+                          const isExpanded = expandedModules.has(index);
+                          const milestoneCount = module.milestones?.length || 0;
+                          
+                          return (
+                            <div key={module.id} className="bg-white hover:bg-[#fafbfc] transition-colors">
+                              <button
+                                onClick={() => {
+                                  const newExpanded = new Set(expandedModules);
+                                  if (isExpanded) {
+                                    newExpanded.delete(index);
+                                  } else {
+                                    newExpanded.add(index);
+                                  }
+                                  setExpandedModules(newExpanded);
+                                }}
+                                className="w-full flex items-center justify-between p-3 sm:p-4 text-left"
+                              >
+                                <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                                  {/* Module Number Badge */}
+                                  <div className="flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#4e81ee] text-white font-bold text-sm sm:text-base flex items-center justify-center">
+                                    {index + 1}
+                                  </div>
+                                  
+                                  {/* Module Title and Info */}
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="font-semibold text-base sm:text-lg text-[#030712] mb-1">
+                                      {module.title}
+                                    </h4>
+                                    <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-[#686d77]">
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-50 text-[#4e81ee] font-medium border border-blue-100">
+                                        {module.points} points
+                                      </span>
+                                      <span>{milestoneCount} {milestoneCount === 1 ? 'milestone' : 'milestones'}</span>
+                                      {module.difficulty && (
+                                        <span className="capitalize">• {module.difficulty}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Expand/Collapse Chevron */}
+                                <svg
+                                  className={`w-5 h-5 text-[#686d77] flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                              
+                              {/* Expanded Milestones */}
+                              {isExpanded && module.milestones && module.milestones.length > 0 && (
+                                <div className="px-3 sm:px-4 pb-3 sm:pb-4 pt-0 bg-[#fafbfc]">
+                                  <div className="pl-12 sm:pl-14">
+                                    <p className="text-xs font-medium text-[#686d77] mb-2 uppercase tracking-wide">Learning Objectives</p>
+                                    <ul className="space-y-1.5 sm:space-y-2">
+                                      {module.milestones.map((milestone, mIndex) => (
+                                        <li key={mIndex} className="flex items-start gap-2 text-sm sm:text-base text-[#424855]">
+                                          <span className="text-[#4e81ee] mt-1.5 flex-shrink-0">•</span>
+                                          <span className="flex-1">{typeof milestone === 'string' ? milestone : milestone.text}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
                 </div>
                 
-                {/* Fixed Bottom Section - Approval and Modification */}
-                <div className="flex-shrink-0 bg-white border-t border-[#e6e7e8] shadow-lg px-4 sm:px-6 pt-4 pb-4 sm:pb-6">
-                  <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4">
-                    {/* Approve Plan Button */}
-                    <button
-                      onClick={async () => {
-                        try {
-                          await approvePlan();
-                          setToast({ message: 'Plan approved! Let\'s start learning.', type: 'success' });
-                        } catch (err) {
-                          setToast({ message: err.message || 'Failed to approve plan', type: 'error' });
-                        }
-                      }}
-                      disabled={loading}
-                      className="w-full bg-[#4e81ee] hover:bg-blue-600 active:bg-blue-700 text-white font-semibold text-base sm:text-lg px-6 py-3.5 sm:py-4 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md"
-                    >
-                      Approve Plan
-                    </button>
+                {/* Compact Sticky Footer - Approval and Modification */}
+                <div className="flex-shrink-0 bg-white border-t border-[#e6e7e8] shadow-lg">
+                  <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
+                    {/* Approve Plan Section - Compact */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3 pb-3 border-b border-[#e6e7e8]">
+                      <p className="text-sm text-[#424855]">
+                        Plan ready. <span className="font-medium text-[#030712]">Approve to start Module 1.</span>
+                      </p>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await approvePlan();
+                            setToast({ message: 'Plan approved! Let\'s start learning.', type: 'success' });
+                          } catch (err) {
+                            setToast({ message: err.message || 'Failed to approve plan', type: 'error' });
+                          }
+                        }}
+                        disabled={loading}
+                        className="w-full sm:w-auto px-6 sm:px-8 py-2.5 bg-[#4e81ee] hover:bg-blue-600 active:bg-blue-700 text-white font-semibold text-sm sm:text-base rounded-lg shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Approve this Learning Plan
+                      </button>
+                    </div>
                     
-                    {/* Modification Request Card - Fixed at bottom */}
-                    <div className="bg-[#f7f8f8] rounded-xl p-4 sm:p-5 border border-[#e6e7e8]">
-                      <h4 className="font-semibold text-sm sm:text-base mb-3 text-[#030712]">Request Modifications</h4>
-                      <div className="flex flex-col gap-3">
+                    {/* Modification Request Section - Compact */}
+                    <div id="modification-panel" className="bg-[#f7f8f8] rounded-lg p-3 sm:p-4 border border-[#e6e7e8]">
+                      <h4 className="font-semibold text-sm mb-2 text-[#030712]">Request Modifications</h4>
+                      
+                      {/* Quick Chips */}
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {[
+                          "Make it more beginner-friendly",
+                          "Reduce to 3 modules",
+                          "Add more practice quizzes"
+                        ].map((chip, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              if (modificationRequest.trim()) {
+                                setModificationRequest(prev => prev + ' ' + chip);
+                              } else {
+                                setModificationRequest(chip);
+                              }
+                            }}
+                            className="px-3 py-1 text-xs font-medium text-[#4e81ee] bg-white border border-blue-200 rounded-full hover:bg-blue-50 transition-colors"
+                          >
+                            {chip}
+                          </button>
+                        ))}
+                      </div>
+                      
+                      <div className="flex gap-2">
                         <textarea
-                          placeholder="Tell me what you'd like to change..."
-                          className="w-full resize-none rounded-lg border border-[#e6e7e8] bg-white p-3 text-sm sm:text-base leading-[21px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.25px] focus:border-[#4e81ee] focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all"
-                          style={{ minHeight: "70px", maxHeight: "120px" }}
+                          placeholder="Ask to adjust modules, difficulty, pacing, or add/remove topics. This updates this plan."
+                          className="flex-1 resize-none rounded-lg border border-[#e6e7e8] bg-white p-2.5 text-sm leading-[21px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.25px] focus:border-[#4e81ee] focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all"
+                          style={{ minHeight: "60px", maxHeight: "80px" }}
                           value={modificationRequest}
-                          onChange={(e) => setModificationRequest(e.target.value)}
+                          maxLength={500}
+                          onChange={(e) => {
+                            if (e.target.value.length <= 500) {
+                              setModificationRequest(e.target.value);
+                            }
+                          }}
                           disabled={loading}
                         />
                         <button
@@ -554,7 +832,7 @@ function ChatInterface() {
                             }
                           }}
                           disabled={loading || !modificationRequest.trim()}
-                          className="w-full sm:w-auto sm:self-start bg-[#ff9500] hover:bg-orange-600 active:bg-orange-700 text-white font-semibold text-sm sm:text-base px-5 sm:px-6 py-2.5 sm:py-3 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm"
+                          className="flex-shrink-0 bg-[#ff9500] hover:bg-orange-600 active:bg-orange-700 text-white font-semibold text-sm px-4 py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm"
                         >
                           Request Modification
                         </button>
@@ -566,23 +844,29 @@ function ChatInterface() {
             ) : hasMessages ? (
               <>
                 {/* Thread (scrolls) - Only show when there are messages and not in planning phase */}
-                <div id="message-list" className="min-h-0 flex-1 overflow-auto px-6 py-4">
-                  <div className="flex flex-col gap-6">
-                    {sessionMessages.map((message, index) => (
-                      <div
-                        key={index}
-                        className={`flex flex-col gap-2 ${
-                          message.role === 'user' ? 'items-end' : 'items-start'
-                        }`}
-                      >
-                        {/* Message Bubble */}
+                <div 
+                  ref={messageListRef}
+                  id="message-list" 
+                  className="min-h-0 flex-1 overflow-auto custom-scrollbar bg-[#f7f8f8]"
+                  style={{ paddingBottom: '30px' }}
+                >
+                  <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4">
+                    <div className="flex flex-col gap-6">
+                      {sessionMessages.map((message, index) => (
                         <div
-                          className={`max-w-[85%] ${
-                            message.role === 'user'
-                              ? 'bg-white text-[#030712] p-4 rounded-2xl border border-[#e6e7e8]'
-                              : 'bg-transparent text-[#030712]'
-                          } ${message.isError ? 'border-red-200 bg-red-50 text-red-700 p-4 rounded-2xl' : ''}`}
+                          key={index}
+                          className={`flex flex-col gap-2 ${
+                            message.role === 'user' ? 'items-end' : 'items-start'
+                          }`}
                         >
+                          {/* Message Bubble */}
+                          <div
+                            className={`max-w-[85%] ${
+                              message.role === 'user'
+                                ? 'bg-white text-[#030712] p-4 rounded-2xl border border-[#e6e7e8]'
+                                : 'bg-transparent text-[#030712]'
+                            } ${message.isError ? 'border-red-200 bg-red-50 text-red-700 p-4 rounded-2xl' : ''}`}
+                          >
                           <div className={`leading-relaxed whitespace-pre-wrap ${
 message.role === 'user' ? 'text-sm' : 'text-base'
                           }`}>
@@ -680,8 +964,20 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                             )}
                           </div>
                         )}
-                      </div>
-                    ))}
+                        </div>
+                      ))}
+                      
+                      {/* Typing Indicator */}
+                      {loading && (
+                        <div className="flex items-start">
+                          <div className="flex gap-1.5 px-4 py-3 bg-[#f7f8f8] rounded-2xl">
+                            <div className="w-2 h-2 bg-[#686d77] rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1.4s' }}></div>
+                            <div className="w-2 h-2 bg-[#686d77] rounded-full animate-bounce" style={{ animationDelay: '0.2s', animationDuration: '1.4s' }}></div>
+                            <div className="w-2 h-2 bg-[#686d77] rounded-full animate-bounce" style={{ animationDelay: '0.4s', animationDuration: '1.4s' }}></div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -710,52 +1006,95 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                 ) : (
                   /* Composer - Fixed at bottom when there are messages (hide in planning phase) */
                   !isViewOnly && !isPlanning && (
-                    <div className="flex-shrink-0 bg-[#f7f8f8] p-6">
-                      <div className="flex items-center gap-3 max-w-4xl mx-auto">
-                        <div className="flex-1 relative">
-                          <textarea
-                            placeholder={chatPlaceholder}
-                            className="w-full resize-none rounded-[24px] border border-[#e6e7e8] bg-white p-4 pr-24 text-lg leading-[28px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.4px] focus:border-[#4e81ee] focus:outline-none"
-                            style={{ minHeight: "56px", maxHeight: "120px" }}
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
-                            disabled={loading}
-                          />
-                          
-                          {/* Model Selector Dropdown - Inside textarea */}
-                          <div className="absolute bottom-[18px] right-[72px] flex items-center gap-1">
-                            <select 
-                              value={model}
-                              onChange={(e) => setModel(e.target.value)}
-                              className="bg-transparent border-none outline-none text-base leading-[21px] text-[#424855] tracking-[-0.25px] cursor-pointer appearance-none font-normal"
-                            >
-                              <option value="llama">Llama</option>
-                              <option value="gpt">ChatGPT</option>
-                            </select>
-                            <svg className="w-3 h-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
+                    <div className="flex-shrink-0 bg-[#f7f8f8] pt-2">
+                      <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-4">
+                        {/* Composer Container */}
+                        <div className="bg-white rounded-[24px] border border-[#e6e7e8] overflow-hidden focus-within:border-[#4e81ee] focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                          {/* Textarea Section */}
+                          <div className="relative">
+                            <textarea
+                              ref={textareaRef}
+                              placeholder={chatPlaceholder}
+                              className="w-full resize-none border-none outline-none bg-transparent p-4 pb-2 text-base leading-[24px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.25px] overflow-y-auto"
+                              style={{ 
+                                minHeight: "24px",
+                                maxHeight: "200px",
+                                lineHeight: "24px"
+                              }}
+                              value={inputValue}
+                              maxLength={2000}
+                              onChange={(e) => {
+                                if (e.target.value.length <= 2000) {
+                                  setInputValue(e.target.value);
+                                  adjustTextareaHeight();
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleSubmit(e);
+                                }
+                              }}
+                              disabled={loading}
+                              rows={1}
+                            />
                           </div>
                           
-                          {/* Send Button - Inside textarea */}
-                          <button 
-                            className={`absolute bottom-[8px] right-[8px] flex h-12 w-12 items-center justify-center rounded-[50px] transition-all duration-200 ${
-                              inputValue.trim() && !loading
-                                ? 'bg-[#4e81ee] hover:bg-blue-600' 
-                                : 'bg-gray-300 cursor-not-allowed'
-                            }`}
-                            onClick={handleSubmit} 
-                            disabled={loading || !inputValue.trim()}
-                          >
-                            <img 
-                              src="/icons/send-arrow.svg" 
-                              alt="send" 
-                              className={`w-6 h-6 ${
-                                inputValue.trim() ? 'filter-none' : 'filter grayscale opacity-50'
-                              }`}
-                            />
-                          </button>
+                          {/* Control Section - Separate row below textarea */}
+                          <div className="px-4 pb-3 pt-1">
+                            {/* Action Chips - Show when predefined messages detected */}
+                            {actionChips.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                {actionChips.map((chip, idx) => (
+                                  <button
+                                    key={idx}
+                                    onClick={chip.action}
+                                    disabled={loading}
+                                    className="px-3 py-1 text-xs font-medium text-[#4e81ee] bg-blue-50 border border-blue-200 rounded-full hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {chip.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            <div className="flex items-center justify-between">
+                              {/* Left side - Model Selector */}
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1">
+                                  <select 
+                                    value={model}
+                                    onChange={(e) => setModel(e.target.value)}
+                                    className="bg-transparent border-none outline-none text-sm leading-[21px] text-[#424855] tracking-[-0.25px] cursor-pointer appearance-none font-normal pr-5"
+                                  >
+                                    <option value="llama">Llama</option>
+                                  </select>
+                                  <svg className="w-3 h-3 pointer-events-none -ml-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </div>
+                              </div>
+                              
+                              {/* Right side - Send Button */}
+                              <button 
+                                className={`flex h-9 w-9 items-center justify-center rounded-[50px] transition-all duration-200 ${
+                                  inputValue.trim() && !loading
+                                    ? 'bg-[#4e81ee] hover:bg-blue-600' 
+                                    : 'bg-gray-300 cursor-not-allowed'
+                                }`}
+                                onClick={handleSubmit} 
+                                disabled={loading || !inputValue.trim()}
+                              >
+                                <img 
+                                  src="/icons/send-arrow.svg" 
+                                  alt="send" 
+                                  className={`w-5 h-5 ${
+                                    inputValue.trim() && !loading ? 'filter-none' : 'filter grayscale opacity-50'
+                                  }`}
+                                />
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>

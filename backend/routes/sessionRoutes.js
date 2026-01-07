@@ -835,8 +835,11 @@ router.patch('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(asy
     }
     
     // Update chatTitle if provided
+    // When user renames chat, update both chatTitle and topic to keep them in sync
     if (chatTitle !== undefined) {
       session.chatTitle = chatTitle;
+      // Also update topic to match the new chatTitle
+      session.topic = chatTitle;
     }
     
     await session.save();
@@ -844,6 +847,7 @@ router.patch('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(asy
     req.logger.info('Session updated', { 
       sessionId: id,
       chatTitle: session.chatTitle,
+      topic: session.topic,
       duration: Date.now() - startTime 
     });
     
@@ -851,7 +855,8 @@ router.patch('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(asy
       success: true,
       data: {
         id: session._id,
-        chatTitle: session.chatTitle
+        chatTitle: session.chatTitle,
+        topic: session.topic
       }
     });
     

@@ -5,6 +5,7 @@ import '../styles/SignIn.css';
 import EmailIcon from '../components/SignIn/EmailIcon';
 import LockIcon from '../components/SignIn/LockIcon';
 import useAuthStore from '../state/authStore';
+import Loader from '../components/Loader';
 
 function SignIn() {
   const navigate = useNavigate();
@@ -50,6 +51,7 @@ function SignIn() {
 
   return (
     <div className="signin-overlay">
+      {isLoading && <Loader overlay message="Signing in..." />}
       <div className="signin-modal">
         {/* Logo and Title */}
         <div className="signin-header">
@@ -80,7 +82,12 @@ function SignIn() {
                   type="email" 
                   placeholder="yourname@mail.com" 
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  maxLength={255}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 255) {
+                      setEmail(e.target.value);
+                    }
+                  }}
                   required 
                   disabled={isLoading}
                 />
@@ -96,7 +103,12 @@ function SignIn() {
                   type="password" 
                   placeholder="Password" 
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  maxLength={128}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 128) {
+                      setPassword(e.target.value);
+                    }
+                  }}
                   required 
                   disabled={isLoading}
                 />

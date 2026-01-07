@@ -12,7 +12,7 @@ function Favorites() {
   const [editingSessionId, setEditingSessionId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const navigate = useNavigate();
-  const { resumeSessionFromServer } = useSessionStore();
+  const { resumeSessionFromServer, sessionId: currentSessionId } = useSessionStore();
 
   // Fetch favorite sessions from API
   const loadFavorites = useCallback(async () => {
@@ -91,7 +91,14 @@ function Favorites() {
   const handleRenameSession = async (e, sessionId, newTitle) => {
     e.stopPropagation();
     try {
-      await sessionApi.updateSessionTitle(sessionId, newTitle);
+      const response = await sessionApi.updateSessionTitle(sessionId, newTitle);
+      // Update local session store if this is the current session
+      if (currentSessionId === sessionId) {
+        useSessionStore.setState({ 
+          topic: newTitle, 
+          chatTitle: newTitle 
+        });
+      }
       setEditingSessionId(null);
       setEditTitle('');
       await loadFavorites();
@@ -198,7 +205,12 @@ function Favorites() {
                           type="text"
                           className="favorites-edit-input"
                           value={editTitle}
-                          onChange={(e) => setEditTitle(e.target.value)}
+                          maxLength={100}
+                          onChange={(e) => {
+                            if (e.target.value.length <= 100) {
+                              setEditTitle(e.target.value);
+                            }
+                          }}
                           onBlur={() => {
                             if (editTitle.trim()) {
                               handleRenameSession(null, sessionId, editTitle.trim());

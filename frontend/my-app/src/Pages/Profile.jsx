@@ -1,18 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../styles/Profile.css';
-import birdAvatar from '../components/Icons-Avatars/birdAvatar.png';
-import catAvatar from '../components/Icons-Avatars/catAvatar.png';
-import dogAvatar from '../components/Icons-Avatars/dogAvatar.png';
-import fishAvatar from '../components/Icons-Avatars/fishAvatar.png';
-import lionAvatar from '../components/Icons-Avatars/lionAvatar.png';
-import tigerAvatar from '../components/Icons-Avatars/tigerAvatar.png';
-import giraffeAvatar from '../components/Icons-Avatars/giraffeAvatar.png';
-import bunnyAvatar from '../components/Icons-Avatars/bunnyAvatar.png';
-import gorillaAvatar from '../components/Icons-Avatars/gorillaAvatar.png';
-import snakeAvatar from '../components/Icons-Avatars/snakeAvatar.png';
-import kangarooAvatar from '../components/Icons-Avatars/kangarooAvatar.png';
-import sheepAvatar from '../components/Icons-Avatars/sheepAvatar.png';
+import { avatars } from '../utils/avatars';
 import useAuthStore from '../state/authStore';
 import * as profileApi from '../lib/profileApi';
 import EmailIcon from '../components/SignIn/EmailIcon';
@@ -25,22 +14,6 @@ import { toastBus } from '../components/ui/toast';
 function Profile() {
   const navigate = useNavigate();
   const { user, uploadAvatar, isLoading, fetchUser } = useAuthStore();
-  
-  // Avatar options
-  const avatars = [
-    birdAvatar,
-    catAvatar,
-    dogAvatar,
-    fishAvatar,
-    lionAvatar,
-    tigerAvatar,
-    giraffeAvatar,
-    bunnyAvatar,
-    gorillaAvatar,
-    snakeAvatar,
-    kangarooAvatar,
-    sheepAvatar,
-  ];
   
   // Form state
   const [name, setName] = useState('');
@@ -1303,7 +1276,12 @@ function Profile() {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              maxLength={255}
+              onChange={(e) => {
+                if (e.target.value.length <= 255) {
+                  setEmail(e.target.value);
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && isEditingSettings && !isSaving) {
                   handleSaveSettings();
@@ -1324,7 +1302,12 @@ function Profile() {
             <input
               type="tel"
               value={mobile}
-              onChange={(e) => setMobile(e.target.value)}
+              maxLength={20}
+              onChange={(e) => {
+                if (e.target.value.length <= 20) {
+                  setMobile(e.target.value);
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && isEditingSettings && !isSaving) {
                   handleSaveSettings();
@@ -1485,7 +1468,12 @@ function Profile() {
                 type="text"
                 placeholder="Enter course name"
                 value={newCourse}
-                onChange={(e) => setNewCourse(e.target.value)}
+                maxLength={50}
+                onChange={(e) => {
+                  if (e.target.value.length <= 50) {
+                    setNewCourse(e.target.value);
+                  }
+                }}
                 onKeyPress={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();

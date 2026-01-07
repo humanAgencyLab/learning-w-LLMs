@@ -56,6 +56,8 @@
   flex-direction: column;
   gap: 8px;
   margin-bottom: 24px;
+  background-color: transparent;
+  background: none;
 }
 
 .progress-text {
@@ -70,24 +72,35 @@
 
 .progress-bar-container {
   display: flex;
-  gap: 16px;
   align-items: center;
+  width: 100%;
+  gap: 12px;
+  background-color: transparent;
+  background: none;
+  padding: 0;
+  margin: 0;
 }
 
 .progress-bar-background {
   flex: 1;
-  height: 4px;
+  height: 8px;
   background-color: #d4d6d8;
   border-radius: 100px;
   position: relative;
   overflow: hidden;
+  min-width: 0;
+  box-sizing: border-box;
+  flex-shrink: 1;
 }
 
 .progress-bar-fill {
   height: 100%;
-  background-color: #ff7f05;
+  background-color: #4e81ee;
   border-radius: 100px;
   transition: width 0.3s ease;
+  min-width: 0;
+  box-sizing: border-box;
+  display: block;
 }
 
 .progress-percentage {
@@ -95,8 +108,11 @@
   font-weight: 400;
   font-size: 13px;
   line-height: 20px;
-  color: #030712;
+  color: #686d77;
   white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 0;
+  padding-left: 0;
 }
 
 /* Step Content */
