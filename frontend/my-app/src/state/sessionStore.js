@@ -745,7 +745,15 @@ const useSessionStore = create(
           // Handle revision quiz start when backend returns nextAction: 'START_REVISION_QUIZ'
           if (response.data?.nextAction === 'START_REVISION_QUIZ' || response.nextAction === 'START_REVISION_QUIZ') {
             const topic = response.data?.topic || userMessage;
-            console.log('Revision quiz start requested by backend', { topic, sessionId: state.sessionId });
+            const chatTitle = response.data?.chatTitle || topic;
+            console.log('Revision quiz start requested by backend', { topic, chatTitle, sessionId: state.sessionId });
+            
+            // Update session store with the LLM-generated topic and chatTitle
+            set({ 
+              topic: topic,
+              chatTitle: chatTitle
+            });
+            
             try {
               // Refresh session state first to ensure mode is updated
               await get().resumeSessionFromServer(state.sessionId);
