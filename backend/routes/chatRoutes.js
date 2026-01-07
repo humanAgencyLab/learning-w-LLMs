@@ -116,9 +116,34 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
     // Handle revision mode - if in revision mode and pre phase, generate revision quiz
     if (session.mode === 'reviewing' && session.phase === 'pre') {
       // Extract topic from user message
-      const topic = userMessage.trim();
+      // Remove common phrases like "I want to review", "I want to revise", "Review", etc.
+      let topic = userMessage.trim();
+      
+      // Remove common revision-related prefixes (case-insensitive)
+      const revisionPrefixes = [
+        /^i\s+want\s+to\s+(review|revise|practice)\s+/i,
+        /^i\s+(want\s+to\s+)?(review|revise|practice)\s+/i,
+        /^(let\s+me\s+)?(review|revise|practice)\s+/i,
+        /^(i\s+)?(review|revise|practice)\s+/i,
+        /^revision\s+(of|for)?\s*/i,
+        /^revise\s+(the\s+)?(topic\s+)?(of\s+)?/i,
+        /^review\s+(the\s+)?(topic\s+)?(of\s+)?/i
+      ];
+      
+      for (const prefix of revisionPrefixes) {
+        if (prefix.test(topic)) {
+          topic = topic.replace(prefix, '').trim();
+          break;
+        }
+      }
+      
+      // Clean up any remaining articles or extra words at the start
+      topic = topic.replace(/^(the\s+|a\s+|an\s+)/i, '').trim();
       
       if (topic && topic.length > 0) {
+        // Capitalize first letter of topic
+        const formattedTopic = topic.charAt(0).toUpperCase() + topic.slice(1);
+        
         // Add user message to session
         const userMsg = {
           id: `msg_${Date.now()}`,
@@ -128,8 +153,9 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
           metadata: { intent: 'revision', phaseAtSend: 'pre' }
         };
         session.messages.push(userMsg);
-        session.topic = topic;
-        session.chatTitle = `Revision: ${topic}`;
+        session.topic = formattedTopic;
+        // Set chatTitle to just the topic (without "Revision:" prefix - that's handled in UI)
+        session.chatTitle = formattedTopic;
         // Don't set phase to 'quizzing' yet - let the revision quiz endpoint handle it
         // This ensures the revision quiz endpoint can properly validate and set up the quiz
         await session.save();
@@ -137,9 +163,9 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
         return res.json({
           success: true,
           data: {
-            message: `I'll generate a revision quiz for "${topic}".`,
+            message: `I'll generate a revision quiz for "${formattedTopic}".`,
             nextAction: 'START_REVISION_QUIZ',
-            topic: topic,
+            topic: formattedTopic,
             isRevision: true
           }
         });
@@ -1057,17 +1083,56 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
             }
             
             const assessmentData = JSON.parse(assessmentJson);
-            const understood = assessmentData.understood === true || 
-                              (milestoneRetryCount >= 1 && assessmentData.recommendation === 'move_forward_anyway');
+            
+            // Validate responseType field exists and is valid
+            const validResponseTypes = ['clarification_request', 'wrong_answer', 'correct_answer', 'incomplete_answer'];
+            const responseType = validResponseTypes.includes(assessmentData.responseType) 
+              ? assessmentData.responseType 
+              : 'wrong_answer'; // Default fallback if missing or invalid
+            
+            // ⚠️⚠️⚠️ CRITICAL SAFETY CHECK: If responseType indicates correct answer, force understood = true
+            // This prevents the LLM from incorrectly marking correct answers as wrong
+            let understood;
+            if (responseType === 'correct_answer' || responseType === 'incomplete_answer') {
+              // Force understood = true for correct/incomplete answers (they demonstrate understanding)
+              understood = true;
+              // Also ensure recommendation is move_forward for correct answers
+              if (assessmentData.recommendation !== 'move_forward') {
+                assessmentData.recommendation = 'move_forward';
+              }
+            } else {
+              // For wrong answers or clarification requests, use LLM's assessment
+              understood = assessmentData.understood === true || 
+                          (milestoneRetryCount >= 1 && assessmentData.recommendation === 'move_forward_anyway');
+            }
+            
+            // ⚠️ Use LLM classification instead of keyword matching
+            const isClarificationRequest = responseType === 'clarification_request';
+            const isWrongAnswer = responseType === 'wrong_answer';
+            const isCorrectAnswer = responseType === 'correct_answer' || responseType === 'incomplete_answer';
             
             // Store assessment result for teacher prompt to structure response
             llmDecision.assessmentResult = {
               understood,
+              responseType, // ⚠️ NEW: Explicit LLM classification
+              isClarificationRequest, // ⚠️ NEW: Derived from LLM classification
+              isCorrectAnswer, // ⚠️ NEW: Flag for correct answers
               confidence: assessmentData.confidence || 'medium',
               recommendation: assessmentData.recommendation || 'move_forward',
               reasoning: assessmentData.reasoning || '',
               milestoneRetryCount
             };
+            
+            // Log assessment result for debugging
+            req.logger.info('Assessment analysis result', {
+              sessionId,
+              responseType,
+              understood,
+              isCorrectAnswer,
+              recommendation: assessmentData.recommendation,
+              studentAnswer: userMessage.substring(0, 100), // First 100 chars for debugging
+              reasoning: assessmentData.reasoning?.substring(0, 200) // First 200 chars
+            });
             
             if (understood) {
               // Check if recommendation is to clarify or move forward
@@ -1086,20 +1151,47 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
                 session.meta.outstandingCheck = null;
               }
             } else {
-              // Negative assessment - check retry count
-              if (milestoneRetryCount < 1) {
-                if (!session.meta.milestoneRetryCount) {
-                  session.meta.milestoneRetryCount = {};
+              // Negative assessment
+              // ⚠️⚠️⚠️ CRITICAL: Clarification requests should NEVER advance milestones
+              // They should always stay on the same milestone and keep clarifying
+              if (isClarificationRequest) {
+                // Clarification request - stay on same milestone, don't increment retry count
+                llmDecision.assessmentResult.isClarificationRequest = true;
+                llmDecision.markMilestoneComplete = false;
+                llmDecision.moveToNextMilestone = false;
+                // Don't increment retry count for clarification requests - they're not wrong answers
+              } else if (isWrongAnswer) {
+                // Wrong answer - check retry count
+                if (milestoneRetryCount < 1) {
+                  if (!session.meta.milestoneRetryCount) {
+                    session.meta.milestoneRetryCount = {};
+                  }
+                  // CRITICAL: Use validMilestoneIndex (the milestone being assessed)
+                  session.meta.milestoneRetryCount[validMilestoneIndex] = (session.meta.milestoneRetryCount[validMilestoneIndex] || 0) + 1;
+                  llmDecision.assessmentResult.isFirstIncorrect = true;
+                  llmDecision.markMilestoneComplete = false;
+                  llmDecision.moveToNextMilestone = false;
+                } else {
+                  // Already retried wrong answer - move forward anyway
+                  llmDecision.markMilestoneComplete = true;
+                  llmDecision.moveToNextMilestone = true;
+                  llmDecision.assessmentResult.isSecondIncorrect = true;
                 }
-                // CRITICAL: Use validMilestoneIndex (the milestone being assessed)
-                session.meta.milestoneRetryCount[validMilestoneIndex] = (session.meta.milestoneRetryCount[validMilestoneIndex] || 0) + 1;
-                llmDecision.assessmentResult.isFirstIncorrect = true;
-                // LLM will handle clarification in response
               } else {
-                // Already retried - move forward anyway
-                llmDecision.markMilestoneComplete = true;
-                llmDecision.moveToNextMilestone = true;
-                llmDecision.assessmentResult.isSecondIncorrect = true;
+                // Fallback: unknown response type, treat as wrong answer
+                if (milestoneRetryCount < 1) {
+                  if (!session.meta.milestoneRetryCount) {
+                    session.meta.milestoneRetryCount = {};
+                  }
+                  session.meta.milestoneRetryCount[validMilestoneIndex] = (session.meta.milestoneRetryCount[validMilestoneIndex] || 0) + 1;
+                  llmDecision.assessmentResult.isFirstIncorrect = true;
+                  llmDecision.markMilestoneComplete = false;
+                  llmDecision.moveToNextMilestone = false;
+                } else {
+                  llmDecision.markMilestoneComplete = true;
+                  llmDecision.moveToNextMilestone = true;
+                  llmDecision.assessmentResult.isSecondIncorrect = true;
+                }
               }
             }
           } catch (assessmentError) {

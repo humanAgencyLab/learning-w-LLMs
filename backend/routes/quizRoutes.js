@@ -1180,8 +1180,10 @@ router.post('/v1/quiz/revision', requireAuth, addRequestId, async (req, res) => 
     session.quizAttempts.push(revisionAttempt);
     session.phase = 'quizzing';
     // Ensure chatTitle is set for revision sessions (should already be set from chat route, but ensure it)
+    // Set chatTitle to just the topic (without "Revision:" prefix - that's handled in UI)
     if (!session.chatTitle || session.chatTitle.trim() === '') {
-      session.chatTitle = `Revision: ${topic.trim()}`;
+      const formattedTopic = topic.trim().charAt(0).toUpperCase() + topic.trim().slice(1);
+      session.chatTitle = formattedTopic;
     }
     // Ensure topic is set
     if (!session.topic || session.topic.trim() === '') {
