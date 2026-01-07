@@ -24,13 +24,22 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ai_edu_ap
     
     // Create indexes for performance
     try {
+      const User = require('./models/User');
       const StudySession = require('./models/StudySession');
       const ChatLog = require('./models/ChatLog');
+      
+      // Ensure unique email index exists (critical for preventing duplicate accounts)
+      await User.collection.createIndex({ email: 1 }, { unique: true });
       await ChatLog.collection.createIndex({ sessionId: 1 });
       await StudySession.collection.createIndex({ updatedAt: -1 });
       console.log('✅ Database indexes created');
     } catch (indexError) {
-      console.log('⚠️ Index creation warning:', indexError.message);
+      // If index already exists, that's fine - just log it
+      if (indexError.code === 85 || indexError.message.includes('already exists')) {
+        console.log('✅ Database indexes already exist');
+      } else {
+        console.log('⚠️ Index creation warning:', indexError.message);
+      }
     }
   })
   .catch((error) => {
@@ -48,4 +57,14 @@ if (!process.env.GROQ_API_KEY) {
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  // Log registered routes in production for debugging
+  if (process.env.NODE_ENV === 'production') {
+    const authRoutes = require('./routes/authRoutes');
+    console.log(`📋 Auth routes registered: ${authRoutes.stack.filter(l => l.route).length}`);
+    authRoutes.stack.forEach((layer) => {
+      if (layer.route && layer.route.path === '/check-email') {
+        console.log(`✅ check-email route found: ${Object.keys(layer.route.methods).join(', ').toUpperCase()} /v1/auth${layer.route.path}`);
+      }
+    });
+  }
 });
