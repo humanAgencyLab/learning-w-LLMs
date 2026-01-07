@@ -119,18 +119,21 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Mount routes
-app.use('/v1/auth', authRoutes);
-// Log registered auth routes in production for debugging
+// Log registered auth routes BEFORE mounting (for debugging in production)
 if (process.env.NODE_ENV === 'production') {
-  console.log('🔍 Checking auth routes in production...');
+  console.log('🔍 Checking auth routes BEFORE mounting...');
+  console.log(`Total stack items: ${authRoutes.stack.length}`);
   authRoutes.stack.forEach((layer, idx) => {
     if (layer.route) {
       const methods = Object.keys(layer.route.methods).join(', ').toUpperCase();
       console.log(`  Route ${idx}: ${methods} /v1/auth${layer.route.path}`);
+    } else {
+      console.log(`  Middleware ${idx}: ${layer.name || 'unnamed'}`);
     }
   });
   console.log(`✅ Total auth routes registered: ${authRoutes.stack.filter(l => l.route).length}`);
 }
+app.use('/v1/auth', authRoutes);
 app.use('/v1/profile', profileRoutes);
 app.use('/', performanceRoutes);
 app.use('/', sessionRoutes);
