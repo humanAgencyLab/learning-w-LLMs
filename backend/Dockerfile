@@ -12,6 +12,8 @@ COPY package*.json ./
 RUN if [ -f package-lock.json ]; then npm ci --omit=dev && npm cache clean --force; else npm install --omit=dev && npm cache clean --force; fi
 
 # Copy application code
+# Force copy to ensure latest routes are included
+COPY routes/ ./routes/
 COPY . .
 
 # Create directory for uploads if it doesn't exist
