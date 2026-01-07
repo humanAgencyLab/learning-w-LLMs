@@ -33,15 +33,9 @@ function ProtectedRoute({ children, requireOnboarding = true }) {
   }
 
   // If onboarding route doesn't require authentication (requireOnboarding=false), allow access
-  // This allows users with pending signup to access onboarding
+  // Always allow access - no checks needed since users are created after onboarding
   if (!requireOnboarding) {
-    const pendingSignup = sessionStorage.getItem('pendingSignup');
-    // Allow access if there's pending signup or if user is authenticated
-    if (pendingSignup || isAuthenticated) {
-      return children;
-    }
-    // If no pending signup and not authenticated, redirect to signup
-    return <Navigate to="/signup" replace />;
+    return children;
   }
 
   if (!isAuthenticated) {

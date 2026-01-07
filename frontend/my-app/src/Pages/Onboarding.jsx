@@ -37,8 +37,13 @@ function Onboarding() {
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [courseInput, setCourseInput] = useState('');
 
-  // Note: Onboarding check simplified - no redirect logic
-  // Users are only saved to DB after onboarding completion
+  // If user is authenticated, they've already completed onboarding (users only exist after onboarding)
+  // Redirect them to chat instead of showing onboarding page
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/chat', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleNext = () => {
     if (currentStep < 4) {
