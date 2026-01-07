@@ -37,27 +37,8 @@ function Onboarding() {
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [courseInput, setCourseInput] = useState('');
 
-  // Check for pending signup data on mount
-  useEffect(() => {
-    // If user is already authenticated and has completed onboarding, redirect to chat
-    if (isAuthenticated && user?.profile?.onboardingCompleted) {
-      navigate('/chat', { replace: true });
-      return;
-    }
-    
-    // Check for pending signup - if exists, allow onboarding to proceed
-    const pendingSignup = sessionStorage.getItem('pendingSignup');
-    if (pendingSignup) {
-      // User has pending signup, allow onboarding to render
-      return;
-    }
-    
-    // If no pending signup and not authenticated, redirect to signup
-    // Only redirect if we're sure user is not in onboarding flow
-    if (!isAuthenticated) {
-      navigate('/signup', { replace: true });
-    }
-  }, [isAuthenticated, user, navigate]);
+  // Note: Onboarding check simplified - no redirect logic
+  // Users are only saved to DB after onboarding completion
 
   const handleNext = () => {
     if (currentStep < 4) {

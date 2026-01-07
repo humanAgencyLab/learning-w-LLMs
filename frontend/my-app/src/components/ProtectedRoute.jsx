@@ -45,13 +45,8 @@ function ProtectedRoute({ children, requireOnboarding = true }) {
   }
 
   if (!isAuthenticated) {
-    // Check if there's pending signup data (user is in onboarding flow)
-    const pendingSignup = sessionStorage.getItem('pendingSignup');
-    if (pendingSignup) {
-      // User is in onboarding flow, redirect to onboarding
-      return <Navigate to="/onboarding" replace />;
-    }
     // Redirect to signin with return path
+    // Note: No onboarding redirect - users are created after onboarding completion
     return <Navigate to="/signin" state={{ from: location }} replace />;
   }
 
