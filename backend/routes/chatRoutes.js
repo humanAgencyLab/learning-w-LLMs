@@ -115,60 +115,133 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
     
     // Handle revision mode - if in revision mode and pre phase, generate revision quiz
     if (session.mode === 'reviewing' && session.phase === 'pre') {
-      // Extract topic from user message
-      // Remove common phrases like "I want to review", "I want to revise", "Review", etc.
-      let topic = userMessage.trim();
+      // Use LLM to extract/generate topic and chatTitle from user message (like study sessions)
+      const groqClient = getGroqClient();
       
-      // Remove common revision-related prefixes (case-insensitive)
-      const revisionPrefixes = [
-        /^i\s+want\s+to\s+(review|revise|practice)\s+/i,
-        /^i\s+(want\s+to\s+)?(review|revise|practice)\s+/i,
-        /^(let\s+me\s+)?(review|revise|practice)\s+/i,
-        /^(i\s+)?(review|revise|practice)\s+/i,
-        /^revision\s+(of|for)?\s*/i,
-        /^revise\s+(the\s+)?(topic\s+)?(of\s+)?/i,
-        /^review\s+(the\s+)?(topic\s+)?(of\s+)?/i
-      ];
-      
-      for (const prefix of revisionPrefixes) {
-        if (prefix.test(topic)) {
-          topic = topic.replace(prefix, '').trim();
-          break;
-        }
-      }
-      
-      // Clean up any remaining articles or extra words at the start
-      topic = topic.replace(/^(the\s+|a\s+|an\s+)/i, '').trim();
-      
-      if (topic && topic.length > 0) {
-        // Capitalize first letter of topic
-        const formattedTopic = topic.charAt(0).toUpperCase() + topic.slice(1);
-        
-        // Add user message to session
-        const userMsg = {
-          id: `msg_${Date.now()}`,
-          role: 'user',
-          content: userMessage,
-          timestamp: new Date(),
-          metadata: { intent: 'revision', phaseAtSend: 'pre' }
-        };
-        session.messages.push(userMsg);
-        session.topic = formattedTopic;
-        // Set chatTitle to just the topic (without "Revision:" prefix - that's handled in UI)
-        session.chatTitle = formattedTopic;
-        // Don't set phase to 'quizzing' yet - let the revision quiz endpoint handle it
-        // This ensures the revision quiz endpoint can properly validate and set up the quiz
-        await session.save();
-        
-        return res.json({
-          success: true,
-          data: {
-            message: `I'll generate a revision quiz for "${formattedTopic}".`,
-            nextAction: 'START_REVISION_QUIZ',
-            topic: formattedTopic,
-            isRevision: true
-          }
+      const topicExtractionPrompt = `Extract the topic name and generate a concise title from this revision request.
+
+USER MESSAGE: "${userMessage}"
+
+Your task:
+1. Extract the actual topic/subject the user wants to revise (remove phrases like "I want to review", "I want to revise", etc.)
+2. Generate a concise, human-friendly title for the topic
+
+Examples:
+- Input: "I want to review basic data structure concepts"
+  Output: {"topic": "Basic Data Structure Concepts", "chatTitle": "Data Structures"}
+  
+- Input: "I want to revise Python basics"
+  Output: {"topic": "Python Basics", "chatTitle": "Python Basics"}
+  
+- Input: "Review algorithms and complexity"
+  Output: {"topic": "Algorithms and Complexity", "chatTitle": "Algorithms"}
+
+Return ONLY valid JSON in this format:
+{
+  "topic": "extracted topic name (≤60 chars, capitalize first letter of each word)",
+  "chatTitle": "concise title (≤40 chars, human-friendly)"
+}`;
+
+      try {
+        const topicResponse = await groqClient.chat.completions.create({
+          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a topic extraction assistant. Extract topic names from user messages and return ONLY valid JSON. No markdown, no code fences, no explanations outside the JSON.'
+            },
+            {
+              role: 'user',
+              content: topicExtractionPrompt
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 150,
+          response_format: { type: "json_object" }
         });
+
+        let topicData;
+        try {
+          const responseText = topicResponse.choices[0].message.content.trim();
+          topicData = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('Failed to parse LLM topic extraction:', parseError);
+          // Fallback: use simple extraction
+          const fallbackTopic = userMessage.trim()
+            .replace(/^(i\s+want\s+to\s+)?(review|revise|practice)\s+/i, '')
+            .replace(/^revision\s+(of|for)?\s*/i, '')
+            .trim();
+          topicData = {
+            topic: fallbackTopic.charAt(0).toUpperCase() + fallbackTopic.slice(1),
+            chatTitle: fallbackTopic.charAt(0).toUpperCase() + fallbackTopic.slice(1)
+          };
+        }
+
+        const topic = topicData.topic || userMessage.trim();
+        const chatTitle = topicData.chatTitle || topic;
+
+        if (topic && topic.length > 0) {
+          // Add user message to session
+          const userMsg = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: userMessage,
+            timestamp: new Date(),
+            metadata: { intent: 'revision', phaseAtSend: 'pre' }
+          };
+          session.messages.push(userMsg);
+          session.topic = topic;
+          // Set chatTitle (without "Revision:" prefix - that's handled in UI)
+          session.chatTitle = chatTitle;
+          // Don't set phase to 'quizzing' yet - let the revision quiz endpoint handle it
+          // This ensures the revision quiz endpoint can properly validate and set up the quiz
+          await session.save();
+          
+          return res.json({
+            success: true,
+            data: {
+              message: `I'll generate a revision quiz for "${topic}".`,
+              nextAction: 'START_REVISION_QUIZ',
+              topic: topic,
+              chatTitle: chatTitle,
+              isRevision: true
+            }
+          });
+        }
+      } catch (llmError) {
+        console.error('LLM topic extraction failed:', llmError);
+        // Fallback to simple extraction if LLM fails
+        const fallbackTopic = userMessage.trim()
+          .replace(/^(i\s+want\s+to\s+)?(review|revise|practice)\s+/i, '')
+          .replace(/^revision\s+(of|for)?\s*/i, '')
+          .trim();
+        
+        if (fallbackTopic && fallbackTopic.length > 0) {
+          const formattedTopic = fallbackTopic.charAt(0).toUpperCase() + fallbackTopic.slice(1);
+          
+          const userMsg = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: userMessage,
+            timestamp: new Date(),
+            metadata: { intent: 'revision', phaseAtSend: 'pre' }
+          };
+          session.messages.push(userMsg);
+          session.topic = formattedTopic;
+          session.chatTitle = formattedTopic;
+          await session.save();
+          
+          return res.json({
+            success: true,
+            data: {
+              message: `I'll generate a revision quiz for "${formattedTopic}".`,
+              nextAction: 'START_REVISION_QUIZ',
+              topic: formattedTopic,
+              chatTitle: formattedTopic,
+              isRevision: true
+            }
+          });
+        }
       }
     }
 
