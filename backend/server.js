@@ -57,14 +57,23 @@ if (!process.env.GROQ_API_KEY) {
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-  // Log registered routes in production for debugging
-  if (process.env.NODE_ENV === 'production') {
+  // Log registered routes for debugging (always run to verify route registration)
+  try {
     const authRoutes = require('./routes/authRoutes');
     console.log(`📋 Auth routes registered: ${authRoutes.stack.filter(l => l.route).length}`);
-    authRoutes.stack.forEach((layer) => {
-      if (layer.route && layer.route.path === '/check-email') {
-        console.log(`✅ check-email route found: ${Object.keys(layer.route.methods).join(', ').toUpperCase()} /v1/auth${layer.route.path}`);
-      }
-    });
+    const checkEmailRoute = authRoutes.stack.find(l => l.route && l.route.path === '/check-email');
+    if (checkEmailRoute) {
+      console.log(`✅ check-email route found: ${Object.keys(checkEmailRoute.route.methods).join(', ').toUpperCase()} /v1/auth${checkEmailRoute.route.path}`);
+    } else {
+      console.log(`❌ check-email route NOT found in authRoutes`);
+      console.log('Available routes:');
+      authRoutes.stack.forEach((layer, idx) => {
+        if (layer.route) {
+          console.log(`  ${idx}: ${Object.keys(layer.route.methods).join(', ').toUpperCase()} ${layer.route.path}`);
+        }
+      });
+    }
+  } catch (err) {
+    console.error('Error checking routes:', err.message);
   }
 });
