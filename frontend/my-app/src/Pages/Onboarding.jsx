@@ -39,8 +39,10 @@ function Onboarding() {
 
   // If user is authenticated, they've already completed onboarding (users only exist after onboarding)
   // Redirect them to chat instead of showing onboarding page
+  // But only if we're not in the middle of onboarding flow (no pendingSignup)
   useEffect(() => {
-    if (isAuthenticated) {
+    const pendingSignup = sessionStorage.getItem('pendingSignup');
+    if (isAuthenticated && !pendingSignup) {
       navigate('/chat', { replace: true });
     }
   }, [isAuthenticated, navigate]);

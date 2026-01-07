@@ -16,14 +16,18 @@ function SignIn() {
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
 
-  const from = location.state?.from || '/chat'; // Default to /chat if no state is provided
+  // Always redirect to /chat after signin (never to onboarding)
+  const from = location.state?.from?.pathname || '/chat';
+  
+  // Ensure we never redirect to onboarding from signin
+  const redirectPath = from === '/onboarding' ? '/chat' : from;
 
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate(from, { replace: true });
+      navigate(redirectPath, { replace: true });
     }
-  }, [isAuthenticated, navigate, from]);
+  }, [isAuthenticated, navigate, redirectPath]);
 
   // Clear errors when component mounts
   useEffect(() => {
@@ -41,7 +45,8 @@ function SignIn() {
 
     try {
       await login({ email, password });
-      navigate(from, { replace: true });
+      // Always redirect to /chat after successful signin (never to onboarding)
+      navigate('/chat', { replace: true });
     } catch (err) {
       setLocalError(err.message || 'Login failed. Please try again.');
     }
