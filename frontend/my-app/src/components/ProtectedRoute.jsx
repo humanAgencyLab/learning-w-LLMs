@@ -55,37 +55,8 @@ function ProtectedRoute({ children, requireOnboarding = true }) {
     return <Navigate to="/signin" state={{ from: location }} replace />;
   }
 
-  // If onboarding is required and user hasn't completed it, redirect to onboarding
-  if (requireOnboarding && user) {
-    const onboardingCompleted = user.profile?.onboardingCompleted;
-    const pendingSignup = sessionStorage.getItem('pendingSignup');
-    
-    // For existing users: if they have profile data (skillLevel, learningType, etc.),
-    // they've likely completed onboarding before this flag was added
-    // Only redirect NEW users who explicitly have onboardingCompleted === false
-    const hasProfileData = user.profile && (
-      user.profile.skillLevel || 
-      user.profile.learningType || 
-      user.profile.major
-    );
-    
-    // Only redirect if:
-    // 1. onboardingCompleted is explicitly false (not undefined/null)
-    // 2. AND they don't have existing profile data (new user)
-    // 3. AND no pending signup
-    // 4. AND not already on onboarding page
-    if (
-      onboardingCompleted === false && 
-      !hasProfileData && 
-      !pendingSignup && 
-      location.pathname !== '/onboarding'
-    ) {
-      return <Navigate to="/onboarding" replace />;
-    }
-    
-    // If onboardingCompleted is undefined/null but user has profile data, allow access
-    // This handles existing users who signed up before onboardingCompleted flag was added
-  }
+  // Note: Onboarding check removed - users are only saved to DB after onboarding completion
+  // So there's no risk of accessing the app before onboarding is complete
 
   return children;
 }
