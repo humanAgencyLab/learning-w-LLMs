@@ -73,54 +73,52 @@ Ask them what topic or subject they'd like to learn about today.`;
   let effectiveMilestone = currentMilestone;
   
   if (isFollowUp && hasAssessmentResult) {
-    const { understood, needsMoreClarification, isFirstIncorrect, isSecondIncorrect, reasoning } = assessmentResult;
+    const { 
+      understood, 
+      needsMoreClarification, 
+      isFirstIncorrect, 
+      isSecondIncorrect, 
+      reasoning, 
+      responseType,  // ⚠️ NEW: LLM classification
+      isClarificationRequest  // ⚠️ NEW: Explicit flag from LLM
+    } = assessmentResult;
     
-    // ⚠️⚠️⚠️ CRITICAL: Detect question repetition (user repeating the question back)
-    // Check if user message is similar to the outstanding question (if available)
-    const outstandingQuestion = session.meta?.outstandingCheck || '';
-    const isQuestionRepetition = outstandingQuestion && (
-      userMessage.trim().toLowerCase() === outstandingQuestion.trim().toLowerCase() ||
-      userMessage.trim().toLowerCase().includes(outstandingQuestion.trim().toLowerCase().substring(0, Math.min(30, outstandingQuestion.length))) ||
-      outstandingQuestion.trim().toLowerCase().includes(userMessage.trim().toLowerCase().substring(0, Math.min(30, userMessage.length)))
-    );
+    // ⚠️⚠️⚠️ CRITICAL: Use LLM classification - NO keyword matching needed
+    // The assessment analyzer already classified the response type using LLM
+    // Trust the LLM classification over any fallback logic
     
-    // Determine if this is a clarification request vs wrong answer
-    // Question repetition is ALWAYS a clarification request
-    const isClarificationRequest = isQuestionRepetition || 
-      needsMoreClarification || 
-      (!understood && (
-        userMessage.toLowerCase().includes("don't know") || 
-        userMessage.toLowerCase().includes("don't understand") || 
-        userMessage.toLowerCase().includes("no idea") || 
-        userMessage.toLowerCase().includes("can you explain") || 
-        userMessage.toLowerCase().includes("explain") || 
-        userMessage.toLowerCase().includes("help") || 
-        userMessage.toLowerCase().includes("confused") || 
-        userMessage.toLowerCase().includes("unclear") ||
-        reasoning?.toLowerCase().includes("repeated the question") ||
-        reasoning?.toLowerCase().includes("clarification request")
-      ));
+    const justMovedToNext = milestoneInfo?.moveToNextMilestone && milestoneInfo?.markMilestoneComplete;
+    const isFirstMilestone = currentMilestoneIndex === 0;
     
+    // Determine scenario based on LLM classification
     if (understood && !needsMoreClarification && justMovedToNext) {
       scenarioType = 'correct_move_next';
     } else if (understood && needsMoreClarification) {
       scenarioType = 'correct_needs_more';
-    } else if (!understood && isFirstIncorrect) {
-      scenarioType = isClarificationRequest ? 'clarification_request' : 'incorrect_first';
-      // For both: Stay on current milestone (re-teach)
-      effectiveMilestoneIndex = currentMilestoneIndex;
-      effectiveMilestone = currentMilestone;
-    } else if (!understood && isSecondIncorrect) {
-      scenarioType = 'incorrect_second';
-      // For incorrect_second: Move to next milestone (already updated in chatRoutes.js)
-      // The currentMilestoneIndex should already point to the next milestone
-      // But we need to ensure we're teaching the next one
-      effectiveMilestoneIndex = currentMilestoneIndex;
-      effectiveMilestone = activeModule?.milestones?.[currentMilestoneIndex];
-      // If for some reason the index wasn't updated, use next milestone
-      if (!effectiveMilestone && nextMilestoneText !== 'N/A') {
-        effectiveMilestoneIndex = currentMilestoneIndex + 1;
-        effectiveMilestone = activeModule?.milestones?.[effectiveMilestoneIndex];
+    } else if (!understood) {
+      // ⚠️ Use LLM classification to determine scenario
+      if (isClarificationRequest || responseType === 'clarification_request') {
+        // Student asked for help/clarification - use friendly clarification scenario
+        scenarioType = 'clarification_request';
+        effectiveMilestoneIndex = currentMilestoneIndex;
+        effectiveMilestone = currentMilestone;
+      } else if (isFirstIncorrect || (milestoneRetryCount < 1 && responseType === 'wrong_answer')) {
+        // Student gave wrong answer - use correction scenario
+        scenarioType = 'incorrect_first';
+        effectiveMilestoneIndex = currentMilestoneIndex;
+        effectiveMilestone = currentMilestone;
+      } else if (isSecondIncorrect || (milestoneRetryCount >= 1 && responseType === 'wrong_answer')) {
+        // Second wrong answer - move forward anyway
+        scenarioType = 'incorrect_second';
+        effectiveMilestoneIndex = currentMilestoneIndex;
+        effectiveMilestone = activeModule?.milestones?.[currentMilestoneIndex];
+        if (!effectiveMilestone && nextMilestoneText !== 'N/A') {
+          effectiveMilestoneIndex = currentMilestoneIndex + 1;
+          effectiveMilestone = activeModule?.milestones?.[effectiveMilestoneIndex];
+        }
+      } else {
+        // Fallback
+        scenarioType = 'follow_up';
       }
     } else {
       scenarioType = 'follow_up';
@@ -218,9 +216,11 @@ ${scenarioType === 'first_teaching' ? `
    ⚠️⚠️⚠️ CLARIFICATION REQUEST - EXPLAIN SAME MILESTONE:
    - ⚠️⚠️⚠️ CRITICAL: Start with a friendly, encouraging phrase like "No worries, let's explain this together." or "That's okay, let me break this down for you." or "No problem, let's go through this step by step."
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT start with "Not quite" or "That's incorrect" - the user asked for help, not gave a wrong answer
+   - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT use any negative feedback - they asked for help, not gave a wrong answer
    - ⚠️⚠️⚠️ CRITICAL: You MUST re-teach the SAME milestone "${milestoneTextToTeach}" again
    - ⚠️⚠️⚠️ CRITICAL: Use a DIFFERENT teaching approach than before (different examples, different explanation style, different angle)
    - ⚠️⚠️⚠️ CRITICAL: This is a RE-TEACH of "${milestoneTextToTeach}" - do NOT move to next milestone yet
+   - ⚠️⚠️⚠️ CRITICAL: Stay on the SAME milestone - clarification requests NEVER advance milestones
    - Transition: "Let me explain this concept in a clearer way."
 ` : scenarioType === 'incorrect_first' ? `
    ⚠️⚠️⚠️ INCORRECT FIRST ATTEMPT - RE-TEACH SAME MILESTONE:
@@ -279,7 +279,11 @@ THIRD PARAGRAPH - ASSESSMENT QUESTION (REQUIRED - ONE question ending with ?, NO
    - ⚠️⚠️⚠️ CRITICAL: End with EXACTLY ONE assessment question about "${milestoneTextToTeach}" (THE SAME MILESTONE)
    - ⚠️⚠️⚠️ CRITICAL: Ask a DIFFERENT question than the previous one - test understanding from a different angle
    - ⚠️⚠️⚠️ CRITICAL: This question should be about the SAME milestone you just re-taught
-   - ⚠️⚠️⚠️ CRITICAL: The question must test understanding of the SAME concepts from "${milestoneTextToTeach}" - do NOT ask about new concepts
+   - ⚠️⚠️⚠️ CRITICAL: The question must test understanding of the SAME concepts from "${milestoneTextToTeach}" - do NOT introduce new concepts or topics
+   - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT ask about concepts not covered in "${milestoneTextToTeach}"
+   - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT introduce comparisons, differences, or relationships between concepts unless those were explicitly taught in this milestone
+   - ⚠️⚠️⚠️ EXAMPLE: If milestone is "Learn basic Python syntax and data types" and previous question was "What is the basic syntax for assigning a string value to a variable?", ask a SIMILAR question like "Can you show me how to assign the text 'Hello' to a variable called greeting?" or "What would you write to assign the number 42 to a variable named age?" - Do NOT ask "What is the difference between int and str?" (that introduces a new comparison concept)
+   - ⚠️⚠️⚠️ THINK: "The user didn't understand variable assignment syntax. I need to ask about variable assignment syntax again, but from a slightly different angle. I will NOT introduce new concepts like data type comparisons."
    ` : scenarioType === 'incorrect_second' ? `
    - ⚠️⚠️⚠️ CRITICAL: End with EXACTLY ONE assessment question about "${milestoneTextToTeach}" (THE NEXT MILESTONE)
    - ⚠️⚠️⚠️ CRITICAL: Ask a question about the NEW milestone you just taught, NOT the previous one
@@ -289,10 +293,20 @@ THIRD PARAGRAPH - ASSESSMENT QUESTION (REQUIRED - ONE question ending with ?, NO
    - ⚠️⚠️⚠️ CRITICAL: The question MUST test understanding of the SPECIFIC content you just taught about "${milestoneTextToTeach}"
    - ⚠️⚠️⚠️ CRITICAL: For the first module, questions should be basic and foundational - test simple understanding, not advanced concepts
    - ⚠️⚠️⚠️ CRITICAL: The question must be directly related to the milestone content - do NOT ask about topics not covered in this milestone
+   - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT ask about concepts, tools, or methods you did NOT teach in your response
+   - ⚠️⚠️⚠️ CRITICAL: If you didn't mention "terminal" or "command line" in your teaching, do NOT ask questions about terminal/command line
+   - ⚠️⚠️⚠️ CRITICAL: If you didn't mention "IDE" in your teaching, do NOT ask questions about IDEs
+   - ⚠️⚠️⚠️ CRITICAL: If you didn't mention "file extension" or ".py" in your teaching, do NOT ask questions about file extensions
+   - ⚠️⚠️⚠️ CRITICAL: Review your teaching content BEFORE asking the question - only ask about what you ACTUALLY taught
+   - ⚠️⚠️⚠️ CRITICAL: The question MUST be answerable based ONLY on what you taught in your response
+   - ⚠️⚠️⚠️ EXAMPLE: If you taught "print('Hello, World!')" but didn't mention terminal/command line, ask: "What function would you use to print text?" NOT "How do you run this from terminal?"
+   - ⚠️⚠️⚠️ EXAMPLE: If you taught variable assignment syntax "name = 'Hello'" but didn't mention file extensions or running programs, ask: "What is the syntax for assigning a string to a variable?" NOT "What file extension do Python programs use?"
+   - ⚠️⚠️⚠️ EXAMPLE: If you taught basic Python syntax but didn't mention command line, ask: "How do you assign a value to a variable?" NOT "How do you run a Python program from the command line?"
    - Test understanding of what you just taught about "${milestoneTextToTeach}"
    - Must end with a question mark (?)
    - ⚠️⚠️⚠️ CRITICAL: You MUST ask ONLY ONE question. Do NOT ask multiple questions, do NOT ask follow-up questions, do NOT ask "also" questions.
    - ⚠️⚠️⚠️ EXAMPLE: If milestone is "Understand what Python is and its basic purpose", ask: "What is Python primarily used for?" NOT "How do you write a Python function?" (that's for a later milestone)
+   - ⚠️⚠️⚠️ VALIDATION: Before asking the question, verify: "Can the student answer this question using ONLY what I taught in my response?" If NO → rewrite the question
 
 ⚠️⚠️⚠️ VALIDATION CHECKLIST (VERIFY ALL):
 ✓ Do I have the first paragraph with context (1-3 sentences, NO "STEP 1:" label)?
@@ -352,17 +366,20 @@ If ANY check fails, rewrite your response.
   } else if (scenarioType === 'clarification_request') {
     scenarioInstructions = `
 ⚠️⚠️⚠️ CRITICAL INSTRUCTIONS FOR CLARIFICATION REQUEST:
-- Student asked for clarification or indicated they don't understand (e.g., "I don't know", "can you explain", "no idea", "help", "confused")
+- Student asked for clarification or indicated they don't understand (e.g., "I don't know", "can you explain", "no idea", "help", "confused", "i forgot", "don't remember")
 - This is NOT a wrong answer - they're asking for help
-- Start with friendly, encouraging phrases like "No worries, let's explain this together." or "That's okay, let me break this down for you."
-- Do NOT use "Not quite" or "That's incorrect" - they asked for help, not gave a wrong answer
+- Start with friendly, encouraging phrases like "No worries, let's explain this together." or "That's okay, let me break this down for you." or "No problem, let's go through this step by step."
+- ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT use "Not quite" or "That's incorrect" - they asked for help, not gave a wrong answer
+- ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT use negative feedback phrases - they didn't answer incorrectly, they asked for help
 - ⚠️⚠️⚠️ YOU MUST RE-TEACH THE SAME MILESTONE "${milestoneTextToTeach}" in this SAME response
 - ⚠️⚠️⚠️ Use a DIFFERENT teaching approach (different examples, different style, different angle)
 - ⚠️⚠️⚠️ CRITICAL: Reinforce the SAME concepts from "${milestoneTextToTeach}" - do NOT introduce new concepts or topics
 - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT introduce concepts from other milestones or new topics not covered in "${milestoneTextToTeach}"
 - ⚠️⚠️⚠️ EXAMPLE: If milestone is "Learn for loops and while loops" and user asks for clarification, explain for loops and while loops again (maybe with different examples), but do NOT introduce "do-while loops" or other new concepts
 - ⚠️⚠️⚠️ After re-teaching, ask a DIFFERENT assessment question about the SAME milestone
+- ⚠️⚠️⚠️ CRITICAL: The new question must ONLY test concepts you ACTUALLY taught in your response - do NOT ask about concepts you didn't mention
 - ⚠️⚠️⚠️ Do NOT move to next milestone yet - this is a re-teach of the current one
+- ⚠️⚠️⚠️ CRITICAL: Stay on the SAME milestone - clarification requests NEVER advance milestones
 - Follow the SAME structure: Friendly opening → Re-teaching (150-200 words, different approach, SAME concepts) → ONE different assessment question
 - ⚠️⚠️⚠️ ALL IN ONE MESSAGE: Friendly opening + Re-teaching + New Question
 `;

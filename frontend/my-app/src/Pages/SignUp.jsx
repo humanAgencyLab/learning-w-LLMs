@@ -64,7 +64,16 @@ function SignUp() {
     try {
       const normalizedEmail = email.trim().toLowerCase();
       
-      // FIRST: Check sessionStorage for pending signup with same email
+      // FIRST: Check database for existing registered users (most important check)
+      const emailCheck = await authApi.checkEmail(normalizedEmail);
+      
+      if (emailCheck.exists) {
+        setLocalError('This email is already registered. Please use a different email or sign in instead.');
+        setIsCheckingEmail(false);
+        return;
+      }
+      
+      // SECOND: Check sessionStorage for pending signup with same email
       // This prevents duplicate signups when user hasn't completed onboarding yet
       const existingPendingSignup = sessionStorage.getItem('pendingSignup');
       if (existingPendingSignup) {
@@ -79,15 +88,6 @@ function SignUp() {
           // If we can't parse existing pending signup, clear it and continue
           sessionStorage.removeItem('pendingSignup');
         }
-      }
-      
-      // SECOND: Check database for existing registered users
-      const emailCheck = await authApi.checkEmail(normalizedEmail);
-      
-      if (emailCheck.exists) {
-        setLocalError('This email is already registered. Please use a different email or sign in instead.');
-        setIsCheckingEmail(false);
-        return;
       }
 
       // Email is available - store signup data temporarily in sessionStorage
@@ -108,12 +108,10 @@ function SignUp() {
       
       console.error('Error checking email:', err);
       
-      if (errMsg.includes('endpoint not found') || errMsg.includes('Route not found')) {
-        errorMessage = 'Backend server may not be running. Please ensure the backend is started on port 5001.';
-      } else if (errMsg.includes('Network error') || errMsg.includes('Unable to connect')) {
-        errorMessage = 'Network error: Unable to connect to server. Please check your connection and ensure the backend server is running.';
-      } else if (errMsg.includes('404')) {
-        errorMessage = 'Email check endpoint not found. Please ensure the backend server is running and the route is available.';
+      if (errMsg.includes('endpoint not found') || errMsg.includes('Route not found') || errMsg.includes('404')) {
+        errorMessage = 'Unable to connect to backend server. Please check your connection and try again.';
+      } else if (errMsg.includes('Network error') || errMsg.includes('Unable to connect') || errMsg.includes('Failed to fetch')) {
+        errorMessage = 'Network error: Unable to connect to server. Please check your connection and try again.';
       } else {
         errorMessage = errMsg || errorMessage;
       }

@@ -1,6 +1,6 @@
 # Study Assist - LLM-Powered Learning Platform
 
-An intelligent, chat-based learning platform that helps users study and revise topics dynamically using LLM technology. Features structured study paths, quizzes, gamification, and progress tracking.
+An intelligent, chat-based learning platform that helps users study and revise topics dynamically using LLM technology. Uses Self-Regulated Learning (SRL) principles with milestone-based progression. Features personalized learning plans, interactive teaching, quizzes, certificates, and progress tracking.
 
 ## 🚀 Quick Start
 
@@ -94,9 +94,8 @@ REACT_APP_API_BASE_URL=
 
 ### Development URLs
 
-- **Frontend**: http://localhost:3000
+- **Frontend**: http://localhost:3000 (redirects to `/signin` if logged out, `/chat` if logged in)
 - **Backend API**: http://localhost:5001
-- **API Documentation**: http://localhost:5001/api-docs
 - **Health Check**: http://localhost:5001/v1/health
 - **UI Demo**: http://localhost:3000/ui-demo
 
@@ -128,17 +127,19 @@ learning-w-LLMs/
 ## 🎯 Core Features
 
 ### Learning Flow
-1. **Pre-Assessment**: User asks a question, selects learning style
-2. **Assessment**: LLM determines topic and creates study plan (≤2 messages)
-3. **Learning**: Interactive chat-based learning with progress tracking
-4. **Quiz**: Auto-generated MCQs to test knowledge
-5. **Feedback**: LLM provides corrections and deeper explanations
-6. **Completion**: Trophy unlocked at 100 points
+1. **Learning Intent**: User enters a topic name in the chat
+2. **Planning**: LLM generates a personalized learning plan (2-8 modules, 3-6 milestones each)
+3. **Plan Approval/Modification**: User reviews, modifies (optional), and approves the plan
+4. **Learning**: Interactive milestone-based teaching with assessment questions (150-250 words per teaching)
+5. **Quizzing**: Auto-generated MCQ quiz (5 questions per module, ≥70% to pass)
+6. **Feedback**: Quiz results shown, user can retry or proceed to next module
+7. **Completed**: All modules completed, certificate generated, session locked as view-only
 
-### Gamification
-- **Points**: 100 per topic, split among modules
-- **Gems**: +1 for every 20 points earned (max 5/topic)
-- **Trophies**: Unlocked when points = 100 & all modules complete
+### Gamification & Progress
+- **Points**: 100 per topic, distributed across modules based on milestone completion
+- **Gems**: 1 gem per 20 points earned (calculated from total points across all sessions)
+- **Certificates**: PDF certificates generated upon topic completion
+- **Progress Tracking**: Real-time progress bars, milestone checkmarks, module status
 
 ### Design System
 - **Design Tokens**: Centralized colors, spacing, typography
@@ -233,19 +234,20 @@ npm run lint       # Run ESLint
 3. Check the terminal output for specific error messages
 4. Ensure all prerequisites are installed and configured
 
-## 🚀 Next Steps
+## 🚀 Current Status
 
-The project follows a phased development approach. See the [Production Readiness Roadmap](docs/Production_Readiness_Roadmap.md) for:
+The application is **production-ready** with the following features implemented:
 
-- **Phase 1**: Authentication & User Profiles
-- **Phase 2**: Chat Interface Revamp (TOP PRIORITY)
-- **Phase 3**: Study Path & Session Management
-- **Phase 4**: Chat History & Session Lifecycle
-- **Phase 5**: Performance & Research Analytics
-- **Phase 6**: Profile Updates & Preferences
-- **Phase 7**: Reliability, Quality & Security
-- **Phase 8**: Deployment & CI/CD
-- **Phase 9**: Local LLM Migration
+- ✅ **User Authentication**: Sign up, sign in, logout, password reset, JWT tokens
+- ✅ **User Onboarding**: Multi-step onboarding with profile collection
+- ✅ **Learning Plans**: Dynamic 2-8 module plans with milestone-based progression
+- ✅ **Interactive Teaching**: LLM-powered milestone teaching with assessment questions
+- ✅ **Quiz System**: Auto-generated MCQ quizzes with explanations
+- ✅ **Revision Mode**: Quiz-only mode for reviewing completed topics
+- ✅ **Certificate Generation**: PDF certificates upon topic completion
+- ✅ **Session Management**: Chat history, favorites, search, filters
+- ✅ **Progress Tracking**: Points, gems, modules completed, topics completed
+- ✅ **Deployment**: Google Cloud Run (backend) + Firebase Hosting (frontend)
 
 ## 📄 License
 
@@ -259,4 +261,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 4. Run tests and linting
 5. Submit a pull request
 
-For detailed contribution guidelines, see the [Production Readiness Roadmap](docs/Production_Readiness_Roadmap.md).
+For detailed documentation, see:
+- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)**: Quick reference guide
+- **[ONBOARDING_GUIDE.md](ONBOARDING_GUIDE.md)**: Complete onboarding guide
+- **[docs/TEACHING_SYSTEM_DOCUMENTATION.md](docs/TEACHING_SYSTEM_DOCUMENTATION.md)**: Teaching system documentation

@@ -73,7 +73,8 @@ learning-w-LLMs/
 │   ├── src/
 │   │   ├── Pages/            # Main page components
 │   │   │   ├── ChatInterface.jsx # Main chat UI
-│   │   │   ├── LandingPage.jsx
+│   │   │   ├── SignIn.jsx
+│   │   │   ├── SignUp.jsx
 │   │   │   └── ...
 │   │   ├── components/        # Reusable components
 │   │   │   ├── ModuleProgressPanel.jsx # Right sidebar progress
@@ -97,19 +98,18 @@ learning-w-LLMs/
 
 ## 🔄 Learning Flow (SRL System)
 
-The system follows a **Self-Regulated Learning (SRL)** flow with distinct phases:
+The system follows a **Self-Regulated Learning (SRL)** flow with the following user-facing phases:
 
-### Phase 1: Pre-Assessment (`pre`)
-- User starts a new session
-- System greets and asks initial question
-- Determines learning intent
-
-### Phase 2: Assessment (`assessing`)
-- System asks 1-3 focused questions
-- Gathers: topic, goals, prior knowledge, learning style
-- When sufficient info OR user says "go ahead" → creates plan
-
-### Phase 3: Planning (`planning`)
+### Phase 1: Learning Intent → Planning (`planning`)
+- User enters a topic name in the chat (e.g., "Python Basics", "Machine Learning")
+- System detects learning intent and automatically generates a personalized learning plan
+- Plan includes:
+  - **2-8 modules** (dynamic based on topic complexity)
+  - Each module has **3-6 milestones** (learning objectives)
+  - Each module has **points** (distributed based on complexity, totaling 100 points)
+- Plan displayed in chat with clear structure
+- User can approve, modify, or request changes
+- When approved → moves to learning phase
 - System generates a complete learning plan:
   - **3-6 modules** (e.g., "Introduction to Python", "Data Structures", "Functions")
   - Each module has **3-6 milestones** (e.g., "Install Python", "Write Hello World")
@@ -118,7 +118,7 @@ The system follows a **Self-Regulated Learning (SRL)** flow with distinct phases
 - User can approve, modify, or request changes
 - When approved → moves to learning phase
 
-### Phase 4: Learning (`learning`) ⭐ **CORE TEACHING PHASE**
+### Phase 2: Learning (`learning`) ⭐ **CORE TEACHING PHASE**
 - System teaches **one milestone at a time**
 - Each teaching response follows **uniform structure**:
   1. **Introduction/Acknowledgment** (1-3 sentences)
@@ -142,25 +142,26 @@ The system follows a **Self-Regulated Learning (SRL)** flow with distinct phases
 - Progress updates: `completedMilestones[]` array, `progressPct`, `points`, `gems`
 - When ALL milestones in module complete → moves to quiz phase
 
-### Phase 5: Quiz (`quiz` or `quizzing`)
-- System generates 3-7 questions (mostly MCQ + 1-2 short-answer)
-- Questions test understanding of module content
+### Phase 3: Quizzing (`quizzing`)
+- System generates 5 questions (MCQ format with explanations)
+- Questions test understanding of module milestones
 - User submits answers
-- System grades with AI or rubric
+- System grades automatically
 - **≥70% to pass**
 - **On PASS**: Module marked complete, next module unlocked, return to learning
 - **On FAIL**: Move to feedback phase
 
-### Phase 6: Feedback (`feedback`)
+### Phase 4: Feedback (`feedback`)
 - System provides targeted review of missed concepts
 - Brief, actionable feedback (1-3 fixes)
 - Short micro-exercise
 - Return to learning phase (re-quiz or continue)
 
-### Phase 7: Completed (`completed`)
+### Phase 5: Completed (`completed`)
 - All modules completed
-- Trophy unlocked
-- Summary of learning journey
+- Certificate generated (PDF download available)
+- Session locked as view-only
+- "Revision" and "Summarize" buttons available for completed topics
 
 ---
 
@@ -212,7 +213,7 @@ The core data structure that tracks all learning state:
 
 ```javascript
 {
-  phase: 'pre' | 'assessing' | 'planning' | 'learning' | 'quiz' | 'feedback' | 'completed',
+  phase: 'planning' | 'learning' | 'quizzing' | 'feedback' | 'completed',
   topic: String,
   plan: [{
     id: String,

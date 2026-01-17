@@ -2,25 +2,25 @@
 
 ## What Is This Project?
 
-**Study Assist** = LLM-powered learning platform that provides personalized, adaptive teaching through chat. Uses Self-Regulated Learning (SRL) principles with milestone-based progression.
+**Study Assist** = LLM-powered learning platform that provides personalized, adaptive teaching through chat. Uses **Self-Regulated Learning (SRL)** principles with milestone-based progression.
 
-**Tech Stack:** React + Express + MongoDB + Groq API (Llama models)
+**Tech Stack:** React 18 + Express.js + MongoDB + Groq API (Llama 3.3 70B) + JWT Auth
 
 ---
 
 ## 🎯 Core Learning Flow
 
 ```
-PRE → ASSESSING → PLANNING → LEARNING → QUIZ → FEEDBACK → COMPLETED
+LEARNING INTENT → PLANNING → LEARNING → QUIZZING → FEEDBACK → COMPLETED
 ```
 
-1. **Pre**: User starts session
-2. **Assessing**: System asks 1-3 questions
-3. **Planning**: System generates plan (3-6 modules, each with 3-6 milestones)
-4. **Learning**: System teaches one milestone at a time
-5. **Quiz**: System generates quiz (3-7 questions, ≥70% to pass)
-6. **Feedback**: Targeted review if quiz failed
-7. **Completed**: All modules done
+1. **Learning Intent**: User enters a topic name in chat
+2. **Planning**: System generates personalized plan (2-8 modules, 3-6 milestones each)
+3. **Plan Approval/Modification**: User reviews, modifies (optional), and approves plan
+4. **Learning**: System teaches one milestone at a time (150-250 words per teaching)
+5. **Quizzing**: System generates quiz (5 questions per module, ≥70% to pass)
+6. **Feedback**: Quiz results shown, user can retry or proceed
+7. **Completed**: All modules done, certificate generated, session locked
 
 ---
 
@@ -141,13 +141,21 @@ node backend/test_teaching_flow.js
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/v1/chat` | POST | Main chat interaction |
-| `/v1/assessment/start` | POST | Start assessment |
-| `/v1/assessment/answer` | POST | Answer questions |
-| `/v1/assessment/approve` | POST | Approve plan |
-| `/v1/quiz/generate` | POST | Generate quiz |
-| `/v1/quiz/submit` | POST | Submit quiz |
-| `/v1/session/state` | GET | Get session state |
+| `/v1/auth/signup` | POST | User registration |
+| `/v1/auth/login` | POST | User login |
+| `/v1/auth/logout` | POST | User logout |
+| `/v1/auth/refresh` | POST | Refresh access token |
+| `/v1/chat` | POST | Main chat interaction (detects learning intent) |
+| `/v1/assessment` | POST | Generate learning plan |
+| `/v1/assessment/approve` | POST | Approve plan, start learning |
+| `/v1/assessment/modify` | POST | Request plan modifications |
+| `/v1/quiz/start` | POST | Generate module quiz |
+| `/v1/quiz/submit` | POST | Submit quiz answers |
+| `/v1/quiz/revision/start` | POST | Start revision quiz for any topic |
+| `/v1/sessions` | GET | List user sessions (with search/filters) |
+| `/v1/sessions/:id/resume` | POST | Resume a session |
+| `/v1/sessions/:id/summarize` | POST | Generate session summary |
+| `/v1/profile` | GET/PUT | Get/update user profile |
 | `/v1/health` | GET | Health check |
 
 ---
@@ -221,16 +229,18 @@ tail -f backend/logs/app.log  # or terminal output
 
 ## ✅ Current Status
 
-- **Tests**: 94/120 passing (78.3%)
-- **Assessment Routes**: 100% passing ✅
-- **Phase Guards**: Complete ✅
-- **Branch**: `feature/srl-assessment-router`
-- **Status**: PR ready
+- **Production Ready**: ✅ Deployed to Google Cloud Run + Firebase Hosting
+- **Authentication**: ✅ Full JWT-based auth system
+- **Learning Flow**: ✅ Complete milestone-based teaching system
+- **Quiz System**: ✅ Module quizzes + revision quizzes
+- **Certificate Generation**: ✅ PDF certificates on completion
+- **Session Management**: ✅ Chat history, favorites, search, filters
+- **Progress Tracking**: ✅ Points, gems, modules/topics completed
 
 ---
 
 **Version**: 1.0  
-**Last Updated**: 2024
+**Last Updated**: 2025
 
 
 
