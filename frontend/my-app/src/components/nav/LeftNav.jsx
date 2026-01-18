@@ -28,6 +28,7 @@ function LeftNav() {
   // 2. In learning phases
   // 3. Plan is generated
   const isChatPage = location.pathname === '/chat';
+  const isHistoryPage = location.pathname === '/history';
   const showStudyPanel = isChatPage && 
                          ['learning', 'quizzing', 'feedback', 'completed'].includes(phase) && 
                          plan && plan.length > 0;
@@ -95,19 +96,20 @@ function LeftNav() {
         </div>
 
         {/* Study Panel or Recent Chats - Takes remaining space */}
+        {/* Hide Recent Chats when on history page */}
         {showStudyPanel ? (
           <div className="flex-1 min-h-0 overflow-hidden">
             <div className="px-2 py-2 h-full">
               <StudyPanelNav />
             </div>
           </div>
-        ) : (
+        ) : !isHistoryPage ? (
           <div className="flex-1 min-h-0 overflow-hidden">
             <div className="h-full">
               <RecentChats />
             </div>
           </div>
-        )}
+        ) : null}
       </div>
 
           {/* Profile Section - Footer (minimal height, max 15%) */}

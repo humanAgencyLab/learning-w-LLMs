@@ -149,7 +149,7 @@ function RecentChats() {
         {hasMore && (
           <button
             onClick={() => navigate('/history')}
-            className="w-full text-left px-2 py-2 mt-2 rounded-lg hover:bg-gray-100 transition-colors text-sm text-blue-600 font-medium"
+            className="w-full text-left px-2 py-2 mt-2 rounded-lg hover:bg-gray-100 transition-colors text-sm text-gray-800"
           >
             More...
           </button>

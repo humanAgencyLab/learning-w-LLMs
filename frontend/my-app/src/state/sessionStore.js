@@ -1176,6 +1176,15 @@ const useSessionStore = create(
         isViewOnly: state.isViewOnly,
         profile: state.profile,
         model: state.model
+      }),
+      // Ensure mode defaults to 'studying' for new users or if mode is invalid
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...persistedState,
+        // Always default to 'studying' if mode is not set or invalid
+        mode: (persistedState?.mode === 'studying' || persistedState?.mode === 'revision') 
+          ? persistedState.mode 
+          : 'studying'
       })
     }
   )
