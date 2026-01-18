@@ -1070,18 +1070,18 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                   <div className="flex-shrink-0 bg-[#f7f8f8] px-4 sm:px-6 py-4">
                     <div className="max-w-4xl mx-auto flex flex-col sm:flex-row gap-3">
                       <button
-                        onClick={handleStartRevision}
+                        onClick={handleRevision}
                         disabled={loading}
                         className="w-full sm:w-auto px-6 py-2.5 bg-[#4e81ee] hover:bg-blue-600 active:bg-blue-700 text-white font-semibold text-sm sm:text-base rounded-lg shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Start Revision Quiz
                       </button>
                       <button
-                        onClick={handleSummarizeTopic}
-                        disabled={loading}
+                        onClick={handleSummarize}
+                        disabled={loading || isSummarizing}
                         className="w-full sm:w-auto px-6 py-2.5 bg-[#ff9500] hover:bg-orange-600 active:bg-orange-700 text-white font-semibold text-sm sm:text-base rounded-lg shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Summarize Topic
+                        {isSummarizing ? 'Summarizing...' : 'Summarize Topic'}
                       </button>
                     </div>
                   </div>

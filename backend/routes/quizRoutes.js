@@ -994,25 +994,42 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
           }
           
           // Calculate gems from pointsTotal: 1 gem per 20 points
-          const calculatedGems = Math.floor(user.stats.pointsTotal / 20);
+          const previousCalculatedGems = Math.floor(previousPointsTotal / 20);
+          const newCalculatedGems = Math.floor(user.stats.pointsTotal / 20);
+          const calculatedGemsEarned = newCalculatedGems - previousCalculatedGems;
           
-          // Add bonus gems if quiz was passed (bonus gems are in addition to calculated gems)
+          // Gems calculation:
+          // - gemsTotal = calculated gems (from points) + accumulated bonus gems
+          // - When points are earned, we add the NEW calculated gems (not overwrite)
+          // - When bonus gems are awarded, we add them on top
+          const previousGemsTotal = user.stats.gemsTotal || 0;
+          
+          // Add any newly calculated gems from points earned
+          let gemsToAdd = calculatedGemsEarned;
+          
+          // Add bonus gems if quiz was passed
           if (bonusGems > 0) {
-            // Bonus gems are separate from calculated gems
-            // We need to track them separately or add them to gemsTotal
-            // For now, add them directly to gemsTotal as a bonus
-            const previousGemsTotal = user.stats.gemsTotal || 0;
-            user.stats.gemsTotal = previousGemsTotal + bonusGems;
-            
-            req.logger.info('Added bonus gems to user stats', {
+            gemsToAdd += bonusGems;
+            req.logger.info('Bonus gems awarded for passing quiz', {
               userId: session.userId,
               bonusGems,
+              calculatedGemsEarned,
+              totalGemsToAdd: gemsToAdd
+            });
+          }
+          
+          // Update gemsTotal by adding new gems (not overwriting)
+          if (gemsToAdd > 0) {
+            user.stats.gemsTotal = previousGemsTotal + gemsToAdd;
+            
+            req.logger.info('Updated user gems', {
+              userId: session.userId,
               previousGemsTotal,
+              calculatedGemsEarned,
+              bonusGems,
+              gemsToAdd,
               newGemsTotal: user.stats.gemsTotal
             });
-          } else {
-            // Only update based on calculated gems if no bonus
-            user.stats.gemsTotal = calculatedGems;
           }
           
           await user.save();
