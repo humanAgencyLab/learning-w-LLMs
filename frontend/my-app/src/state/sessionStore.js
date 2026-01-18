@@ -709,6 +709,7 @@ const useSessionStore = create(
               }
               
               // Update points, gems, and progressPct together (points should be checked first for atomic update)
+              let pointsOrGemsUpdated = false;
               if (response.data?.points !== undefined) {
                 const newPoints = response.data.points;
                 // Update gems when points change (from reset or other operations)
@@ -743,9 +744,20 @@ const useSessionStore = create(
                   gems: newGems,
                   progressPct: newProgressPct
                 });
+                pointsOrGemsUpdated = true;
               } else if (response.data?.progressPct !== undefined) {
                 // Only update progressPct if points not provided
                 set({ progressPct: response.data.progressPct });
+              }
+              
+              // Refresh user data to sync gems in profile chip after points/gems update
+              if (pointsOrGemsUpdated) {
+                try {
+                  await useAuthStore.getState().fetchUser();
+                  console.log('User data refreshed after points/gems update for profile sync');
+                } catch (userRefreshError) {
+                  console.error('Failed to refresh user data after points update:', userRefreshError);
+                }
               }
               
               // Update milestone completion status
@@ -758,6 +770,14 @@ const useSessionStore = create(
                 // Force a refresh to ensure UI updates
                 if (state.sessionId) {
                   await get().resumeSessionFromServer(state.sessionId);
+                }
+                
+                // Refresh user data to sync gems in profile chip after milestone completion
+                try {
+                  await useAuthStore.getState().fetchUser();
+                  console.log('User data refreshed after milestone completion for gems sync');
+                } catch (userRefreshError) {
+                  console.error('Failed to refresh user data after milestone:', userRefreshError);
                 }
               }
 
@@ -772,6 +792,14 @@ const useSessionStore = create(
                   gems: newGems,
                   progressPct: newPoints
                 });
+                
+                // Refresh user data to sync gems in profile chip after points update
+                try {
+                  await useAuthStore.getState().fetchUser();
+                  console.log('User data refreshed after points update for gems sync');
+                } catch (userRefreshError) {
+                  console.error('Failed to refresh user data after points update:', userRefreshError);
+                }
               }
               // If intent is 'general' or 'admin', do not mutate points/gems
 
