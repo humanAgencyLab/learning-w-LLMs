@@ -137,11 +137,12 @@ async function generateCertificatePDF({ userName, topic, issuedAt = new Date() }
          });
       
       // Center section - Logo (PDFKit doesn't support SVG, so use PNG)
-      // Try multiple possible logo paths (prioritize PNG, then check build/public folders)
+      // Try multiple possible logo paths - prioritize backend assets (works in Docker),
+      // then fall back to frontend paths (works in local development)
       const possibleLogoPaths = [
-        path.join(__dirname, '../../frontend/my-app/public/logo.png'),
-        path.join(__dirname, '../../frontend/my-app/build/logo.png'),
-        path.join(__dirname, '../assets/logo.png'), // Docker container path
+        path.join(__dirname, '../assets/logo.png'), // Backend assets (works in Docker)
+        path.join(__dirname, '../../frontend/my-app/public/logo.png'), // Local dev fallback
+        path.join(__dirname, '../../frontend/my-app/build/logo.png'), // Local dev fallback
       ];
       
       // #region agent log

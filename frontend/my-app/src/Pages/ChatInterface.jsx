@@ -619,6 +619,9 @@ function ChatInterface() {
                       handleSubmit(e);
                     }
                   }}
+                  onPaste={(e) => {
+                    e.preventDefault();
+                  }}
                   rows={1}
                 />
                 
@@ -1134,6 +1137,9 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                               e.preventDefault();
                               handleSubmit(e);
                             }
+                          }}
+                          onPaste={(e) => {
+                            e.preventDefault();
                           }}
                           rows={1}
                         />
