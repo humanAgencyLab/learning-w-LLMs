@@ -1073,6 +1073,16 @@ const useSessionStore = create(
             }));
           }
 
+          // Refresh user data to sync gems in profile chip
+          // This ensures the global user stats (gemsTotal) are updated after quiz completion
+          try {
+            await useAuthStore.getState().fetchUser();
+            console.log('User data refreshed after quiz submit for gems sync');
+          } catch (userRefreshError) {
+            console.error('Failed to refresh user data after quiz submit:', userRefreshError);
+            // Non-critical - gems will sync on next page load
+          }
+
           return result;
         } catch (error) {
           set({ 
