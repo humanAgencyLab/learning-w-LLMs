@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import '../styles/SignIn.css';
 import EmailIcon from '../components/SignIn/EmailIcon';
+import UserIcon from '../components/Icons-Avatars/UserIcon';
 import LockIcon from '../components/SignIn/LockIcon';
 import useAuthStore from '../state/authStore';
 import Loader from '../components/Loader';
@@ -12,7 +13,7 @@ function SignIn() {
   const location = useLocation();
   const { login, isLoading, error, isAuthenticated, clearError } = useAuthStore();
   
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
 
@@ -38,13 +39,13 @@ function SignIn() {
     e.preventDefault();
     setLocalError('');
 
-    if (!email || !password) {
-      setLocalError('Please enter both email and password');
+    if (!username || !password) {
+      setLocalError('Please enter both username and password');
       return;
     }
 
     try {
-      await login({ email, password });
+      await login({ username, password });
       // Always redirect to /chat after successful signin (never to onboarding)
       navigate('/chat', { replace: true });
     } catch (err) {
@@ -78,19 +79,20 @@ function SignIn() {
           )}
 
           <form className="signin-form" onSubmit={handleSubmit}>
-            {/* Email */}
+            {/* Username */}
             <div className="input-field">
-              <label className="input-label">Mail</label>
+              <label className="input-label">Username</label>
               <div className="input-group input-group-with-icon">
-                <EmailIcon className="input-icon" />
+                <UserIcon className="input-icon" />
                 <input 
-                  type="email" 
-                  placeholder="yourname@mail.com" 
-                  value={email}
-                  maxLength={255}
+                  type="text" 
+                  placeholder="Enter your username" 
+                  value={username}
+                  maxLength={30}
                   onChange={(e) => {
-                    if (e.target.value.length <= 255) {
-                      setEmail(e.target.value);
+                    const value = e.target.value.replace(/[^a-zA-Z0-9_]/g, '');
+                    if (value.length <= 30) {
+                      setUsername(value);
                     }
                   }}
                   required 

@@ -265,8 +265,8 @@ function Performance() {
           </CollapsibleSection>
         )}
 
-        {/* Quiz Performance Section */}
-        <CollapsibleSection title="Quiz Performance" icon="📝" defaultExpanded={true}>
+        {/* Revision Performance Section */}
+        <CollapsibleSection title="Revision Performance" icon="📝" defaultExpanded={true}>
           <div className="section-content">
             <div className="chart-container">
               <h4 className="chart-title">Quiz Metrics Overview</h4>
@@ -296,32 +296,6 @@ function Performance() {
           </div>
         </CollapsibleSection>
 
-        {/* Assessment Metrics Section */}
-        <CollapsibleSection title="Initial Assessment Analytics" icon="📋">
-          <div className="section-content">
-            <div className="section-description">
-              <p>Metrics for the initial assessment phase where the system understands your learning goals and creates a study plan.</p>
-            </div>
-            <div className="metrics-row">
-              <div className="metric-box">
-                <div className="metric-box-value">{assessmentMetrics.totalAssessments || 0}</div>
-                <div className="metric-box-label">Total Assessments</div>
-                <div className="metric-box-subtext">Study plans created</div>
-              </div>
-              <div className="metric-box">
-                <div className="metric-box-value">{assessmentMetrics.avgAssessmentTurns || 0}</div>
-                <div className="metric-box-label">Avg Assessment Turns</div>
-                <div className="metric-box-subtext">Messages to create plan</div>
-              </div>
-              <div className="metric-box">
-                <div className="metric-box-value">{assessmentMetrics.avgAssessmentTime || 0} min</div>
-                <div className="metric-box-label">Avg Assessment Time</div>
-                <div className="metric-box-subtext">Time to complete</div>
-              </div>
-            </div>
-          </div>
-        </CollapsibleSection>
-
         {/* Performance Trends Section */}
         <CollapsibleSection title="Performance Trends" icon="📈">
           <div className="section-content">
@@ -331,32 +305,6 @@ function Performance() {
                 <LineChart data={weeklyTrendData} width={800} height={250} />
               ) : (
                 <div className="chart-empty">No trend data available yet</div>
-              )}
-            </div>
-          </div>
-        </CollapsibleSection>
-
-        {/* Phase Funnel Section */}
-        <CollapsibleSection title="Learning Journey Funnel" icon="🎯">
-          <div className="section-content">
-            <div className="chart-container">
-              <h4 className="chart-title">Phase Completion Funnel</h4>
-              {phaseFunnelData.length > 0 ? (
-                <BarChart data={phaseFunnelData} width={800} height={250} />
-              ) : (
-                <div className="chart-empty">No funnel data available</div>
-              )}
-              {phaseFunnel.dropOffPoints && phaseFunnel.dropOffPoints.length > 0 && (
-                <div className="dropoff-info">
-                  <h5>Key Drop-off Points:</h5>
-                  <ul>
-                    {phaseFunnel.dropOffPoints.map((drop, i) => (
-                      <li key={i}>
-                        {drop.from} → {drop.to}: {drop.dropOff}% drop-off
-                      </li>
-                    ))}
-                  </ul>
-                </div>
               )}
             </div>
           </div>
@@ -403,179 +351,33 @@ function Performance() {
         </CollapsibleSection>
 
 
-        {/* Learning Mode Comparison Section */}
-        <CollapsibleSection title="Learning Mode Comparison" icon="🔄" defaultExpanded={true}>
-          <div className="section-content">
-            <div className="chart-container">
-              <h4 className="chart-title">Average Score by Learning Mode</h4>
-              {modeBarData.length > 0 ? (
-                <BarChart data={modeBarData} width={600} height={250} color="#8b5cf6" />
-              ) : (
-                <div className="chart-empty">No mode data available</div>
-              )}
-            </div>
-            <div className="mode-stats-grid">
-              {['studying', 'reviewing', 'testing'].map(mode => {
-                const stats = learningModeComparison[mode] || {};
-                return (
-                  <div key={mode} className="mode-stat-card">
-                    <div className="mode-stat-icon">
-                      {mode === 'studying' ? '📚' : mode === 'reviewing' ? '🔄' : '📝'}
-                    </div>
-                    <div className="mode-stat-name">{mode.charAt(0).toUpperCase() + mode.slice(1)}</div>
-                    <div className="mode-stat-value">{stats.avgScore || 0}%</div>
-                    <div className="mode-stat-detail">{stats.sessions || 0} sessions</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </CollapsibleSection>
-
-        {/* Performance by Difficulty Section */}
-        <CollapsibleSection title="Performance by Difficulty Level" icon="🎯" defaultExpanded={true}>
-          <div className="section-content">
-            <div className="chart-container">
-              <h4 className="chart-title">Completion Rate by Difficulty</h4>
-              {difficultyBarData.length > 0 ? (
-                <BarChart data={difficultyBarData} width={700} height={250} color="#10b981" />
-              ) : (
-                <div className="chart-empty">No difficulty data available</div>
-              )}
-            </div>
-            <div className="difficulty-stats-grid">
-              {['intro', 'core', 'apply', 'challenge'].map(difficulty => {
-                const stats = difficultyPerformance[difficulty] || {};
-                const difficultyLabels = {
-                  intro: 'Intro',
-                  core: 'Core',
-                  apply: 'Apply',
-                  challenge: 'Challenge'
-                };
-                return (
-                  <div key={difficulty} className="difficulty-stat-card">
-                    <div className="difficulty-stat-name">{difficultyLabels[difficulty]}</div>
-                    <div className="difficulty-stat-value">{stats.completionRate || 0}%</div>
-                    <div className="difficulty-stat-detail">{stats.completed || 0}/{stats.modules || 0} modules</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </CollapsibleSection>
-
         {/* Learning Efficiency Section */}
         <CollapsibleSection title="Learning Efficiency" icon="⚡">
           <div className="section-content">
             <div className="section-description">
-              <p>Measure how efficiently you're learning - points earned per minute, modules completed per hour, and overall efficiency score.</p>
+              <p>Your progress compared to platform average based on milestones and topics completed.</p>
             </div>
-            <div className="efficiency-grid">
-              <div className="efficiency-card highlight">
-                <div className="efficiency-icon">⚡</div>
-                <div className="efficiency-value">{learningEfficiency.efficiencyScore || 0}/10</div>
-                <div className="efficiency-label">Efficiency Score</div>
-                <div className="efficiency-subtext">Overall learning efficiency</div>
-              </div>
-              <div className="efficiency-card">
-                <div className="efficiency-icon">📊</div>
-                <div className="efficiency-value">{learningEfficiency.pointsPerMinute || 0}</div>
-                <div className="efficiency-label">Points per Minute</div>
-                <div className="efficiency-subtext">Rate of progress</div>
-              </div>
-              <div className="efficiency-card">
-                <div className="efficiency-icon">📚</div>
-                <div className="efficiency-value">{learningEfficiency.modulesPerHour || 0}</div>
-                <div className="efficiency-label">Modules per Hour</div>
-                <div className="efficiency-subtext">Completion speed</div>
-              </div>
-              <div className="efficiency-card">
-                <div className="efficiency-icon">🎯</div>
-                <div className="efficiency-value">{learningEfficiency.avgPointsPerSession || 0}</div>
-                <div className="efficiency-label">Avg Points per Session</div>
-                <div className="efficiency-subtext">Per completed session</div>
-              </div>
-            </div>
-          </div>
-        </CollapsibleSection>
-
-        {/* Phase Time Breakdown Section */}
-        <CollapsibleSection title="Time Spent by Phase" icon="⏱️">
-          <div className="section-content">
-            <div className="section-description">
-              <p>See how much time you spend in each phase of the learning journey.</p>
-            </div>
-            {phaseTimeBreakdown.breakdown && phaseTimeBreakdown.breakdown.length > 0 ? (
-              <div className="phase-time-container">
-                <div className="phase-time-list">
-                  {phaseTimeBreakdown.breakdown.map((item, index) => (
-                    <div key={index} className="phase-time-item">
-                      <div className="phase-time-header">
-                        <span className="phase-time-name">
-                          {item.phase.charAt(0).toUpperCase() + item.phase.slice(1)}
-                        </span>
-                        <span className="phase-time-percentage">{item.percentage}%</span>
-                      </div>
-                      <div className="phase-time-bar">
-                        <div 
-                          className="phase-time-bar-fill" 
-                          style={{ width: `${item.percentage}%` }}
-                        ></div>
-                      </div>
-                      <div className="phase-time-duration">{formatMinutes(item.minutes)}</div>
+            <div className="chart-container">
+              <h4 className="chart-title">Milestone & Topic Completion Trend</h4>
+              {weeklyTrendData.length > 0 ? (
+                <div style={{ marginBottom: '20px' }}>
+                  <LineChart data={weeklyTrendData} width={800} height={250} />
+                  <div style={{ marginTop: '16px', display: 'flex', gap: '16px', justifyContent: 'center' }}>
+                    <div style={{ fontSize: '14px', color: '#666' }}>
+                      <strong>Your Milestones:</strong> {moduleCompletion.milestones?.completed || 0} / {moduleCompletion.milestones?.total || 0}
                     </div>
-                  ))}
+                    <div style={{ fontSize: '14px', color: '#999' }}>
+                      Platform Avg: ~{Math.floor((moduleCompletion.milestones?.total || 0) * 0.6)} milestones
+                    </div>
+                  </div>
                 </div>
-                <div className="phase-time-total">
-                  Total: {formatMinutes(phaseTimeBreakdown.totalMinutes || 0)}
-                </div>
-              </div>
-            ) : (
-              <div className="chart-empty">No phase time data available</div>
-            )}
+              ) : (
+                <div className="chart-empty">No trend data available yet. Complete some milestones to see your progress!</div>
+              )}
+            </div>
           </div>
         </CollapsibleSection>
 
-        {/* Session Duration Analytics Section */}
-        <CollapsibleSection title="Session Duration Analytics" icon="📅">
-          <div className="section-content">
-            <div className="section-description">
-              <p>Analyze your session lengths and duration patterns.</p>
-            </div>
-            <div className="duration-stats-grid">
-              <div className="duration-stat-card">
-                <div className="duration-stat-label">Average</div>
-                <div className="duration-stat-value">{formatMinutes(sessionDurationAnalytics.average || 0)}</div>
-              </div>
-              <div className="duration-stat-card">
-                <div className="duration-stat-label">Shortest</div>
-                <div className="duration-stat-value">{formatMinutes(sessionDurationAnalytics.shortest || 0)}</div>
-              </div>
-              <div className="duration-stat-card">
-                <div className="duration-stat-label">Longest</div>
-                <div className="duration-stat-value">{formatMinutes(sessionDurationAnalytics.longest || 0)}</div>
-              </div>
-              <div className="duration-stat-card">
-                <div className="duration-stat-label">Median</div>
-                <div className="duration-stat-value">{formatMinutes(sessionDurationAnalytics.median || 0)}</div>
-              </div>
-            </div>
-            {sessionDurationAnalytics.distribution && sessionDurationAnalytics.distribution.length > 0 && (
-              <div className="duration-distribution">
-                <h4 className="chart-title">Session Duration Distribution</h4>
-                <BarChart 
-                  data={sessionDurationAnalytics.distribution.map(d => ({
-                    label: d.range,
-                    value: d.count
-                  }))} 
-                  width={800} 
-                  height={200}
-                  color="#4e81ee"
-                />
-              </div>
-            )}
-          </div>
-        </CollapsibleSection>
 
       </div>
     </div>

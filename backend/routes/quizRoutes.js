@@ -26,20 +26,31 @@ const addRequestId = (req, res, next) => {
 };
 
 // Quiz generation prompt builder
-const buildQuizPrompt = (moduleTitle, difficulty = 'core', questionCount = 5, milestones = []) => {
+const buildQuizPrompt = (moduleTitle, difficulty = 'core', questionCount = 5, milestones = [], teachingMessages = null) => {
   const milestonesText = milestones.length > 0 
-    ? `\n\nMODULE MILESTONES (Learning Objectives):\n${milestones.map((m, i) => `${i + 1}. ${m.text || m}`).join('\n')}\n\n⚠️⚠️⚠️ CRITICAL: ALL questions MUST be directly related to these milestones. Each question should test understanding of specific concepts covered in these milestones. Do NOT create questions about topics not covered in these milestones.`
+    ? `\n\n⚠️⚠️⚠️ MODULE MILESTONES - THESE ARE THE ONLY TOPICS YOU CAN ASK ABOUT:\n${milestones.map((m, i) => `${i + 1}. ${m.text || m}`).join('\n')}\n\n⚠️⚠️⚠️ ABSOLUTE REQUIREMENT: Every single question MUST test understanding of concepts EXPLICITLY covered in the milestones listed above.`
     : '';
   
-  return `Generate exactly ${questionCount} multiple-choice questions for the module "${moduleTitle}" (difficulty: ${difficulty}).${milestonesText}
+  const teachingContext = teachingMessages && teachingMessages.trim() 
+    ? `\n\n⚠️⚠️⚠️ TEACHING CONTENT REFERENCE (IF PROVIDED):\n${teachingMessages.substring(0, 2000)}\n\n⚠️⚠️⚠️ CRITICAL: ONLY use teaching content that DIRECTLY relates to the milestones above. If teaching content mentions topics NOT in the milestones (like setup tools, README files, git, etc.), IGNORE that content completely. Questions must ONLY test concepts from the milestones, regardless of what other topics appear in the teaching content.`
+    : '';
+  
+  return `Generate exactly ${questionCount} multiple-choice questions for the module "${moduleTitle}" (difficulty: ${difficulty}).
+
+${milestonesText}${teachingContext}
 
 CRITICAL REQUIREMENTS:
 - Each question MUST be multiple-choice with exactly 4 options (A, B, C, D) and exactly one correct answer
-- ⚠️⚠️⚠️ CRITICAL: Questions MUST be focused on the module's milestones listed above
-- ⚠️⚠️⚠️ CRITICAL: Do NOT create questions about topics not covered in the milestones
+- ⚠️⚠️⚠️ ABSOLUTE REQUIREMENT: Questions MUST ONLY test understanding of concepts covered in the milestones listed above
+- ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT create questions about any topic NOT explicitly mentioned in the milestones
+- ⚠️⚠️⚠️ FORBIDDEN TOPICS: Do NOT ask about setup tools (git, README, installation, IDE setup, project structure, etc.) unless they are explicitly mentioned in the milestones. Focus ONLY on the programming language concepts, terminology, principles, and features mentioned in the milestones.
+- ⚠️⚠️⚠️ CRITICAL: For each question, identify which specific milestone it tests. If you cannot identify a milestone that covers the concept, DO NOT create that question
+- ⚠️⚠️⚠️ VALIDATION: Before creating each question, ask: "Which specific milestone from the list above does this question test?" If you cannot point to a specific milestone, DO NOT create this question
 - ⚠️⚠️⚠️ CRITICAL: For the first module (difficulty: "intro"), questions must be basic and foundational - test simple understanding, not advanced concepts
+- ⚠️⚠️⚠️ CRITICAL: Each question MUST map to a specific milestone from the list above. Test understanding of concepts explicitly mentioned in that milestone
 - Vary the question focus to cover the breadth of the milestones (conceptual, practical, scenario-based)
-- Distribute questions across different milestones to ensure comprehensive coverage
+- Distribute questions across different milestones to ensure comprehensive coverage of all milestones
+- ⚠️⚠️⚠️ VALIDATION CHECK: After creating each question, verify: "Can I point to a specific milestone that covers this concept?" If NO → Delete the question and create a different one
 - Concise, clear question stems
 - Difficulty-appropriate questions (basic for intro, more challenging for core/apply)
 - No trick questions; wording must be unambiguous
@@ -69,9 +80,17 @@ Return ONLY valid JSON in this exact format:
   ]
 }
 
-Generate exactly ${questionCount} multiple-choice questions. Each option must be a specific, standalone answer. 
+Generate exactly ${questionCount} multiple-choice questions. Each option must be a specific, standalone answer.
 
-⚠️⚠️⚠️ ABSOLUTE REQUIREMENT: Every question MUST include an "explanation" field. Do NOT omit this field for any question.`;
+⚠️⚠️⚠️ FINAL VALIDATION CHECKLIST (MANDATORY - CHECK EACH QUESTION):
+1. For each question, can you identify the EXACT milestone number (e.g., "Milestone 1", "Milestone 2") that it tests? YES/NO
+2. Does each question test concepts that are explicitly mentioned in that milestone's description? YES/NO
+3. Are there any questions about setup tools (git, README, installation), development workflow, or topics NOT mentioned in the milestones? NO
+4. If the module is about a programming language (e.g., C#, Python, JavaScript), are questions testing the LANGUAGE CONCEPTS from milestones, not development tools or workflows? YES
+
+⚠️⚠️⚠️ CORRECTION RULE: If ANY question fails the checklist above, you MUST DELETE that question and create a new one that directly tests a milestone concept. Do NOT include questions that pass validation.
+
+⚠️⚠️⚠️ ABSOLUTE REQUIREMENT: Every question MUST include an "explanation" field that explains why the correct answer is correct. Do NOT omit this field for any question.`;
 };
 
 // Generate revision quiz for a topic (not tied to a module)
@@ -202,10 +221,10 @@ Generate ${questionCount} revision questions for "${topic}". Each option must be
 };
 
 // Generate quiz using LLM
-const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones = []) => {
+const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones = [], teachingMessages = null) => {
   try {
     const groqClient = getGroqClient();
-    const prompt = buildQuizPrompt(moduleTitle, difficulty, questionCount, milestones);
+    const prompt = buildQuizPrompt(moduleTitle, difficulty, questionCount, milestones, teachingMessages);
     
     const response = await groqClient.chat.completions.create({
       model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
@@ -226,6 +245,19 @@ const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones =
 
     const content = response.choices[0].message.content;
     
+    // Helper to strip markdown code blocks from LLM response
+    const stripMarkdownCodeBlocks = (text) => {
+      let cleaned = text.trim();
+      if (cleaned.startsWith('```')) {
+        // Remove opening ```json or ```
+        cleaned = cleaned.replace(/^```(?:json)?\s*\n?/i, '');
+        // Remove closing ```
+        cleaned = cleaned.replace(/\n?```\s*$/i, '');
+        cleaned = cleaned.trim();
+      }
+      return cleaned;
+    };
+    
     // Helper to check for forbidden options
     const hasForbiddenOptions = (questions) => {
       const forbiddenPatterns = ['all of the above', 'none of the above', 'both a and b', 'both a and c', 'both b and c'];
@@ -236,35 +268,56 @@ const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones =
       );
     };
     
+    // Helper to check if questions are on-topic (match milestones)
+    const hasOffTopicQuestions = (questions, milestones) => {
+      if (!milestones || milestones.length === 0) return false;
+      
+      // Extract milestone keywords - what topics are allowed
+      const milestoneKeywords = milestones.map(m => {
+        const text = (m.text || m).toLowerCase();
+        // Extract key concepts from milestone text
+        return text;
+      }).join(' ');
+      
+      // Keywords that are typically OFF-TOPIC (setup/tools, not programming concepts)
+      const offTopicKeywords = ['readme', 'git', 'repository', 'github', 'version control', 'ide setup', 'installation guide', 'project setup', 'development environment', 'editor configuration'];
+      
+      return questions.some(q => {
+        const questionText = (q.text || '').toLowerCase();
+        // Check if question contains off-topic keywords
+        const containsOffTopic = offTopicKeywords.some(keyword => questionText.includes(keyword));
+        if (containsOffTopic) {
+          // Only flag as off-topic if the keyword is NOT in milestones
+          const keywordInMilestones = milestoneKeywords.includes(keyword);
+          if (!keywordInMilestones) {
+            return true; // Question is off-topic
+          }
+        }
+        return false;
+      });
+    };
+    
     // Parse JSON with retry logic
     try {
-      let parsed = JSON.parse(content);
+      // Strip markdown code block markers if present (```json ... ```)
+      const cleanedContent = stripMarkdownCodeBlocks(content);
+      let parsed = JSON.parse(cleanedContent);
       // Check for forbidden options - if found, trigger retry
       if (parsed.questions && hasForbiddenOptions(parsed.questions)) {
         throw new Error('Questions contained forbidden options');
+      }
+      // Check for off-topic questions - if found, trigger retry
+      if (parsed.questions && milestones.length > 0 && hasOffTopicQuestions(parsed.questions, milestones)) {
+        throw new Error('Questions contained off-topic content (e.g., README, git) not in milestones');
       }
       return quizGenerationSchema.parse(parsed);
     } catch (parseError) {
       let retryContent;
       // Retry with stricter instructions
       try {
-        const retryPrompt = `Return ONLY valid JSON in this exact format. No prose, no explanations.
+        const retryPrompt = `${buildQuizPrompt(moduleTitle, difficulty, questionCount, milestones, null)}
 
-CRITICAL: NEVER use "All of the above", "None of the above", or any compound options. Each option must be a standalone, specific answer. Include an explanation for each question.
-
-{
-  "questions": [
-    {
-      "id": "q1", 
-      "text": "Question text here?",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "correctIndex": 0,
-      "explanation": "Brief explanation (2-3 sentences) explaining why the correct answer is correct."
-    }
-  ]
-}
-
-Generate ${questionCount} questions for "${moduleTitle}". Each option must be specific and standalone. Include explanations.`;
+⚠️⚠️⚠️ RETRY: Your previous attempt failed. Return ONLY valid JSON. Focus EXCLUSIVELY on milestone topics.`;
 
         const retryResponse = await groqClient.chat.completions.create({
           model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
@@ -284,10 +337,21 @@ Generate ${questionCount} questions for "${moduleTitle}". Each option must be sp
         });
 
         retryContent = retryResponse.choices[0].message.content;
-        let retryParsed = JSON.parse(retryContent);
+        // Strip markdown code block markers if present
+        let cleanedRetryContent = retryContent.trim();
+        if (cleanedRetryContent.startsWith('```')) {
+          cleanedRetryContent = cleanedRetryContent.replace(/^```(?:json)?\s*\n?/i, '');
+          cleanedRetryContent = cleanedRetryContent.replace(/\n?```\s*$/i, '');
+          cleanedRetryContent = cleanedRetryContent.trim();
+        }
+        let retryParsed = JSON.parse(cleanedRetryContent);
         // Check for forbidden options in retry - if found, fail
         if (retryParsed.questions && hasForbiddenOptions(retryParsed.questions)) {
           throw new Error('Retry still contained forbidden options');
+        }
+        // Check for off-topic questions in retry - if found, fail
+        if (retryParsed.questions && milestones.length > 0 && hasOffTopicQuestions(retryParsed.questions, milestones)) {
+          throw new Error('Retry still contained off-topic content (e.g., README, git) not in milestones');
         }
         return quizGenerationSchema.parse(retryParsed);
       } catch (retryError) {
@@ -437,11 +501,30 @@ router.post('/v1/quiz/start', requireAuth, addRequestId, async (req, res) => {
     const questionCount = 5;
     const difficulty = module.difficulty || 'core';
     
-    req.logger.info('Generating new quiz', { sessionId, moduleId, questionCount, difficulty, milestoneCount: (module.milestones || []).length });
+    req.logger.info('Generating new quiz', { 
+      sessionId, 
+      moduleId, 
+      questionCount, 
+      difficulty, 
+      milestoneCount: (module.milestones || []).length,
+      milestones: (module.milestones || []).map(m => m.text || m)
+    });
     
     // Pass milestones to quiz generation to ensure questions are focused on them
     const milestones = module.milestones || [];
-    const quizData = await generateQuiz(module.title, difficulty, questionCount, milestones);
+    
+    // Extract teaching messages for this module to provide context about what was actually taught
+    // This helps ensure quiz questions align with the content that was delivered
+    // Get assistant messages from the learning phase (these contain the teaching content)
+    const moduleTeachingMessages = (session.messages || [])
+      .filter(msg => msg.role === 'assistant' && 
+                     (msg.metadata?.type === 'teaching' || msg.metadata?.phaseAtSend === 'learning'))
+      .map(msg => msg.content)
+      .slice(-10) // Get last 10 teaching messages (to capture all milestones)
+      .join('\n\n');
+    
+    // Only include teaching context if available (helps LLM understand what was actually taught)
+    const quizData = await generateQuiz(module.title, difficulty, questionCount, milestones, moduleTeachingMessages || null);
     
     // Log if explanations are present
     const questionsWithExplanations = quizData.questions.filter(q => q.explanation && q.explanation.trim()).length;
@@ -878,22 +961,59 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
       session.phase = 'learning';
     }
     
+    // Award 5 bonus gems if quiz is passed
+    let bonusGems = 0;
+    if (passed) {
+      bonusGems = 5;
+      // Update session gems
+      session.gems = (session.gems || 0) + bonusGems;
+      
+      req.logger.info('Awarded bonus gems for passing quiz', {
+        sessionId,
+        moduleId: moduleId || 'revision',
+        isRevision,
+        bonusGems,
+        previousGems: (session.gems || 0) - bonusGems,
+        newGems: session.gems
+      });
+    }
+    
     await session.save();
     
     // Update user's global pointsTotal and gems when points are earned
-    // Only update when points are actually earned (pointsEarned > 0)
-    if (session.userId && pointsEarned > 0) {
+    // Only update when points are actually earned (pointsEarned > 0) or bonus gems are awarded
+    if (session.userId && (pointsEarned > 0 || bonusGems > 0)) {
       try {
         const User = require('../models/User');
         const user = await User.findById(session.userId);
         if (user) {
           // Add earned points to global pointsTotal (accumulative, never decreases)
           const previousPointsTotal = user.stats.pointsTotal || 0;
-          user.stats.pointsTotal = previousPointsTotal + pointsEarned;
+          if (pointsEarned > 0) {
+            user.stats.pointsTotal = previousPointsTotal + pointsEarned;
+          }
           
           // Calculate gems from pointsTotal: 1 gem per 20 points
-          const totalGems = Math.floor(user.stats.pointsTotal / 20);
-          user.stats.gemsTotal = totalGems;
+          const calculatedGems = Math.floor(user.stats.pointsTotal / 20);
+          
+          // Add bonus gems if quiz was passed (bonus gems are in addition to calculated gems)
+          if (bonusGems > 0) {
+            // Bonus gems are separate from calculated gems
+            // We need to track them separately or add them to gemsTotal
+            // For now, add them directly to gemsTotal as a bonus
+            const previousGemsTotal = user.stats.gemsTotal || 0;
+            user.stats.gemsTotal = previousGemsTotal + bonusGems;
+            
+            req.logger.info('Added bonus gems to user stats', {
+              userId: session.userId,
+              bonusGems,
+              previousGemsTotal,
+              newGemsTotal: user.stats.gemsTotal
+            });
+          } else {
+            // Only update based on calculated gems if no bonus
+            user.stats.gemsTotal = calculatedGems;
+          }
           
           await user.save();
           
@@ -901,11 +1021,12 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
             userId: session.userId,
             sessionId,
             pointsEarned,
+            bonusGems,
             previousPointsTotal,
             newPointsTotal: user.stats.pointsTotal,
-            totalGems,
-            previousGemsTotal: Math.floor(previousPointsTotal / 20)
-          }, 'Updated user global pointsTotal and gems from earned points');
+            totalGems: user.stats.gemsTotal,
+            previousGemsTotal: bonusGems > 0 ? (user.stats.gemsTotal - bonusGems) : Math.floor(previousPointsTotal / 20)
+          }, 'Updated user global pointsTotal and gems from earned points and bonus');
         }
       } catch (userUpdateError) {
         req.logger.error({
@@ -980,6 +1101,7 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
         passed,
         scorePct,
         pointsEarned,
+        bonusGems: passed ? bonusGems : 0,
         feedbackMarkdown
       }
     };

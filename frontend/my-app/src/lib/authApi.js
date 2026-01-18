@@ -44,9 +44,11 @@ export function getAuthHeaders() {
  * @param {string} credentials.email - User email
  * @param {string} credentials.password - User password
  * @param {string} credentials.name - User name
+ * @param {string} [credentials.username] - User username (optional if autoGenerateUsername is true)
+ * @param {boolean} [credentials.autoGenerateUsername] - Auto-generate username based on name
  * @returns {Promise<{user: Object, accessToken: string}>}
  */
-export async function signup({ email, password, name }) {
+export async function signup({ email, password, name, username, autoGenerateUsername }) {
   let response;
   try {
     response = await fetch(`${API_PREFIX}/signup`, {
@@ -55,7 +57,7 @@ export async function signup({ email, password, name }) {
         'Content-Type': 'application/json',
       },
       credentials: 'include', // Include cookies for refresh token
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({ email, password, name, username, autoGenerateUsername }),
     });
   } catch (networkError) {
     throw new Error('Network error: Unable to connect to server. Please check your connection.');
@@ -80,11 +82,18 @@ export async function signup({ email, password, name }) {
 
   if (!response.ok) {
     // Handle specific error codes
-    if (response.status === 409 || data.code === 'EMAIL_EXISTS') {
-      const error = new Error(data.error || 'Email already registered');
-      error.code = 'EMAIL_EXISTS';
-      error.status = 409;
-      throw error;
+    if (response.status === 409) {
+      if (data.code === 'EMAIL_EXISTS') {
+        const error = new Error(data.error || 'Email already registered');
+        error.code = 'EMAIL_EXISTS';
+        error.status = 409;
+        throw error;
+      } else if (data.code === 'USERNAME_EXISTS') {
+        const error = new Error(data.error || 'Username already taken');
+        error.code = 'USERNAME_EXISTS';
+        error.status = 409;
+        throw error;
+      }
     }
     throw new Error(data.error || data.message || 'Signup failed');
   }
@@ -92,6 +101,65 @@ export async function signup({ email, password, name }) {
   // Store access token
   if (data.data?.accessToken) {
     setAccessToken(data.data.accessToken);
+  }
+
+  return data.data;
+}
+
+/**
+ * Check if username already exists
+ * @param {string} username - Username to check
+ * @returns {Promise<{exists: boolean}>}
+ */
+export async function checkUsername(username) {
+  let response;
+  const url = `${API_PREFIX}/check-username`;
+  
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ username }),
+    });
+  } catch (networkError) {
+    console.error('Network error checking username:', networkError);
+    throw new Error('Network error: Unable to connect to server. Please check your connection.');
+  }
+
+  let data;
+  const contentType = response.headers.get('content-type');
+  
+  try {
+    if (contentType && contentType.includes('application/json')) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      console.error('Non-JSON response from check-username:', text.substring(0, 200));
+      throw new Error(`Server error: ${text.substring(0, 100)}`);
+    }
+  } catch (parseError) {
+    if (parseError.message.startsWith('Server error:')) {
+      throw parseError;
+    }
+    console.error('Parse error checking username:', parseError);
+    throw new Error('Invalid response from server. Please try again.');
+  }
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      console.error(`404 Error: Route not found at ${url}. Status: ${response.status}`);
+      throw new Error('Username check endpoint not found. Please ensure the backend server is running.');
+    }
+    console.error(`API error checking username:`, data);
+    throw new Error(data.error || data.message || `Failed to check username (${response.status})`);
+  }
+
+  if (!data || !data.data) {
+    console.error('Invalid response structure from check-username:', data);
+    throw new Error('Invalid response from server. Please try again.');
   }
 
   return data.data;
@@ -162,11 +230,11 @@ export async function checkEmail(email) {
 /**
  * Log in a user
  * @param {Object} credentials - Login credentials
- * @param {string} credentials.email - User email
+ * @param {string} credentials.username - User username
  * @param {string} credentials.password - User password
  * @returns {Promise<{user: Object, accessToken: string}>}
  */
-export async function login({ email, password }) {
+export async function login({ username, password }) {
   let response;
   try {
     response = await fetch(`${API_PREFIX}/login`, {
@@ -175,7 +243,7 @@ export async function login({ email, password }) {
         'Content-Type': 'application/json',
       },
       credentials: 'include', // Include cookies for refresh token
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ username, password }),
     });
   } catch (networkError) {
     throw new Error('Network error: Unable to connect to server. Please check your connection.');

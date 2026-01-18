@@ -11,6 +11,94 @@ const router = express.Router();
 router.use(cookieParser());
 
 /**
+ * Helper function to generate a unique username
+ */
+async function generateUniqueUsername(baseName) {
+  // Clean base name (remove non-alphanumeric, limit length)
+  let cleanBase = baseName.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 15);
+  if (!cleanBase) cleanBase = 'user';
+  
+  let username = cleanBase;
+  let counter = 1;
+  
+  // Try to find unique username (max 100 attempts)
+  while (counter <= 100) {
+    const existingUser = await User.findOne({ username: username.toLowerCase() });
+    if (!existingUser) {
+      return username;
+    }
+    // If exists, append number
+    username = `${cleanBase}${counter}`;
+    counter++;
+  }
+  
+  // Fallback: use random string
+  return `user${Date.now().toString(36)}`;
+}
+
+/**
+ * POST /v1/auth/check-username
+ * Check if username already exists (for signup validation)
+ */
+router.post('/check-username', async (req, res) => {
+  try {
+    const { username } = req.body;
+    
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        error: 'Username is required',
+        code: 'VALIDATION_ERROR'
+      });
+    }
+    
+    // Validate username format (3-30 characters, alphanumeric + underscores)
+    const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+    if (!usernameRegex.test(username)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Username must be 3-30 characters and contain only letters, numbers, and underscores',
+        code: 'VALIDATION_ERROR'
+      });
+    }
+    
+    // Check if user already exists (case-insensitive)
+    const normalizedUsername = username.toLowerCase();
+    const existingUser = await User.findOne({ username: normalizedUsername });
+    
+    if (existingUser) {
+      return res.json({
+        success: true,
+        data: {
+          exists: true,
+          message: 'Username already taken'
+        }
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        exists: false,
+        message: 'Username is available'
+      }
+    });
+  } catch (error) {
+    logger.error({
+      requestId: req.requestId,
+      error: error.message,
+      stack: error.stack
+    }, 'Check username error');
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check username',
+      code: 'SERVER_ERROR'
+    });
+  }
+});
+
+/**
  * POST /v1/auth/check-email
  * Check if email already exists (for signup validation)
  */
@@ -78,7 +166,7 @@ router.post('/check-email', async (req, res) => {
  */
 router.post('/signup', async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, username, autoGenerateUsername } = req.body;
     
     // Validation
     if (!email || !password || !name) {
@@ -118,7 +206,48 @@ router.post('/signup', async (req, res) => {
       });
     }
     
-    // Check if user already exists (case-insensitive)
+    // Handle username: auto-generate if requested, otherwise validate provided username
+    let finalUsername;
+    if (autoGenerateUsername) {
+      // Auto-generate username based on name
+      finalUsername = await generateUniqueUsername(name);
+    } else {
+      if (!username) {
+        return res.status(400).json({
+          success: false,
+          error: 'Username is required or enable auto-generate',
+          code: 'VALIDATION_ERROR'
+        });
+      }
+      
+      // Validate username format (3-30 characters, alphanumeric + underscores)
+      const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+      if (!usernameRegex.test(username)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Username must be 3-30 characters and contain only letters, numbers, and underscores',
+          code: 'VALIDATION_ERROR'
+        });
+      }
+      
+      // Check if username already exists (case-insensitive)
+      const normalizedUsername = username.toLowerCase();
+      const existingUserByUsername = await User.findOne({ username: normalizedUsername });
+      if (existingUserByUsername) {
+        return res.status(409).json({
+          success: false,
+          error: 'Username already taken',
+          code: 'USERNAME_EXISTS'
+        });
+      }
+      
+      finalUsername = username;
+    }
+    
+    // Normalize username for storage (lowercase for uniqueness, but preserve original case in display)
+    const normalizedUsername = finalUsername.toLowerCase();
+    
+    // Check if user already exists by email (case-insensitive)
     const normalizedEmail = email.toLowerCase().trim();
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
@@ -136,8 +265,9 @@ router.post('/signup', async (req, res) => {
     // Hash password
     const passwordHash = await hashPassword(password);
     
-    // Create user (use normalized email)
+    // Create user (use normalized email and username)
     const user = new User({
+      username: normalizedUsername,
       email: normalizedEmail,
       passwordHash,
       name: name.trim(),
@@ -150,24 +280,38 @@ router.post('/signup', async (req, res) => {
     } catch (saveError) {
       // Handle duplicate key error (MongoDB unique index violation)
       if (saveError.code === 11000 || saveError.name === 'MongoServerError') {
-        logger.warn({
-          requestId: req.requestId,
-          email: normalizedEmail,
-          error: saveError.message
-        }, 'Duplicate email detected during save (race condition)');
-        return res.status(409).json({
-          success: false,
-          error: 'Email already registered',
-          code: 'EMAIL_EXISTS'
-        });
+        // Check which field caused the duplicate
+        if (saveError.keyPattern?.username) {
+          logger.warn({
+            requestId: req.requestId,
+            username: normalizedUsername,
+            error: saveError.message
+          }, 'Duplicate username detected during save (race condition)');
+          return res.status(409).json({
+            success: false,
+            error: 'Username already taken',
+            code: 'USERNAME_EXISTS'
+          });
+        } else if (saveError.keyPattern?.email) {
+          logger.warn({
+            requestId: req.requestId,
+            email: normalizedEmail,
+            error: saveError.message
+          }, 'Duplicate email detected during save (race condition)');
+          return res.status(409).json({
+            success: false,
+            error: 'Email already registered',
+            code: 'EMAIL_EXISTS'
+          });
+        }
       }
       // Re-throw other errors
       throw saveError;
     }
     
     // Generate tokens (convert ObjectId to string)
-    const accessToken = generateAccessToken({ userId: user._id.toString(), email: user.email });
-    const refreshToken = generateRefreshToken({ userId: user._id.toString(), email: user.email });
+    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username, email: user.email });
+    const refreshToken = generateRefreshToken({ userId: user._id.toString(), username: user.username, email: user.email });
     
     // Set refresh token in httpOnly cookie
     // For cross-origin requests, sameSite must be 'none' with secure=true
@@ -182,6 +326,7 @@ router.post('/signup', async (req, res) => {
     logger.info({
       requestId: req.requestId || 'unknown',
       userId: user._id,
+      username: user.username,
       email: user.email
     }, 'User signed up');
     
@@ -202,13 +347,21 @@ router.post('/signup', async (req, res) => {
       stack: error.stack
     }, 'Signup error');
     
-    // Handle duplicate email error
+    // Handle duplicate key error
     if (error.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        error: 'Email already registered',
-        code: 'EMAIL_EXISTS'
-      });
+      if (error.keyPattern?.username) {
+        return res.status(409).json({
+          success: false,
+          error: 'Username already taken',
+          code: 'USERNAME_EXISTS'
+        });
+      } else if (error.keyPattern?.email) {
+        return res.status(409).json({
+          success: false,
+          error: 'Email already registered',
+          code: 'EMAIL_EXISTS'
+        });
+      }
     }
     
     res.status(500).json({
@@ -225,25 +378,26 @@ router.post('/signup', async (req, res) => {
  */
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { username, password } = req.body;
     
     // Validation
-    if (!email || !password) {
+    if (!username || !password) {
       return res.status(400).json({
         success: false,
-        error: 'Email and password are required',
+        error: 'Username and password are required',
         code: 'VALIDATION_ERROR'
       });
     }
     
-    // Find user with password hash
-    const user = await User.findOne({ email: email.toLowerCase() }).select('+passwordHash');
+    // Find user with password hash by username (case-insensitive)
+    const normalizedUsername = username.toLowerCase();
+    const user = await User.findOne({ username: normalizedUsername }).select('+passwordHash');
     
     if (!user) {
-      // Don't reveal if email exists (security best practice)
+      // Don't reveal if username exists (security best practice)
       return res.status(401).json({
         success: false,
-        error: 'Invalid email or password',
+        error: 'Invalid username or password',
         code: 'INVALID_CREDENTIALS'
       });
     }
@@ -254,7 +408,7 @@ router.post('/login', async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid email or password',
+        error: 'Invalid username or password',
         code: 'INVALID_CREDENTIALS'
       });
     }
@@ -263,8 +417,8 @@ router.post('/login', async (req, res) => {
     await user.updateLastLogin();
     
     // Generate tokens (convert ObjectId to string)
-    const accessToken = generateAccessToken({ userId: user._id.toString(), email: user.email });
-    const refreshToken = generateRefreshToken({ userId: user._id.toString(), email: user.email });
+    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username, email: user.email });
+    const refreshToken = generateRefreshToken({ userId: user._id.toString(), username: user.username, email: user.email });
     
     // Set refresh token in httpOnly cookie
     // For cross-origin requests, sameSite must be 'none' with secure=true
@@ -279,6 +433,7 @@ router.post('/login', async (req, res) => {
     logger.info({
       requestId: req.requestId,
       userId: user._id,
+      username: user.username,
       email: user.email
     }, 'User logged in');
     
@@ -350,7 +505,7 @@ router.post('/refresh', async (req, res) => {
     }
     
     // Generate new access token (convert ObjectId to string)
-    const accessToken = generateAccessToken({ userId: user._id.toString(), email: user.email });
+    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username, email: user.email });
     
     res.json({
       success: true,

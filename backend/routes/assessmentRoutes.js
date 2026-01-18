@@ -273,12 +273,75 @@ router.post('/v1/assessment', requireAuth, addRequestId, contextControl, async (
       : 'Personalized learning path based on your profile and goals';
     
     // Backfill missing targets for each module
-    const finalPlan = plan.map(module => {
+    let finalPlan = plan.map(module => {
       const targets = module.targets && module.targets.length > 0
         ? module.targets
         : [`Master ${module.title}`]; // Minimal backfill
       return { ...module, targets };
     });
+    
+    // ⚠️ CRITICAL: Enforce 2-3 modules limit - ask LLM to regenerate if 4+ modules
+    if (finalPlan.length > 3) {
+      req.logger.warn('LLM generated too many modules, requesting correction', {
+        sessionId,
+        originalCount: finalPlan.length,
+        topic
+      });
+      
+      // Create corrective prompt asking LLM to regenerate with exactly 3 modules
+      const planSummary = finalPlan.map((m, i) => `${i + 1}. ${m.title} (${m.points} points): ${m.targets.join('; ')}`).join('\n');
+      const correctiveMessage = `${userMessage}\n\n⚠️ CORRECTION REQUIRED: You generated ${finalPlan.length} modules, but the plan must have EXACTLY 3 modules (not 4, not 5, not more). Please regenerate the plan with EXACTLY 3 modules by consolidating/merging the content from the following modules:\n\n${planSummary}\n\nMerge related topics and consolidate the content into EXACTLY 3 well-structured modules. Keep all important learning objectives but organize them into 3 modules instead of ${finalPlan.length}.`;
+      
+      try {
+        const correctivePrompt = buildAssessmentPrompt(profile, correctiveMessage, mode, conversationHistory, true);
+        const correctiveResponse = await callAssessmentAPI(correctivePrompt, true);
+        const correctiveParsed = await parseAssessmentResponse(correctiveResponse, true);
+        
+        // Use the corrected plan
+        const correctedPlan = correctiveParsed.plan.map(module => {
+          const targets = module.targets && module.targets.length > 0
+            ? module.targets
+            : [`Master ${module.title}`];
+          return { ...module, targets };
+        });
+        
+        // If still wrong, fall back to default (but log it)
+        if (correctedPlan.length > 3) {
+          req.logger.error('LLM still generated too many modules after correction, using fallback', {
+            sessionId,
+            originalCount: finalPlan.length,
+            correctedCount: correctedPlan.length,
+            topic
+          });
+          throw new Error('LLM_FAILED_USE_DEFAULT');
+        }
+        
+        finalPlan = correctedPlan;
+        req.logger.info('LLM successfully corrected module count', {
+          sessionId,
+          originalCount: plan.length,
+          correctedCount: finalPlan.length,
+          topic
+        });
+      } catch (correctiveError) {
+        req.logger.error('Corrective prompt failed, using fallback', {
+          sessionId,
+          error: correctiveError.message,
+          topic
+        });
+        throw new Error('LLM_FAILED_USE_DEFAULT');
+      }
+    }
+    
+    // Also ensure minimum of 2 modules
+    if (finalPlan.length < 2) {
+      req.logger.warn('LLM generated too few modules, using default plan', {
+        sessionId,
+        originalCount: finalPlan.length,
+        topic
+      });
+      throw new Error('LLM generated plan with fewer than 2 modules - using fallback');
+    }
     
     // Validate final plan structure
     try {
@@ -447,28 +510,25 @@ router.post('/v1/assessment', requireAuth, addRequestId, contextControl, async (
       }
       
       // Generate dynamic default plan when LLM fails
-      // For simple topics, use fewer modules; for complex topics, use more
+      // For simple topics, use 2 modules; for complex topics, use 3 modules
       const topicLower = extractedTopic.toLowerCase();
       const isComplexTopic = topicLower.includes('full stack') || topicLower.includes('full-stack') || 
                              topicLower.includes('machine learning') || topicLower.includes('web development') ||
                              topicLower.includes('software engineering') || topicLower.includes('data science') ||
                              topicLower.includes('full stack') || topicLower.includes('full-stack');
       
-      const moduleCount = isComplexTopic ? 5 : 3; // Dynamic: 3 for simple, 5 for complex
+      const moduleCount = isComplexTopic ? 3 : 2; // Dynamic: 2 for simple, 3 for complex
       
       // Dynamic point distribution based on module complexity
       const getDynamicPoints = (moduleNum, totalModules) => {
         if (totalModules === 3) {
           // Intro: 20, Core: 35, Advanced: 45
           return moduleNum === 1 ? 20 : moduleNum === 2 ? 35 : 45;
-        } else if (totalModules === 4) {
-          // Intro: 15, Core1: 25, Core2: 30, Advanced: 30
-          return moduleNum === 1 ? 15 : moduleNum === 2 ? 25 : moduleNum === 3 ? 30 : 30;
         } else {
-          // Intro: 15, Core modules: 18-20 each, Advanced: 25-30
-          if (moduleNum === 1) return 15;
-          if (moduleNum === totalModules) return 25;
-          return Math.floor((100 - 15 - 25) / (totalModules - 2)); // Distribute remaining among core modules
+          // For 2 modules: Intro: 35, Advanced: 65
+          // Intro: 35, Advanced: 65
+          if (moduleNum === 1) return 35;
+          return 65;
         }
       };
       
@@ -479,13 +539,22 @@ router.post('/v1/assessment', requireAuth, addRequestId, contextControl, async (
         plan: Array.from({ length: moduleCount }, (_, i) => {
           const moduleNum = i + 1;
           const points = getDynamicPoints(moduleNum, moduleCount);
-          const milestonesPerModule = isComplexTopic ? 4 : 3; // Dynamic: 3-4 milestones per module
+          // Dynamic: 3-5 milestones per module based on module complexity
+          // First module: 3-4, Middle modules: 3-5, Last module: 4-5
+          let milestonesPerModule;
+          if (moduleNum === 1) {
+            milestonesPerModule = 3 + Math.floor(Math.random() * 2); // 3-4 for first module
+          } else if (moduleNum === moduleCount) {
+            milestonesPerModule = 4 + Math.floor(Math.random() * 2); // 4-5 for last module
+          } else {
+            milestonesPerModule = 3 + Math.floor(Math.random() * 3); // 3-5 for middle modules
+          }
           
           // Simple, meaningful milestones - no repetition
           const milestoneTemplates = [
-            ["Learn basic concepts and terminology", "Understand core principles", "Practice with simple examples"],
-            ["Master intermediate features", "Build practical projects", "Apply concepts to solve problems", "Create interactive applications"],
-            ["Explore advanced features", "Create complex applications", "Master expert-level skills", "Optimize performance"]
+            ["Learn basic concepts and terminology", "Understand core principles", "Practice with simple examples", "Identify key features", "Recognize common patterns"],
+            ["Master intermediate features", "Build practical projects", "Apply concepts to solve problems", "Create interactive applications", "Optimize code structure"],
+            ["Explore advanced features", "Create complex applications", "Master expert-level skills", "Optimize performance", "Implement best practices"]
           ];
           
           const templateIndex = moduleNum === 1 ? 0 : moduleNum === moduleCount ? 2 : 1;
@@ -941,12 +1010,12 @@ router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, 
 1. The user wants to MODIFY the existing plan based on their feedback: "${modificationRequest}"
 2. Keep the same topic: "${session.topic}"
 3. Generate a COMPLETE NEW plan that addresses their modification request
-4. **DYNAMIC MODULE COUNT: Generate 2-8 modules based on topic complexity - don't default to 3 modules**
+4. **DYNAMIC MODULE COUNT: Generate EXACTLY 2-3 modules based on topic complexity - simple topics get 2 modules, complex topics get 3 modules. NEVER generate 4 or more modules.**
 5. **DYNAMIC POINT DISTRIBUTION: Distribute points based on module complexity (not equal like 33, 33, 34)**
    * Introductory modules → 15-25 points
    * Core modules → 25-40 points
    * Advanced modules → 20-35 points
-6. **DYNAMIC MILESTONE COUNT: Each module should have 3-6 targets (milestones) based on the module's scope**
+6. **DYNAMIC MILESTONE COUNT: Each module should have 3-5 targets (milestones) based on the module's scope**
 7. **Each target should be simple and meaningful (8-15 words) - avoid repetition and verbosity**
 8. **AVOID generic targets** like "Learn basics", "Master fundamentals", "Apply key concepts"
 9. If the user requests "less elaboration" or "make it simpler", make milestones shorter (8-15 words) and more concise
@@ -1119,17 +1188,80 @@ router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, 
       ? rationale 
       : 'Modified learning path based on your feedback';
     
-    const finalPlan = plan.map(module => {
+    let finalPlan = plan.map(module => {
       const targets = module.targets && module.targets.length > 0
         ? module.targets
         : [`Master ${module.title}`];
       return { ...module, targets };
     });
     
+    // ⚠️ CRITICAL: Enforce 2-3 modules limit - ask LLM to regenerate if 4+ modules
+    if (finalPlan.length > 3) {
+      req.logger.warn('LLM generated too many modules in modification, requesting correction', {
+        sessionId,
+        originalCount: finalPlan.length,
+        topic
+      });
+      
+      // Create corrective prompt asking LLM to regenerate with exactly 3 modules
+      const planSummary = finalPlan.map((m, i) => `${i + 1}. ${m.title} (${m.points} points): ${m.targets.join('; ')}`).join('\n');
+      const correctiveMessage = `${modificationRequest}\n\n⚠️ CORRECTION REQUIRED: You generated ${finalPlan.length} modules, but the plan must have EXACTLY 3 modules (not 4, not 5, not more). Please regenerate the plan with EXACTLY 3 modules by consolidating/merging the content from the following modules:\n\n${planSummary}\n\nMerge related topics and consolidate the content into EXACTLY 3 well-structured modules. Keep all important learning objectives but organize them into 3 modules instead of ${finalPlan.length}.`;
+      
+      try {
+        const correctivePrompt = buildAssessmentPrompt(profile, correctiveMessage, session.mode, conversationHistory, true);
+        const correctiveResponse = await callAssessmentAPI(correctivePrompt, true);
+        const correctiveParsed = await parseAssessmentResponse(correctiveResponse, true);
+        
+        // Use the corrected plan
+        const correctedPlan = correctiveParsed.plan.map(module => {
+          const targets = module.targets && module.targets.length > 0
+            ? module.targets
+            : [`Master ${module.title}`];
+          return { ...module, targets };
+        });
+        
+        // If still wrong, reject the modification
+        if (correctedPlan.length > 3) {
+          req.logger.error('LLM still generated too many modules after correction in modification', {
+            sessionId,
+            originalCount: finalPlan.length,
+            correctedCount: correctedPlan.length,
+            topic
+          });
+          throw new Error('LLM_FAILED_AFTER_RETRIES');
+        }
+        
+        finalPlan = correctedPlan;
+        req.logger.info('LLM successfully corrected module count in modification', {
+          sessionId,
+          originalCount: plan.length,
+          correctedCount: finalPlan.length,
+          topic
+        });
+      } catch (correctiveError) {
+        req.logger.error('Corrective prompt failed in modification', {
+          sessionId,
+          error: correctiveError.message,
+          topic
+        });
+        throw new Error('LLM_FAILED_AFTER_RETRIES');
+      }
+    }
+    
+    // Also ensure minimum of 2 modules
+    if (finalPlan.length < 2) {
+      req.logger.warn('LLM generated too few modules in modification, rejecting', {
+        sessionId,
+        originalCount: finalPlan.length,
+        topic
+      });
+      throw new Error('LLM generated plan with fewer than 2 modules');
+    }
+    
     // Update session with modified plan
     session.topic = topic;
-    // Use LLM-generated chatTitle (or fallback to topic if not provided)
-    session.chatTitle = chatTitle || topic;
+    // chatTitle must always match topic (both generated by LLM)
+    session.chatTitle = topic;
     session.plan = finalPlan.map(module => ({
       id: module.moduleId,
       title: module.title,

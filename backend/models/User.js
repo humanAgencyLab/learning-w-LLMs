@@ -1,6 +1,15 @@
 const mongoose = require('mongoose');
 
 const UserSchema = new mongoose.Schema({
+  username: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+    minlength: 3,
+    maxlength: 30,
+    match: [/^[a-zA-Z0-9_]+$/, 'Username must contain only letters, numbers, and underscores']
+  },
   email: {
     type: String,
     required: true,
@@ -230,6 +239,7 @@ const UserSchema = new mongoose.Schema({
 });
 
 // Indexes
+UserSchema.index({ username: 1 }, { unique: true });
 UserSchema.index({ email: 1 }, { unique: true });
 UserSchema.index({ emailVerificationToken: 1 }, { sparse: true });
 UserSchema.index({ passwordResetToken: 1 }, { sparse: true });

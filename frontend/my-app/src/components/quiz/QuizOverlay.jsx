@@ -3,7 +3,46 @@ import Confetti from 'react-confetti';
 import useSessionStore from '../../state/sessionStore';
 import * as certificateApi from '../../lib/profileApi';
 
-// QuizOverlay v2.0 - Fixed UI overflow, explanations, and buttons
+// Gem icon component
+const GemIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 2L2 9L12 22L22 9L12 2Z" fill="url(#gemGradient)" stroke="#7c3aed" strokeWidth="1.5"/>
+    <path d="M2 9H22" stroke="#7c3aed" strokeWidth="1.5"/>
+    <path d="M12 2L8 9L12 22L16 9L12 2Z" fill="url(#gemInnerGradient)" opacity="0.6"/>
+    <defs>
+      <linearGradient id="gemGradient" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#c4b5fd"/>
+        <stop offset="1" stopColor="#8b5cf6"/>
+      </linearGradient>
+      <linearGradient id="gemInnerGradient" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#ffffff"/>
+        <stop offset="1" stopColor="#a78bfa"/>
+      </linearGradient>
+    </defs>
+  </svg>
+);
+
+// Trophy icon component
+const TrophyIcon = ({ className = "w-6 h-6" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 17V15M12 15C14.2091 15 16 13.2091 16 11V4H8V11C8 13.2091 9.79086 15 12 15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M8 4H6C4.89543 4 4 4.89543 4 6V7C4 8.65685 5.34315 10 7 10H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M16 4H18C19.1046 4 20 4.89543 20 6V7C20 8.65685 18.6569 10 17 10H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M7 21H17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M12 17V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M9 21H15V20C15 19.4477 14.5523 19 14 19H10C9.44772 19 9 19.4477 9 20V21Z" fill="currentColor"/>
+  </svg>
+);
+
+// Star icon component
+const StarIcon = ({ className = "w-5 h-5", filled = false }) => (
+  <svg className={className} viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" 
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+// QuizOverlay v3.0 - Gamified UI with progress indicators and engaging visuals
 const QuizOverlay = () => {
   const quizDraft = useSessionStore((state) => state.quizDraft);
   const quizResult = useSessionStore((state) => state.quizResult);
@@ -392,7 +431,7 @@ const QuizOverlay = () => {
   const renderResultView = () => {
     if (!quizResult) return null;
 
-    const { passed, scorePct, feedbackMarkdown } = quizResult;
+    const { passed, scorePct, feedbackMarkdown, bonusGems = 0 } = quizResult;
     const feedbackItems = parseFeedback(feedbackMarkdown);
     const hasFeedback = feedbackItems.length > 0;
 
@@ -423,9 +462,9 @@ const QuizOverlay = () => {
               </div>
               <p className="mt-4 text-lg leading-7 text-current font-semibold text-center">
                 {isRevision ? (
-                  <>🎓 Great work! You've successfully completed the revision quiz for <span className="font-bold text-purple-700">"{topic}"</span>.</>
+                  <>🎓 Great work! You've successfully completed the revision quiz for <span className="font-bold text-purple-700">"{topic}"</span>. {bonusGems > 0 && <><br />🎉 <strong>You earned {bonusGems} bonus gems!</strong></>}</>
                 ) : (
-                  <>🎓 Congratulations! You've successfully completed all modules for <span className="font-bold text-purple-700">"{topic}"</span>.</>
+                  <>🎓 Congratulations! You've successfully completed all modules for <span className="font-bold text-purple-700">"{topic}"</span>. {bonusGems > 0 && <><br />🎉 <strong>You earned {bonusGems} bonus gems!</strong></>}</>
                 )}
               </p>
               {!isRevision && (
@@ -458,9 +497,13 @@ const QuizOverlay = () => {
               <p className="mt-3 text-sm leading-6 text-current">
                 {passed
                   ? isRevision
-                    ? "Great work! You've successfully completed the revision quiz."
-                    : "Great work! You're ready to move on to the next module."
-                  : "Let's review the areas that need more attention, then you can retake this quiz."}
+                    ? bonusGems > 0
+                      ? <>Great work! You've successfully completed the revision quiz. 🎉 <strong>You earned {bonusGems} bonus gems!</strong></>
+                      : "Great work! You've successfully completed the revision quiz."
+                    : bonusGems > 0
+                      ? <>Great work! You're ready to move on to the next module. 🎉 <strong>You earned {bonusGems} bonus gems!</strong></>
+                      : "Great work! You're ready to move on to the next module."
+                  : "Let's review the areas that need more attention. Retake the quiz to earn 5 bonus gems upon passing."}
               </p>
             </>
           )}
@@ -597,94 +640,152 @@ const QuizOverlay = () => {
   const renderQuestionnaire = () => {
     if (!questions.length) return null;
 
+    const progressPercent = (answeredCount / questions.length) * 100;
+
     return (
       <div className="flex flex-col h-full overflow-hidden">
-        {/* Fixed header - instructions */}
-        <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 flex-shrink-0 mb-4">
-          <div className="flex flex-col gap-1 text-sm text-slate-600">
-            <span>
-              {isRevision
-                ? "Complete every question below to test your knowledge. You need at least 60% to pass."
-                : "Complete every question below to unlock the next module. You need at least 60% to pass."}
-            </span>
-            <span className="font-medium text-slate-800">
-              {answeredCount}/{questions.length} questions answered
-            </span>
+        {/* Compact gamified progress header */}
+        <div className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 p-3 flex-shrink-0 mb-3 shadow-sm">
+          {/* Single row: badges, progress bar, and count */}
+          <div className="flex items-center gap-3">
+            {/* Badges */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <div className="flex items-center gap-1 bg-white/80 rounded-full px-2 py-1 shadow-sm border border-purple-200">
+                <GemIcon className="w-3.5 h-3.5" />
+                <span className="text-xs font-bold text-purple-700">+5</span>
+              </div>
+              <div className="flex items-center gap-1 bg-white/80 rounded-full px-2 py-1 shadow-sm border border-amber-200">
+                <span className="text-xs">🎯</span>
+                <span className="text-xs font-medium text-amber-700">60%</span>
+              </div>
+            </div>
+
+            {/* Progress bar - takes remaining space */}
+            <div className="flex-1 relative">
+              <div className="h-2.5 bg-white/60 rounded-full overflow-hidden shadow-inner border border-slate-200">
+                <div 
+                  className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Progress count */}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <span className="text-lg font-bold text-indigo-700">{answeredCount}</span>
+              <span className="text-slate-400 text-sm">/</span>
+              <span className="text-sm font-medium text-slate-600">{questions.length}</span>
+            </div>
           </div>
         </div>
 
         {/* Scrollable middle section - questions */}
-        <div className="flex flex-col gap-4 overflow-y-auto pr-2 flex-1 min-h-0 mb-4">
-          {questions.map((question, index) => (
-            <div
-              key={question.id}
-              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex-shrink-0"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Question {index + 1}
-                  </div>
-                  <div className="mt-2 text-base font-semibold text-slate-900">
-                    {question.text}
+        <div className="flex flex-col gap-3 overflow-y-auto pr-2 flex-1 min-h-0 mb-3">
+          {questions.map((question, index) => {
+            const isAnswered = answers[question.id] !== undefined;
+            const isSelected = (optionIndex) => answers[question.id] === optionIndex;
+            
+            return (
+              <div
+                key={question.id}
+                className={`rounded-xl border bg-white p-4 shadow-sm flex-shrink-0 transition-all duration-300 ${
+                  isAnswered 
+                    ? 'border-indigo-300 bg-gradient-to-br from-white to-indigo-50/30' 
+                    : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'
+                }`}
+              >
+                {/* Question header - more compact */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-start gap-2">
+                    {/* Question number badge */}
+                    <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
+                      isAnswered
+                        ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-sm'
+                        : 'bg-gradient-to-br from-indigo-100 to-purple-100 text-indigo-700'
+                    }`}>
+                      {index + 1}
+                    </div>
+                    <div className="text-sm font-semibold text-slate-900 leading-relaxed pt-0.5">
+                      {question.text}
+                    </div>
                   </div>
                 </div>
-                <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">
-                  Multiple Choice
-                </div>
-              </div>
 
-              <div className="mt-4 grid gap-2">
-                {question.options.map((option, optionIndex) => {
-                  const isSelected = answers[question.id] === optionIndex;
-                  return (
-                    <button
-                      key={optionIndex}
-                      type="button"
-                      onClick={() => handleSelectOption(question.id, optionIndex)}
-                      className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-left text-sm transition ${
-                        isSelected
-                          ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
-                          : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50/60'
-                      }`}
-                    >
-                      <span
-                        className={`mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
-                          isSelected
-                            ? 'border-blue-500 bg-blue-600 text-white'
-                            : 'border-slate-300 text-slate-500'
+                {/* Options - more compact */}
+                <div className="grid gap-2 ml-9">
+                  {question.options.map((option, optionIndex) => {
+                    const selected = isSelected(optionIndex);
+                    return (
+                      <button
+                        key={optionIndex}
+                        type="button"
+                        onClick={() => handleSelectOption(question.id, optionIndex)}
+                        className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm transition-all duration-200 ${
+                          selected
+                            ? 'border-indigo-400 bg-indigo-50 shadow-sm'
+                            : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
                         }`}
                       >
-                        {String.fromCharCode(65 + optionIndex)}
-                      </span>
-                      <span className="leading-6 text-slate-800">{option}</span>
-                    </button>
-                  );
-                })}
+                        <span
+                          className={`inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border text-xs font-bold transition-all duration-200 ${
+                            selected
+                              ? 'border-indigo-500 bg-indigo-500 text-white'
+                              : 'border-slate-300 text-slate-500 bg-white'
+                          }`}
+                        >
+                          {String.fromCharCode(65 + optionIndex)}
+                        </span>
+                        <span className={`leading-5 text-slate-700 ${selected ? 'font-medium text-indigo-700' : ''}`}>{option}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Fixed footer - error and submit button */}
         {error && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 flex-shrink-0 mb-4">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 flex-shrink-0 mb-2 flex items-center gap-2">
+            <span className="text-amber-500">⚠️</span>
             {error}
           </div>
         )}
 
-        <div className="flex justify-end flex-shrink-0">
+        <div className="flex items-center justify-between flex-shrink-0 pt-2">
+          <div className="text-xs text-slate-500">
+            {!allAnswered && (
+              <span>{questions.length - answeredCount} question{questions.length - answeredCount !== 1 ? 's' : ''} remaining</span>
+            )}
+            {allAnswered && (
+              <span className="text-emerald-600 font-medium">✓ Ready to submit!</span>
+            )}
+          </div>
           <button
             type="button"
             onClick={handleSubmit}
             disabled={!allAnswered || isQuizSubmitting}
-            className={`inline-flex items-center justify-center rounded-xl px-5 py-2 text-sm font-semibold shadow-sm transition ${
+            className={`inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold shadow-md transition-all duration-300 ${
               !allAnswered || isQuizSubmitting
-                ? 'bg-slate-200 text-slate-500'
-                : 'bg-blue-600 text-white hover:bg-blue-700'
+                ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 hover:shadow-lg'
             }`}
           >
-            {isQuizSubmitting ? 'Submitting…' : 'Submit Quiz'}
+            {isQuizSubmitting ? (
+              <>
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Submitting…
+              </>
+            ) : (
+              <>
+                <TrophyIcon className="w-4 h-4" />
+                Submit Quiz
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -737,48 +838,56 @@ const QuizOverlay = () => {
         </div>
       )}
       
-      <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-900/40 px-4 py-6 overflow-y-auto">
-      <div className="relative flex w-full max-w-4xl flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl my-auto h-[85vh] max-h-[85vh] overflow-hidden flex flex-col">
-        {/* Fixed header - title */}
-        <div className="flex items-start justify-between gap-4 flex-shrink-0 p-6 pb-4 border-b border-slate-200">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {isRevision ? 'Revision Quiz' : 'Module Quiz'}
+      <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm px-4 py-4 overflow-y-auto">
+      <div className="relative flex w-full max-w-3xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl my-auto h-[90vh] max-h-[90vh] overflow-hidden">
+        {/* Compact header */}
+        <div className="flex items-start justify-between gap-3 flex-shrink-0 px-5 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 via-indigo-50/30 to-purple-50/30">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-1 bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide shadow-sm">
+                <span className="text-xs">{isRevision ? '📚' : '🎯'}</span>
+                {isRevision ? 'Revision' : 'Module Quiz'}
+              </div>
             </div>
-            <h2 className="mt-1 text-2xl font-bold text-slate-900">
+            <h2 className="text-xl font-bold text-slate-900 truncate">
               {moduleTitle}
             </h2>
             {!isResultView && (
-              <p className="mt-2 max-w-xl text-sm text-slate-600">
-                {isRevision
-                  ? "Complete every question below to test your knowledge. You need at least 60% to pass."
-                  : "This quiz locks in what you just learned. Answer every question carefully—if your score is below 60%, we'll revisit the tricky milestones together before retrying."}
+              <p className="mt-1 text-xs text-slate-500 leading-relaxed">
+                Answer carefully—score 60% or higher to pass and earn bonus gems!
               </p>
             )}
           </div>
-          {isResultView && (
+          {/* Close button - Show in result view always, or during questionnaire if revision */}
+          {(isResultView || (isRevision && !isResultView)) && (
             <button
               type="button"
-              onClick={quizResult?.passed ? handleClosePass : handleCloseFail}
+              onClick={isResultView ? (quizResult?.passed ? handleClosePass : handleCloseFail) : handleCloseFail}
               className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:bg-slate-100 flex-shrink-0"
               title={
                 isRevision
-                  ? quizResult?.passed
-                    ? 'Close'
+                  ? isResultView
+                    ? (quizResult?.passed
+                      ? 'Close'
+                      : 'Close revision quiz. To revise this topic again, say "restart revision" in the chat.')
                     : 'Close revision quiz. To revise this topic again, say "restart revision" in the chat.'
-                  : quizResult?.passed
-                  ? 'Close'
-                  : 'If you close the quiz window, your current module progress will be reset. You have to do a fresh start.'
+                  : isResultView
+                    ? (quizResult?.passed
+                      ? 'Close'
+                      : 'If you close the quiz window, your current module progress will be reset. You have to do a fresh start.')
+                    : 'If you close the quiz window, your current module progress will be reset. You have to do a fresh start.'
               }
             >
               <span className="sr-only">Close</span>
-              ×
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
             </button>
           )}
         </div>
 
         {/* Scrollable middle section - content */}
-        <div className="flex-1 min-h-0 overflow-hidden p-6 pt-4">
+        <div className="flex-1 min-h-0 overflow-hidden px-4 py-3">
           {isResultView ? renderResultView() : renderQuestionnaire()}
         </div>
       </div>

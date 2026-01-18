@@ -2,13 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import PrimaryNav from './PrimaryNav';
 import StudyPanelNav from '../study/StudyPanelNav';
+import RecentChats from './RecentChats';
 import useSessionStore from '../../state/sessionStore';
 import useAuthStore from '../../state/authStore';
 
 function LeftNav() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { phase, plan } = useSessionStore();
+  const { phase, plan, reset } = useSessionStore();
   const { user, logout, fetchUser } = useAuthStore();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
@@ -56,6 +57,12 @@ function LeftNav() {
     setShowDropdown(false);
   };
 
+  const handleLogoClick = async () => {
+    // Same action as Start Chat button - reset session and navigate to /chat
+    await reset();
+    navigate('/chat', { replace: true });
+  };
+
   const userName = user?.name || 'User';
   // Get avatar from user object - use actual avatarUrl if available, otherwise fallback
   // Always use the user's avatarUrl if it exists, even if it's a local import path
@@ -66,7 +73,10 @@ function LeftNav() {
   return (
     <div className="bg-white border-r border-[#e6e7e8] h-full w-[252px] flex flex-col flex-shrink-0">
       {/* Brand - Header Section (matches topbar height, max 10%) */}
-      <div className="flex items-center gap-2 pl-3 pr-4 py-3 h-[72px] flex-shrink-0">
+      <div 
+        className="flex items-center gap-2 pl-3 pr-4 py-3 h-[72px] flex-shrink-0 cursor-pointer hover:bg-gray-50 transition-colors rounded-r-lg"
+        onClick={handleLogoClick}
+      >
         <div className="w-8 h-8 flex items-center justify-center">
             <img alt="Study Assist" className="w-6 h-6" src="/icons/logo.svg" />
         </div>
@@ -84,11 +94,17 @@ function LeftNav() {
           </div>
         </div>
 
-        {/* Study Panel - Takes remaining space */}
-        {showStudyPanel && (
+        {/* Study Panel or Recent Chats - Takes remaining space */}
+        {showStudyPanel ? (
           <div className="flex-1 min-h-0 overflow-hidden">
             <div className="px-2 py-2 h-full">
               <StudyPanelNav />
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <div className="h-full">
+              <RecentChats />
             </div>
           </div>
         )}

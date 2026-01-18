@@ -58,7 +58,7 @@ function StudyPanelNav({
       {/* Topic Section - Sticky at top with point count */}
       <div className="sticky top-0 z-10 bg-gradient-to-b from-[#f7f8f8] to-transparent pb-2 flex-shrink-0">
         <div className="text-sm font-semibold truncate text-[#030712] mb-1">Topic: {displayTopic}</div>
-        <div className="text-xs text-[#5b6470] mb-2">{sessionData.points || 5}/100 point</div>
+        <div className="text-xs text-[#5b6470] mb-2">{sessionData.points || 5}/100 points</div>
       </div>
 
       {/* Scrollable Modules Section */}
@@ -93,7 +93,7 @@ function StudyPanelNav({
                       <span className={`text-xs ${
                         isLocked ? 'text-gray-400' : 'text-gray-600'
                       }`}>
-                        {module.points || 20} point
+                        {module.points || 20} points
                       </span>
                       {isLocked && (
                         <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

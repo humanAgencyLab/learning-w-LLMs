@@ -12,20 +12,15 @@ const buildAssessmentPrompt = (profile, userMessage, mode, conversationHistory =
     ? `\n\nCONVERSATION CONTEXT (what the user has already told you):\n${conversationHistory.map(m => `${m.role}: ${m.content}`).join('\n')}\n\nUSE THIS CONTEXT when creating the plan. If they said "beginner" or "iOS and Android" or "fundamentals", incorporate that into your response.`
     : '';
 
-  // Helper: extract explicit module count preference (2-8) from text
+  // Helper: extract explicit module count preference (2-3) from text
   const numberWords = {
     two: 2,
-    three: 3,
-    four: 4,
-    five: 5,
-    six: 6,
-    seven: 7,
-    eight: 8
+    three: 3
   };
 
   const extractModuleCountPreference = (text = '') => {
     if (!text) return null;
-    const numericMatch = text.match(/\b([2-8])\s*(?:module|modules)\b/i);
+    const numericMatch = text.match(/\b([2-3])\s*(?:module|modules)\b/i);
     if (numericMatch) {
       return parseInt(numericMatch[1], 10);
     }
@@ -33,7 +28,7 @@ const buildAssessmentPrompt = (profile, userMessage, mode, conversationHistory =
     const wordMatch = text.match(wordsPattern);
     if (wordMatch) {
       const value = numberWords[wordMatch[1].toLowerCase()];
-      if (value >= 2 && value <= 8) {
+      if (value >= 2 && value <= 3) {
         return value;
       }
     }
@@ -161,9 +156,7 @@ User: "I want to learn piano, no experience with music, start from basic"
 Profile: major='Computer Science', skillLevel='Beginner', preferredStyle='examples-first'
 → Generate: "Piano Fundamentals for Beginners" with modules:
   1. Introduction to Piano and Music Theory Basics
-  2. Reading Sheet Music and Basic Notation
-  3. Finger Placement and Basic Chords
-  4. Playing Simple Songs and Exercises
+  2. Playing Simple Songs and Exercises
 Use beginner-friendly language and step-by-step progression. Structure for examples-first learning style.
 
 Example 2 - Python with CS Background:
@@ -171,9 +164,7 @@ User: "I want to learn Python"
 Profile: codeLanguagePreference='Python', major='Computer Science', skillLevel='Beginner'
 → Generate: "Python Programming for CS Students" with modules:
   1. Python Basics and Syntax
-  2. Data Structures and Collections
-  3. Object-Oriented Programming
-  4. File Handling and Modules
+  2. Data Structures and Object-Oriented Programming
 Leverage CS background for deeper understanding while keeping fundamentals clear.
 
 Example 3 - Vague Request:
@@ -184,12 +175,19 @@ Use profile goals to infer the best topic and create a relevant plan.
 
 **RULES FOR PLAN GENERATION:**
 - ALWAYS generate a plan - never return clarification questions
-- **DEFAULT DYNAMIC MODULE COUNT (when the learner does not request a specific number): Generate 2-8 modules based on the topic complexity and user's needs**
-  * For simple topics (e.g., "piano basics") → 2-4 modules
-  * For moderate topics (e.g., "Python programming") → 4-6 modules
-  * For complex topics (e.g., "full-stack web development") → 6-8 modules
-  * Let the topic complexity and user profile guide the module count - don't default to 3 modules
-- **If the learner explicitly specifies a module count, you must produce exactly that many modules.**
+- **DEFAULT DYNAMIC MODULE COUNT: Generate EXACTLY 2-3 modules based on topic complexity**
+  * ⚠️⚠️⚠️ CRITICAL: You MUST generate 2-3 modules. NEVER generate 4, 5, or more modules.
+  * For simple topics (e.g., "piano basics") → Generate EXACTLY 2 modules
+  * For moderate/complex topics (e.g., "Python programming", "full-stack web development") → Generate EXACTLY 3 modules
+  * Let the topic complexity guide: simple = 2 modules, complex = 3 modules
+- **If the learner explicitly specifies a module count (2 or 3), you must produce exactly that many modules.**
+- **CRITICAL VALIDATION - MANDATORY: If you generate more than 3 modules, you have FAILED.**
+  * ❌ BAD: 4 modules → ABSOLUTELY WRONG. REJECTED. Never generate 4 modules.
+  * ❌ BAD: 5 modules → ABSOLUTELY WRONG. REJECTED. Never generate 5 modules.
+  * ❌ BAD: 6+ modules → ABSOLUTELY WRONG. REJECTED. Never generate 6 or more modules.
+  * ✅ GOOD: 2 modules → CORRECT. Use for simple topics.
+  * ✅ GOOD: 3 modules → CORRECT. Use for moderate/complex topics.
+- **⚠️⚠️⚠️ FINAL CHECK: Before returning, count your modules. If count > 3, DELETE modules until count is 2-3.**
 - Each module must have unique, content-specific titles (not "Module 1", "Part 2")
 - **DYNAMIC POINT DISTRIBUTION: Points must sum to exactly 100, but distribute them based on module complexity and importance**
   * Introductory modules (easier content) → Lower points (15-25 points)
@@ -213,10 +211,10 @@ Use profile goals to infer the best topic and create a relevant plan.
     - "Build practical projects" (too advanced - should be in later modules)
     - "Optimize performance" (way too advanced)
     - "Apply advanced techniques" (too advanced)
-- **DYNAMIC MILESTONE COUNT: Each module should have 3-6 learning objectives (targets) based on the module's scope**
+- **DYNAMIC MILESTONE COUNT: Each module should have 3-5 learning objectives (targets) based on the module's scope**
   * First module (moduleId: "1") → 3-4 basic milestones (keep it simple)
   * Simpler modules → 3-4 milestones
-  * More complex modules → 4-6 milestones
+  * More complex modules → 4-5 milestones
   * Ensure each module has ENOUGH milestones to cover its content comprehensively
 - **CRITICAL: Each target must be simple, meaningful, and concise (8-15 words)**
   * Use clear action verbs (learn, understand, identify, recognize, explain - for basics; build, create, master - for advanced)
@@ -247,7 +245,7 @@ Use profile goals to infer the best topic and create a relevant plan.
 **RESPONSE FORMAT - RETURN ONLY JSON:**
 {
   "topic": "specific topic name (≤60 chars, no markdown, no emojis)",
-  "chatTitle": "human-friendly title (≤40 chars)",
+  "chatTitle": "must be identical to topic (same value as topic field)",
   "rationale": "2-4 compact sentences explaining why this plan fits the user's profile and request",
   "plan": [
     {"moduleId": "1", "title": "specific module title", "targets": ["Learn basic concepts and terminology", "Understand core principles and operations", "Practice with simple examples"], "points": 20, "difficulty": "intro"},
@@ -258,19 +256,19 @@ Use profile goals to infer the best topic and create a relevant plan.
 }
 
 **IMPORTANT:**
-- Generate the appropriate number of modules (2-8) based on topic complexity. If the learner explicitly specifies a module count, obey it exactly.
+- Generate the appropriate number of modules (2-3) based on topic complexity. If the learner explicitly specifies a module count, obey it exactly.
 - **Distribute points dynamically based on module complexity** (not equal distribution like 33, 33, 34)
   * Introductory modules → 15-25 points
   * Core modules → 25-40 points
   * Advanced modules → 20-35 points
-- Each module should have 3-6 targets (milestones) based on its scope
+- Each module should have 3-5 targets (milestones) based on its scope
 - Targets should be simple and meaningful (8-15 words) - avoid repetition and verbosity
 - Ensure each module has ENOUGH unique milestones to comprehensively cover its content
 - Reflect every explicit learner requirement in the plan (module titles or targets). Do not omit requirements that appear in the conversation history.
 
 IMPORTANT CONSTRAINTS:
 - Return STRICT JSON ONLY - no markdown, no code fences, no prose
-- 2-8 modules required (unless the learner explicitly specifies a different count within 2-8, which you must obey)
+- 2-3 modules required (unless the learner explicitly specifies a different count within 2-3, which you must obey)
 - Total points must equal exactly 100
 - Module titles must be unique and descriptive
 - Always generate a plan - never ask questions

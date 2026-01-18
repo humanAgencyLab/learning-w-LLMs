@@ -7,6 +7,7 @@ import * as profileApi from '../lib/profileApi';
 import EmailIcon from '../components/SignIn/EmailIcon';
 import LockIcon from '../components/SignIn/LockIcon';
 import PhoneIcon from '../components/Icons-Avatars/PhoneIcon';
+import UserIcon from '../components/Icons-Avatars/UserIcon';
 import { API_BASE } from '../config';
 import { getAuthHeaders } from '../lib/authApi';
 import { toastBus } from '../components/ui/toast';
@@ -20,9 +21,9 @@ function Profile() {
   const [selectedAvatar, setSelectedAvatar] = useState(avatars[0]);
   const [originalAvatar, setOriginalAvatar] = useState(null); // Store original avatar when entering edit mode
   const [major, setMajor] = useState('');
-  const [courses, setCourses] = useState([]);
-  const [selectedSkill, setSelectedSkill] = useState('Beginner');
-  const [selectedStyle, setSelectedStyle] = useState('Visual');
+  const [recentTopics, setRecentTopics] = useState([]);
+  const [selfRating, setSelfRating] = useState('Intermediate');
+  const [topicInput, setTopicInput] = useState('');
   const [daysPerWeek, setDaysPerWeek] = useState(3);
   const [minutesPerSession, setMinutesPerSession] = useState(40);
   
@@ -34,6 +35,7 @@ function Profile() {
   const [isSaving, setIsSaving] = useState(false);
   
   // Settings fields
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -45,13 +47,10 @@ function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [isEditingSettings, setIsEditingSettings] = useState(false); // Separate edit state for Settings section
   const [showAvatarDropdown, setShowAvatarDropdown] = useState(false);
-  const [showSkillDropdown, setShowSkillDropdown] = useState(false);
-  const [showStyleDropdown, setShowStyleDropdown] = useState(false);
+  const [showSelfRatingDropdown, setShowSelfRatingDropdown] = useState(false);
   const [showMajorDropdown, setShowMajorDropdown] = useState(false);
   const [showDaysDropdown, setShowDaysDropdown] = useState(false);
   const [showMinutesDropdown, setShowMinutesDropdown] = useState(false);
-  const [showCourseModal, setShowCourseModal] = useState(false);
-  const [newCourse, setNewCourse] = useState('');
   const [certificates, setCertificates] = useState([]);
   const [loadingCertificates, setLoadingCertificates] = useState(false);
   const [gemsCount, setGemsCount] = useState(0);
@@ -59,8 +58,7 @@ function Profile() {
   const [topicsCompleted, setTopicsCompleted] = useState(0);
 
   // Refs for dropdowns
-  const skillDropdownRef = useRef(null);
-  const styleDropdownRef = useRef(null);
+  const selfRatingDropdownRef = useRef(null);
   const majorDropdownRef = useRef(null);
   const daysDropdownRef = useRef(null);
   const minutesDropdownRef = useRef(null);
@@ -69,11 +67,8 @@ function Profile() {
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (skillDropdownRef.current && !skillDropdownRef.current.contains(event.target)) {
-        setShowSkillDropdown(false);
-      }
-      if (styleDropdownRef.current && !styleDropdownRef.current.contains(event.target)) {
-        setShowStyleDropdown(false);
+      if (selfRatingDropdownRef.current && !selfRatingDropdownRef.current.contains(event.target)) {
+        setShowSelfRatingDropdown(false);
       }
       if (majorDropdownRef.current && !majorDropdownRef.current.contains(event.target)) {
         setShowMajorDropdown(false);
@@ -131,6 +126,7 @@ function Profile() {
           
           // Set all fields from loaded profile data
           setName(profile.name || user?.name || '');
+          setUsername(user?.username || '');
           setEmail(profile.email || user?.email || '');
           setMobile(profile.mobile || '');
           // Handle major - map common abbreviations to full names
@@ -164,11 +160,8 @@ function Profile() {
           };
           const mappedMajor = majorMapping[profile.major] || profile.major || '';
           setMajor(mappedMajor);
-          setCourses(Array.isArray(profile.currentCourses) ? profile.currentCourses : []);
-          setSelectedSkill(profile.skillLevel || 'Beginner');
-          // Handle learning type - ensure it matches the dropdown options exactly
-          const learningType = profile.learningType || 'Visual';
-          setSelectedStyle(learningType);
+          setRecentTopics(Array.isArray(profile.recentTopics) ? profile.recentTopics : []);
+          setSelfRating(profile.selfRating || 'Intermediate');
           setDaysPerWeek(profile.daysPerWeek || 3);
           setMinutesPerSession(profile.minutesPerSession || 40);
           setMobile(profile.mobile || '');
@@ -188,6 +181,7 @@ function Profile() {
           // Fallback to user.profile if API doesn't return profile wrapper
           const profile = user.profile;
           setName(user.name || '');
+          setUsername(user.username || '');
           setEmail(user.email || '');
           setMobile(profile.mobile || '');
           
@@ -252,6 +246,7 @@ function Profile() {
         if (user?.profile) {
           const profile = user.profile;
           setName(user.name || '');
+          setUsername(user.username || '');
           setEmail(user.email || '');
           setMobile(profile.mobile || '');
           // Handle major mapping
@@ -309,13 +304,17 @@ function Profile() {
     loadCertificates();
   }, [user]); // Run when user changes (e.g., after login)
   
-  // Sync email from user object when it changes (e.g., after email update)
+  // Sync email and username from user object when it changes (e.g., after email update)
   useEffect(() => {
     if (user?.email && user.email !== email) {
       console.log('Syncing email from user object:', user.email);
       setEmail(user.email);
     }
-  }, [user?.email]); // Only run when user.email changes
+    if (user?.username && user.username !== username) {
+      console.log('Syncing username from user object:', user.username);
+      setUsername(user.username);
+    }
+  }, [user?.email, user?.username]); // Only run when user.email or user.username changes
 
   // Load certificates
   const loadCertificates = async () => {
@@ -370,16 +369,16 @@ function Profile() {
     // Avatar will be updated when user clicks Save button
   };
 
-  const addCourse = () => {
-    if (newCourse.trim() && courses.length < 5 && !courses.includes(newCourse.trim())) {
-      setCourses([...courses, newCourse.trim()]);
-      setNewCourse('');
-      setShowCourseModal(false);
+  const addTopic = () => {
+    // Limit to 1 topic only
+    if (topicInput.trim() && recentTopics.length === 0) {
+      setRecentTopics([topicInput.trim()]);
+      setTopicInput('');
     }
   };
 
-  const removeCourse = (course) => {
-    setCourses(courses.filter(c => c !== course));
+  const removeTopic = (topic) => {
+    setRecentTopics(recentTopics.filter(t => t !== topic));
   };
 
   const handleEditClick = () => {
@@ -393,9 +392,8 @@ function Profile() {
       avatar: user?.avatarUrl || selectedAvatar,
       name: name,
       major: major,
-      courses: [...courses],
-      skill: selectedSkill,
-      style: selectedStyle,
+      recentTopics: [...recentTopics],
+      selfRating: selfRating,
       daysPerWeek: daysPerWeek,
       minutesPerSession: minutesPerSession,
       mobile: mobile
@@ -426,6 +424,7 @@ function Profile() {
     
     // Store original Settings values when entering edit mode
     setOriginalSettingsValues({
+      username: username,
       email: email,
       mobile: mobile
     });
@@ -439,6 +438,7 @@ function Profile() {
   const handleCancelSettingsEdit = () => {
     // Revert Settings fields to original values when canceling
     if (originalSettingsValues) {
+      setUsername(originalSettingsValues.username || '');
       setEmail(originalSettingsValues.email);
       setMobile(originalSettingsValues.mobile);
     }
@@ -607,9 +607,8 @@ function Profile() {
       setSelectedAvatar(originalValues.avatar);
       setName(originalValues.name);
       setMajor(originalValues.major);
-      setCourses([...originalValues.courses]);
-      setSelectedSkill(originalValues.skill);
-      setSelectedStyle(originalValues.style);
+      setRecentTopics([...originalValues.recentTopics]);
+      setSelfRating(originalValues.selfRating);
       setDaysPerWeek(originalValues.daysPerWeek);
       setMinutesPerSession(originalValues.minutesPerSession);
       setMobile(originalValues.mobile);
@@ -617,8 +616,7 @@ function Profile() {
     }
     setIsEditing(false);
     setShowAvatarDropdown(false);
-    setShowSkillDropdown(false);
-    setShowStyleDropdown(false);
+    setShowSelfRatingDropdown(false);
     setShowMajorDropdown(false);
     setShowDaysDropdown(false);
     setShowMinutesDropdown(false);
@@ -678,9 +676,8 @@ function Profile() {
       const profileUpdateData = {
         name: name.trim() || user?.name,
         major: majorToSave,
-        currentCourses: courses,
-        skillLevel: selectedSkill,
-        learningType: selectedStyle, // This should already be correct (Visual, Auditory, Reading/Writing, Kinesthetic)
+        recentTopics: recentTopics,
+        selfRating: selfRating,
         daysPerWeek,
         minutesPerSession,
         // Note: mobile is handled in Settings section, not here
@@ -797,8 +794,7 @@ function Profile() {
     }
   };
 
-  const skillLevels = ['Beginner', 'Intermediate', 'Advanced', 'Expert'];
-  const learningTypes = ['Visual', 'Auditory', 'Reading/Writing', 'Kinesthetic'];
+  const selfRatingOptions = ['None', 'Basic', 'Intermediate', 'Advanced'];
   const majors = [
     'Computer Science',
     'Information Technology',
@@ -964,85 +960,131 @@ function Profile() {
             </div>
           )}
 
-          {/* Skill Level and Learning Type Row */}
+          {/* Topic and Self-Rating Row */}
           <div className="profile-row">
-            <div className="profile-field-group">
-              <label className="profile-field-label">Skill Level</label>
-              <div className="profile-dropdown-wrapper" ref={skillDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isEditing) {
-                      setShowSkillDropdown(!showSkillDropdown);
-                      setShowStyleDropdown(false);
-                      setShowMajorDropdown(false);
-                    }
-                  }}
-                  className="profile-dropdown-button"
-                  disabled={!isEditing}
-                >
-                  <span>{selectedSkill === 'Beginner' ? '✨ ' : ''}{selectedSkill}</span>
-                  {isEditing && (
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                      <path d="M6 9L12 15L18 9" stroke="#353C49" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  )}
-                </button>
-                {showSkillDropdown && isEditing && (
-                  <div className="profile-dropdown-menu">
-                    {skillLevels.map((level) => (
-                      <button
-                        key={level}
-                        type="button"
-                        onClick={() => {
-                          setSelectedSkill(level);
-                          setShowSkillDropdown(false);
-                        }}
-                        className={`profile-dropdown-item ${selectedSkill === level ? 'selected' : ''}`}
-                      >
-                        {level === 'Beginner' ? '✨ ' : ''}{level}
-                      </button>
+            <div className="profile-field-group" style={{ flex: 1 }}>
+              <label className="profile-field-label">Topic of Interest</label>
+              <div style={{ marginTop: '8px' }}>
+                {recentTopics.length > 0 ? (
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {recentTopics.map((topic, index) => (
+                      <div key={index} style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        padding: '6px 12px',
+                        background: '#f0f4ff',
+                        borderRadius: '20px',
+                        fontSize: '14px'
+                      }}>
+                        <span>{topic}</span>
+                        {isEditing && (
+                          <button
+                            type="button"
+                            onClick={() => removeTopic(topic)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#666',
+                              cursor: 'pointer',
+                              fontSize: '18px',
+                              lineHeight: 1,
+                              padding: 0
+                            }}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
                     ))}
                   </div>
+                ) : (
+                  <div style={{ fontSize: '14px', color: '#666' }}>No topic added</div>
+                )}
+                {isEditing && recentTopics.length === 0 && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                    <input
+                      type="text"
+                      placeholder="Enter topic"
+                      value={topicInput}
+                      maxLength={50}
+                      onChange={(e) => {
+                        if (e.target.value.length <= 50) {
+                          setTopicInput(e.target.value);
+                        }
+                      }}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addTopic();
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '8px 12px',
+                        border: '1px solid #e6e7e8',
+                        borderRadius: '6px',
+                        fontSize: '14px'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={addTopic}
+                      disabled={!topicInput.trim()}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#4e81ee',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: topicInput.trim() ? 'pointer' : 'not-allowed',
+                        opacity: topicInput.trim() ? 1 : 0.5
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                )}
+                {recentTopics.length > 0 && (
+                  <p style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>You can have 1 topic only</p>
                 )}
               </div>
             </div>
 
             <div className="profile-field-group">
-              <label className="profile-field-label">Learning Type</label>
-              <div className="profile-dropdown-wrapper" ref={styleDropdownRef}>
+              <label className="profile-field-label">Self-Rating</label>
+              <div className="profile-dropdown-wrapper" ref={selfRatingDropdownRef}>
                 <button
                   type="button"
                   onClick={() => {
                     if (isEditing) {
-                      setShowStyleDropdown(!showStyleDropdown);
-                      setShowSkillDropdown(false);
+                      setShowSelfRatingDropdown(!showSelfRatingDropdown);
                       setShowMajorDropdown(false);
                     }
                   }}
                   className="profile-dropdown-button"
                   disabled={!isEditing}
                 >
-                  <span>{selectedStyle}</span>
+                  <span>{selfRating}</span>
                   {isEditing && (
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                       <path d="M6 9L12 15L18 9" stroke="#353C49" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   )}
                 </button>
-                {showStyleDropdown && isEditing && (
+                {showSelfRatingDropdown && isEditing && (
                   <div className="profile-dropdown-menu">
-                    {learningTypes.map((type) => (
+                    {selfRatingOptions.map((rating) => (
                       <button
-                        key={type}
+                        key={rating}
                         type="button"
                         onClick={() => {
-                          setSelectedStyle(type);
-                          setShowStyleDropdown(false);
+                          setSelfRating(rating);
+                          setShowSelfRatingDropdown(false);
                         }}
-                        className={`profile-dropdown-item ${selectedStyle === type ? 'selected' : ''}`}
+                        className={`profile-dropdown-item ${selfRating === rating ? 'selected' : ''}`}
                       >
-                        {type}
+                        {rating}
                       </button>
                     ))}
                   </div>
@@ -1058,11 +1100,10 @@ function Profile() {
               <button
                 type="button"
                 onClick={() => {
-                  if (isEditing) {
-                    setShowMajorDropdown(!showMajorDropdown);
-                    setShowSkillDropdown(false);
-                    setShowStyleDropdown(false);
-                  }
+                    if (isEditing) {
+                      setShowMajorDropdown(!showMajorDropdown);
+                      setShowSelfRatingDropdown(false);
+                    }
                 }}
                 className="profile-dropdown-button"
                 disabled={!isEditing}
@@ -1096,46 +1137,12 @@ function Profile() {
 
         </div>
 
-        {/* Second Card: Course & Goal Section */}
+        {/* Second Card: Learning Goals Section */}
         <div className="profile-card">
           <div className="profile-card-header">
-            <h2 className="profile-section-title">Course & Goal</h2>
-            <p className="profile-subtitle">Your personal learning dashboard</p>
+            <h2 className="profile-section-title">Learning Goals</h2>
+            <p className="profile-subtitle">Your learning schedule and goals</p>
           </div>
-
-          <div className="profile-row">
-            {/* Current Course Section */}
-            <div className="profile-course-section">
-              <label className="profile-field-label">Current Course</label>
-              <div className="profile-courses-list">
-                {courses.map((course, index) => (
-                  <div key={index} className="profile-course-chip">
-                    <span>{course}</span>
-                    {isEditing && (
-                      <button
-                        type="button"
-                        onClick={() => removeCourse(course)}
-                        className="profile-course-remove"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-              {isEditing && courses.length < 5 && (
-                <button
-                  type="button"
-                  onClick={() => setShowCourseModal(true)}
-                  className="profile-add-course-button"
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <path d="M12 5V19M5 12H19" stroke="#4e81ee" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  <span>Add Course</span>
-                </button>
-              )}
-            </div>
 
             {/* Weekly Goal Section */}
             <div className="profile-goal-section">
@@ -1224,7 +1231,6 @@ function Profile() {
                 </div>
               </div>
             </div>
-          </div>
         </div>
 
         {/* Third Card: Settings Section */}
@@ -1265,6 +1271,34 @@ function Profile() {
                 </button>
               )}
             </div>
+          </div>
+
+          {/* Username Field */}
+          <div className="profile-field-row">
+            <label className="profile-field-label">
+              <UserIcon style={{ width: '20px', height: '20px', marginRight: '8px', display: 'inline-block' }} />
+              Username
+            </label>
+            <input
+              type="text"
+              value={username}
+              maxLength={30}
+              onChange={(e) => {
+                const value = e.target.value.replace(/[^a-zA-Z0-9_]/g, '');
+                if (value.length <= 30) {
+                  setUsername(value);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && isEditingSettings && !isSaving) {
+                  handleSaveSettings();
+                }
+              }}
+              className="profile-input"
+              disabled={true}
+              placeholder="Username (cannot be changed)"
+              title="Username cannot be changed after account creation"
+            />
           </div>
 
           {/* Email Field */}
@@ -1457,59 +1491,6 @@ function Profile() {
           )}
         </div>
       </div>
-
-      {/* Course Modal */}
-      {showCourseModal && (
-        <div className="profile-modal-overlay" onClick={() => setShowCourseModal(false)}>
-          <div className="profile-modal" onClick={(e) => e.stopPropagation()}>
-            <h3 className="profile-modal-title">Add Course</h3>
-            <div className="profile-modal-content">
-              <input
-                type="text"
-                placeholder="Enter course name"
-                value={newCourse}
-                maxLength={50}
-                onChange={(e) => {
-                  if (e.target.value.length <= 50) {
-                    setNewCourse(e.target.value);
-                  }
-                }}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addCourse();
-                  }
-                }}
-                className="profile-modal-input"
-                autoFocus
-              />
-              {courses.length >= 5 && (
-                <p className="profile-modal-error">Maximum 5 courses allowed</p>
-              )}
-            </div>
-            <div className="profile-modal-actions">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCourseModal(false);
-                  setNewCourse('');
-                }}
-                className="profile-modal-cancel"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={addCourse}
-                className="profile-modal-add"
-                disabled={!newCourse.trim() || courses.length >= 5 || courses.includes(newCourse.trim())}
-              >
-                Add
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

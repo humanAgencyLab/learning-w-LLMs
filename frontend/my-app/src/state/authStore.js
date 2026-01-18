@@ -19,10 +19,10 @@ const useAuthStore = create(
       /**
        * Sign up a new user
        */
-      signup: async ({ email, password, name }) => {
+      signup: async ({ email, password, name, username, autoGenerateUsername }) => {
         set({ isLoading: true, error: null });
         try {
-          const { user, accessToken } = await authApi.signup({ email, password, name });
+          const { user, accessToken } = await authApi.signup({ email, password, name, username, autoGenerateUsername });
           set({
             user,
             accessToken,
@@ -43,10 +43,10 @@ const useAuthStore = create(
       /**
        * Log in a user
        */
-      login: async ({ email, password }) => {
+      login: async ({ username, password }) => {
         set({ isLoading: true, error: null });
         try {
-          const { user, accessToken } = await authApi.login({ email, password });
+          const { user, accessToken } = await authApi.login({ username, password });
           set({
             user,
             accessToken,

@@ -319,9 +319,10 @@ const useSessionStore = create(
           chatTitle: payload.chatTitle ?? prev.chatTitle ?? '',
           plan: updatedPlan, // Always use updated plan to sync milestone states
           activeModuleId: payload.activeModuleId ?? prev.activeModuleId ?? null,
-          points: payload.points ?? prev.points ?? 0,
-          gems: payload.gems ?? prev.gems ?? 0,
-          progressPct: payload.progressPct ?? prev.progressPct ?? 0,
+          // Use payload values if provided (0 is valid), otherwise keep prev values
+          points: payload.points !== undefined ? payload.points : prev.points ?? 0,
+          gems: payload.gems !== undefined ? payload.gems : prev.gems ?? 0,
+          progressPct: payload.progressPct !== undefined ? payload.progressPct : prev.progressPct ?? 0,
           isViewOnly: payload.isViewOnly ?? prev.isViewOnly ?? false,
           messages: Array.isArray(payload.lastMessages) ? payload.lastMessages : prev.messages,
           profile: payload.profile || prev.profile || null,
@@ -707,12 +708,44 @@ const useSessionStore = create(
                 set({ activeModuleId: response.data.activeModuleId });
               }
               
-              if (response.data?.progressPct !== undefined) {
-                set({ progressPct: response.data.progressPct });
-              }
-              
+              // Update points, gems, and progressPct together (points should be checked first for atomic update)
               if (response.data?.points !== undefined) {
-                set({ points: response.data.points });
+                const newPoints = response.data.points;
+                // Update gems when points change (from reset or other operations)
+                // CRITICAL: Gems should NEVER decrease - only increase or stay the same
+                let newGems;
+                if (response.data?.gems !== undefined) {
+                  const responseGems = response.data.gems;
+                  const currentGems = get().gems || 0;
+                  newGems = Math.max(currentGems, responseGems);
+                } else {
+                  // Calculate gems from points if not provided, but never decrease
+                  const calculatedGems = Math.floor(newPoints / 20);
+                  const currentGems = get().gems || 0;
+                  newGems = Math.max(currentGems, calculatedGems);
+                }
+                // Use progressPct from response if provided, otherwise use points
+                const newProgressPct = response.data?.progressPct !== undefined 
+                  ? response.data.progressPct 
+                  : newPoints;
+                
+                // Atomic update: set points, gems, and progressPct together
+                console.log('Updating points/gems/progress from response', {
+                  newPoints,
+                  newGems,
+                  newProgressPct,
+                  currentPoints: get().points,
+                  currentGems: get().gems,
+                  currentProgressPct: get().progressPct
+                });
+                set({ 
+                  points: newPoints,
+                  gems: newGems,
+                  progressPct: newProgressPct
+                });
+              } else if (response.data?.progressPct !== undefined) {
+                // Only update progressPct if points not provided
+                set({ progressPct: response.data.progressPct });
               }
               
               // Update milestone completion status
@@ -885,6 +918,17 @@ const useSessionStore = create(
             moduleId: moduleId || state.activeModuleId
           });
 
+          console.log('Quiz API response received', { 
+            hasQuestions: !!response.questions, 
+            questionsCount: response.questions?.length,
+            responseKeys: Object.keys(response)
+          });
+
+          // Ensure we have questions in the response
+          if (!response.questions || !Array.isArray(response.questions) || response.questions.length === 0) {
+            throw new Error('Quiz API returned no questions. Please try again.');
+          }
+
           // Store quiz draft and CLEAR revision flags (this is a STUDY quiz, not revision)
           set({ 
             quizDraft: response.questions,
@@ -892,6 +936,7 @@ const useSessionStore = create(
             isQuizSubmitting: false,
             loading: false,
             pendingQuizModuleId: null,
+            phase: 'quizzing', // Explicitly set phase to quizzing
             meta: {
               ...state.meta,
               isRevision: false, // Explicitly set to false for study quizzes
@@ -899,8 +944,14 @@ const useSessionStore = create(
             }
           });
 
-          // Start quiz
+          // Start quiz - this sets phase to quizzing (already set above, but this ensures consistency)
           get().startQuiz(moduleId || state.activeModuleId);
+          
+          console.log('Quiz state set', { 
+            quizDraftLength: response.questions.length, 
+            phase: 'quizzing' 
+          });
+          
           return response;
         } catch (error) {
           set({ 
@@ -986,6 +1037,13 @@ const useSessionStore = create(
           const result = response?.data || response;
           if (!result) {
             throw new Error('Invalid quiz submission response');
+          }
+
+          // Update gems if bonus gems were awarded
+          if (result.passed && result.bonusGems) {
+            set(prevState => ({
+              gems: (prevState.gems || 0) + result.bonusGems
+            }));
           }
 
           // Set quiz result first

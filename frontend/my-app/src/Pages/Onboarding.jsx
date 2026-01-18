@@ -11,33 +11,20 @@ function Onboarding() {
   const { user, updateProfile, signup, isAuthenticated } = useAuthStore();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
-    // Step 1: Profile Basics
-    skillLevel: 'Beginner',
-    learningType: 'Visual',
+    // Step 1: Major, Topic, Self-Rating
     major: 'Computer Science',
+    recentTopics: [], // Limited to 1 topic
+    selfRating: 'Intermediate',
     
-    // Step 2: Course & Goal
-    currentCourses: [],
+    // Step 2: Goal & Schedule
+    primaryGoal: 'Master Basics',
     daysPerWeek: 3,
     minutesPerSession: 40,
-    
-    // Step 3: Background & Intent
-    recentTopics: [],
-    selfRating: 'Intermediate',
-    primaryGoal: 'Master Basics',
-    
-    // Step 4: Preferences
-    defaultMode: 'Studying',
-    explanationLength: 'Balanced',
-    examplesPreference: 'Many',
-    codeLanguagePreference: 'Python',
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false); // Track if we're in the middle of submission
   const [topicInput, setTopicInput] = useState('');
-  const [showCourseModal, setShowCourseModal] = useState(false);
-  const [courseInput, setCourseInput] = useState('');
 
   // If user is authenticated, they've already completed onboarding (users only exist after onboarding)
   // Redirect them to chat instead of showing onboarding page
@@ -54,28 +41,17 @@ function Onboarding() {
   }, [isAuthenticated, navigate, isLoading, isSubmitting]);
 
   const handleNext = () => {
-    if (currentStep < 4) {
+    if (currentStep < 2) {
       setCurrentStep(currentStep + 1);
     }
   };
 
-  const addCourse = () => {
-    if (courseInput.trim() && formData.currentCourses.length < 5 && !formData.currentCourses.includes(courseInput.trim())) {
-      setFormData(prev => ({
-        ...prev,
-        currentCourses: [...prev.currentCourses, courseInput.trim()]
-      }));
-      setCourseInput('');
-      setShowCourseModal(false);
+  const handleBack = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
     }
   };
 
-  const removeCourse = (course) => {
-    setFormData(prev => ({
-      ...prev,
-      currentCourses: prev.currentCourses.filter(c => c !== course)
-    }));
-  };
 
   const handleSubmit = async () => {
     setIsSubmitting(true); // Mark that we're submitting
@@ -127,21 +103,27 @@ function Onboarding() {
           await signup({
             name: signupData.name,
             email: signupData.email,
-            password: signupData.password
+            password: signupData.password,
+            username: signupData.username,
+            autoGenerateUsername: signupData.autoGenerateUsername || false
           });
           // Clear pending signup data immediately after signup succeeds
           sessionStorage.removeItem('pendingSignup');
         } catch (signupError) {
-          // Handle duplicate email error specifically
-          if (signupError.code === 'EMAIL_EXISTS' || signupError.message.toLowerCase().includes('already registered') || signupError.message.toLowerCase().includes('email already')) {
+          // Handle duplicate email/username errors specifically
+          if (signupError.code === 'EMAIL_EXISTS' || signupError.message.toLowerCase().includes('email already registered')) {
             setError('This email is already registered. Please use a different email address or sign in instead.');
             setIsLoading(false);
             setIsSubmitting(false);
-            // Ensure we stay on step 4 to show the error
             setCurrentStep(4);
-            // DON'T clear pendingSignup here - let user see the error and decide what to do
-            // Only clear it if they navigate away or successfully complete onboarding
-            return; // Stop here, don't proceed with profile update
+            return;
+          }
+          if (signupError.code === 'USERNAME_EXISTS' || signupError.message.toLowerCase().includes('username already taken')) {
+            setError('This username is already taken. Please choose a different username or enable auto-generate in signup.');
+            setIsLoading(false);
+            setIsSubmitting(false);
+            setCurrentStep(4);
+            return;
           }
           // Re-throw other errors to be caught by outer catch
           throw signupError;
@@ -155,19 +137,12 @@ function Onboarding() {
       // Backend expects flat structure, not wrapped in profile object
       await updateProfile({
         avatarUrl: randomAvatar, // Assign random avatar during onboarding
-        skillLevel: formData.skillLevel,
-        learningType: formData.learningType,
         major: formData.major || 'Other',
-        currentCourses: formData.currentCourses,
         daysPerWeek: formData.daysPerWeek,
         minutesPerSession: formData.minutesPerSession,
         recentTopics: formData.recentTopics,
         selfRating: formData.selfRating,
         primaryGoal: formData.primaryGoal,
-        defaultMode: formData.defaultMode,
-        explanationLength: formData.explanationLength,
-        examplesPreference: formData.examplesPreference,
-        codeLanguagePreference: formData.codeLanguagePreference,
         background: 'Student learning with AI assistance',
         goals: ['Improve knowledge'],
         strengths: ['Quick learner'],
@@ -184,8 +159,8 @@ function Onboarding() {
       setError(err.message || 'Failed to save profile');
       setIsLoading(false);
       setIsSubmitting(false); // Reset submitting flag on error
-      // Ensure we stay on step 4 to show the error (don't reset to step 1)
-      setCurrentStep(4);
+      // Ensure we stay on step 2 to show the error (don't reset to step 1)
+      setCurrentStep(2);
     }
   };
 
@@ -194,10 +169,11 @@ function Onboarding() {
   };
 
   const addTopic = () => {
-    if (topicInput.trim() && !formData.recentTopics.includes(topicInput.trim())) {
+    // Limit to 1 topic only
+    if (topicInput.trim() && formData.recentTopics.length === 0) {
       setFormData(prev => ({
         ...prev,
-        recentTopics: [...prev.recentTopics, topicInput.trim()]
+        recentTopics: [topicInput.trim()]
       }));
       setTopicInput('');
     }
@@ -210,7 +186,7 @@ function Onboarding() {
     }));
   };
 
-  const progressPercentage = (currentStep / 4) * 100;
+  const progressPercentage = (currentStep / 2) * 100;
   const progressWidth = progressPercentage; // Use percentage instead of fixed pixels
 
   return (
@@ -224,7 +200,7 @@ function Onboarding() {
 
         {/* Progress Bar */}
         <div className="progress-section">
-          <p className="progress-text">Steps {currentStep}/4</p>
+          <p className="progress-text">Steps {currentStep}/2</p>
           <div className="progress-bar-container">
             <div className="progress-bar-background">
               <div 
@@ -243,50 +219,11 @@ function Onboarding() {
           </div>
         )}
 
-        {/* Step 1: Profile Basics */}
+        {/* Step 1: Major, Topic, Self-Rating */}
         {currentStep === 1 && (
           <div className="onboarding-step">
-            <h2 className="step-title">Profile Basics</h2>
+            <h2 className="step-title">Academic Background</h2>
             <div className="step-content">
-              <div className="form-group">
-                <div className="input-field">
-                  <label className="input-label">Skill Level</label>
-                  <div className="select-group">
-                    <select
-                      value={formData.skillLevel}
-                      onChange={(e) => handleInputChange('skillLevel', e.target.value)}
-                      className="select-input"
-                    >
-                      <option value="Beginner">✨ Beginner</option>
-                      <option value="Intermediate">Intermediate</option>
-                      <option value="Advanced">Advanced</option>
-                    </select>
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="select-arrow">
-                      <path d="M5 7.5L10 12.5L15 7.5" stroke="#030712" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                </div>
-
-                <div className="input-field">
-                  <label className="input-label">Learning Type</label>
-                  <div className="select-group">
-                    <select
-                      value={formData.learningType}
-                      onChange={(e) => handleInputChange('learningType', e.target.value)}
-                      className="select-input"
-                    >
-                      <option value="Visual">Visual</option>
-                      <option value="Auditory">Auditory</option>
-                      <option value="Reading/Writing">Reading/Writing</option>
-                      <option value="Kinesthetic">Kinesthetic</option>
-                    </select>
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="select-arrow">
-                      <path d="M5 7.5L10 12.5L15 7.5" stroke="#030712" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
               <div className="input-field">
                 <label className="input-label">Major</label>
                 <div className="select-group">
@@ -306,39 +243,104 @@ function Onboarding() {
                   </svg>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* Step 2: Course & Goal */}
-        {currentStep === 2 && (
-          <div className="onboarding-step">
-            <h2 className="step-title">Course & Goal</h2>
-            <div className="step-content">
               <div className="input-field">
-                <label className="input-label">Current Courses</label>
+                <label className="input-label">Topic of Interest</label>
                 <div className="topics-container">
-                  {formData.currentCourses.map((course, index) => (
+                  {formData.recentTopics.map((topic, index) => (
                     <div key={index} className="topic-chip">
-                      <span>{course}</span>
+                      <span>{topic}</span>
                       <button
                         type="button"
-                        onClick={() => removeCourse(course)}
+                        onClick={() => removeTopic(topic)}
                         className="topic-remove"
                       >
                         ×
                       </button>
                     </div>
                   ))}
-                  {formData.currentCourses.length < 5 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowCourseModal(true)}
-                      className="add-course-button"
-                    >
-                      + Add course
-                    </button>
+                  {formData.recentTopics.length === 0 && (
+                    <div className="topic-input-group">
+                      <input
+                        type="text"
+                        placeholder="Enter a topic you'd like to study"
+                        value={topicInput}
+                        maxLength={50}
+                        onChange={(e) => {
+                          if (e.target.value.length <= 50) {
+                            setTopicInput(e.target.value);
+                          }
+                        }}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addTopic();
+                          }
+                        }}
+                        className="topic-input"
+                      />
+                      <button
+                        type="button"
+                        onClick={addTopic}
+                        className="topic-add"
+                        disabled={!topicInput.trim()}
+                      >
+                        +
+                      </button>
+                    </div>
                   )}
+                  {formData.recentTopics.length > 0 && (
+                    <p style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>You can add 1 topic only</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="input-field">
+                <label className="input-label">
+                  Self-rating <span className="label-note">(for the topic you'll likely study)</span>
+                </label>
+                <div className="select-group">
+                  <select
+                    value={formData.selfRating}
+                    onChange={(e) => handleInputChange('selfRating', e.target.value)}
+                    className="select-input"
+                  >
+                    <option value="None">None</option>
+                    <option value="Basic">Basic</option>
+                    <option value="Intermediate">Intermediate</option>
+                    <option value="Advanced">Advanced</option>
+                  </select>
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="select-arrow">
+                    <path d="M5 7.5L10 12.5L15 7.5" stroke="#030712" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Goal & Schedule */}
+        {currentStep === 2 && (
+          <div className="onboarding-step">
+            <h2 className="step-title">Learning Goals & Schedule</h2>
+            <div className="step-content">
+              <div className="input-field">
+                <label className="input-label">Primary Goal</label>
+                <div className="select-group">
+                  <select
+                    value={formData.primaryGoal}
+                    onChange={(e) => handleInputChange('primaryGoal', e.target.value)}
+                    className="select-input"
+                  >
+                    <option value="Master Basics">Master Basics</option>
+                    <option value="Exam Prep">Exam Prep</option>
+                    <option value="Revise Gaps">Revise Gaps</option>
+                    <option value="Project Help">Project Help</option>
+                    <option value="Interview Prep">Interview Prep</option>
+                  </select>
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="select-arrow">
+                    <path d="M5 7.5L10 12.5L15 7.5" stroke="#030712" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                 </div>
               </div>
 
@@ -385,274 +387,59 @@ function Onboarding() {
           </div>
         )}
 
-        {/* Step 3: Background & Intent */}
-        {currentStep === 3 && (
-          <div className="onboarding-step">
-            <h2 className="step-title">Background & Intent</h2>
-            <div className="step-content">
-              <div className="input-field">
-                <label className="input-label">Recent Topics</label>
-                <div className="topics-container">
-                  {formData.recentTopics.map((topic, index) => (
-                    <div key={index} className="topic-chip">
-                      <span>{topic}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeTopic(topic)}
-                        className="topic-remove"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                  <div className="topic-input-group">
-                    <input
-                      type="text"
-                      placeholder="Topic"
-                      value={topicInput}
-                      maxLength={50}
-                      onChange={(e) => {
-                        if (e.target.value.length <= 50) {
-                          setTopicInput(e.target.value);
-                        }
-                      }}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          addTopic();
-                        }
-                      }}
-                      className="topic-input"
-                    />
-                    <button
-                      type="button"
-                      onClick={addTopic}
-                      className="topic-add"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="input-field">
-                <label className="input-label">
-                  Self-rating <span className="label-note">(for the topic you'll likely study)</span>
-                </label>
-                <div className="select-group">
-                  <select
-                    value={formData.selfRating}
-                    onChange={(e) => handleInputChange('selfRating', e.target.value)}
-                    className="select-input"
-                  >
-                    <option value="None">None</option>
-                    <option value="Basic">Basic</option>
-                    <option value="Intermediate">Intermediate</option>
-                    <option value="Advanced">Advanced</option>
-                  </select>
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="select-arrow">
-                    <path d="M5 7.5L10 12.5L15 7.5" stroke="#030712" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-              </div>
-
-              <div className="input-field">
-                <label className="input-label">Primary Goal</label>
-                <div className="select-group">
-                  <select
-                    value={formData.primaryGoal}
-                    onChange={(e) => handleInputChange('primaryGoal', e.target.value)}
-                    className="select-input"
-                  >
-                    <option value="Master Basics">Master Basics</option>
-                    <option value="Exam Prep">Exam Prep</option>
-                    <option value="Revise Gaps">Revise Gaps</option>
-                    <option value="Project Help">Project Help</option>
-                    <option value="Interview Prep">Interview Prep</option>
-                  </select>
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="select-arrow">
-                    <path d="M5 7.5L10 12.5L15 7.5" stroke="#030712" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 4: Preferences */}
-        {currentStep === 4 && (
-          <div className="onboarding-step">
-            <h2 className="step-title">Preferences</h2>
-            <div className="step-content">
-              <div className="input-field">
-                <label className="input-label">Default Mode</label>
-                <div className="radio-group">
-                  <label className="radio-option">
-                    <input
-                      type="radio"
-                      name="defaultMode"
-                      value="Studying"
-                      checked={formData.defaultMode === 'Studying'}
-                      onChange={(e) => handleInputChange('defaultMode', e.target.value)}
-                    />
-                    <span>Studying</span>
-                  </label>
-                  <label className="radio-option">
-                    <input
-                      type="radio"
-                      name="defaultMode"
-                      value="Revision"
-                      checked={formData.defaultMode === 'Revision'}
-                      onChange={(e) => handleInputChange('defaultMode', e.target.value)}
-                    />
-                    <span>Revision</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="input-field">
-                <label className="input-label">Explanation Length</label>
-                <div className="select-group">
-                  <select
-                    value={formData.explanationLength}
-                    onChange={(e) => handleInputChange('explanationLength', e.target.value)}
-                    className="select-input"
-                  >
-                    <option value="Concise">Concise</option>
-                    <option value="Balanced">Balanced</option>
-                    <option value="Detailed">Detailed</option>
-                  </select>
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="select-arrow">
-                    <path d="M5 7.5L10 12.5L15 7.5" stroke="#030712" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-              </div>
-
-              <div className="input-field">
-                <label className="input-label">Examples Preference</label>
-                <div className="radio-group">
-                  <label className="radio-option">
-                    <input
-                      type="radio"
-                      name="examplesPreference"
-                      value="Few"
-                      checked={formData.examplesPreference === 'Few'}
-                      onChange={(e) => handleInputChange('examplesPreference', e.target.value)}
-                    />
-                    <span>Few</span>
-                  </label>
-                  <label className="radio-option">
-                    <input
-                      type="radio"
-                      name="examplesPreference"
-                      value="Many"
-                      checked={formData.examplesPreference === 'Many'}
-                      onChange={(e) => handleInputChange('examplesPreference', e.target.value)}
-                    />
-                    <span>Many</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="input-field">
-                <label className="input-label">Code Language Preference</label>
-                <div className="select-group">
-                  <select
-                    value={formData.codeLanguagePreference}
-                    onChange={(e) => handleInputChange('codeLanguagePreference', e.target.value)}
-                    className="select-input"
-                  >
-                    <option value="Python">Python</option>
-                    <option value="JavaScript">JavaScript</option>
-                    <option value="C++">C++</option>
-                    <option value="None">None</option>
-                  </select>
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="select-arrow">
-                    <path d="M5 7.5L10 12.5L15 7.5" stroke="#030712" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Course Modal */}
-        {showCourseModal && (
-          <div className="course-modal-overlay" onClick={() => setShowCourseModal(false)}>
-            <div className="course-modal" onClick={(e) => e.stopPropagation()}>
-              <h3 className="course-modal-title">Add Course</h3>
-              <div className="course-modal-content">
-                <input
-                  type="text"
-                  placeholder="Enter course name"
-                  value={courseInput}
-                  maxLength={50}
-                  onChange={(e) => {
-                    if (e.target.value.length <= 50) {
-                      setCourseInput(e.target.value);
-                    }
-                  }}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      addCourse();
-                    }
-                  }}
-                  className="course-modal-input"
-                  autoFocus
-                />
-                {formData.currentCourses.length >= 5 && (
-                  <p className="course-limit-message">Maximum 5 courses allowed</p>
-                )}
-              </div>
-              <div className="course-modal-actions">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCourseModal(false);
-                    setCourseInput('');
-                  }}
-                  className="course-modal-cancel"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={addCourse}
-                  className="course-modal-add"
-                  disabled={!courseInput.trim() || formData.currentCourses.length >= 5 || formData.currentCourses.includes(courseInput.trim())}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Navigation Buttons */}
         <div className="onboarding-actions">
-          {currentStep < 4 ? (
-            <button
-              type="button"
-              onClick={handleNext}
-              className="next-button"
-              disabled={isLoading}
-            >
-              Next
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '12px' }}>
-                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleSubmit}
-              className="next-button"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Saving...' : 'Finish'}
-            </button>
-          )}
+          <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
+            {currentStep > 1 && (
+              <button
+                type="button"
+                onClick={handleBack}
+                className="back-button"
+                disabled={isLoading}
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: '8px',
+                  border: '1px solid #e6e7e8',
+                  background: 'white',
+                  color: '#030712',
+                  fontWeight: '600',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ transform: 'rotate(180deg)' }}>
+                  <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="#030712" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Back
+              </button>
+            )}
+            <div style={{ flex: 1 }} />
+            {currentStep < 2 ? (
+              <button
+                type="button"
+                onClick={handleNext}
+                className="next-button"
+                disabled={isLoading}
+              >
+                Next
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '12px' }}>
+                  <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                className="next-button"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Saving...' : 'Finish'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

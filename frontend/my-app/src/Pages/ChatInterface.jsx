@@ -4,6 +4,7 @@ import QuizOverlay from '../components/quiz/QuizOverlay';
 import useSessionStore from '../state/sessionStore';
 import * as sessionApi from '../lib/sessionApi';
 import Loader from '../components/Loader';
+import MessageContent from '../components/chat/MessageContent';
 
 function ChatInterface() {
   // Session store
@@ -18,6 +19,10 @@ function ChatInterface() {
     activeModuleId,
     quizDraft,
     isViewOnly,
+    points,
+    gems,
+    progressPct,
+    meta,
     setLearningStyle,
     setModel,
     sendChatMessage,
@@ -48,32 +53,70 @@ function ChatInterface() {
   
   // Detect predefined messages in last assistant response and generate chips
   const getActionChips = useCallback(() => {
-    if (sessionMessages.length === 0) return [];
-    
-    const lastMessage = sessionMessages[sessionMessages.length - 1];
-    if (lastMessage.role !== 'assistant') return [];
-    
-    const content = lastMessage.content.toLowerCase();
     const chips = [];
     
-    // Check for "start quiz" or similar phrases
+    // Check if all milestones in current module are completed - show "Start Quiz" chip
+    // Only show for STUDY mode, not revision mode
+    if (learningStyle === 'studying' && activeModuleId && plan && plan.length > 0) {
+      const activeModule = plan.find(m => m.id === activeModuleId);
+      if (activeModule && activeModule.milestones && activeModule.milestones.length > 0) {
+        const allMilestonesCompleted = activeModule.milestones.every(m => m.completed === true);
+        if (allMilestonesCompleted && phase === 'learning') {
+          chips.push({
+            label: 'Start Quiz',
+            action: async () => {
+              try {
+                console.log('Start Quiz button clicked', { activeModuleId, phase });
+                // This is a STUDY quiz - use startQuizFromChat
+                const result = await startQuizFromChat(activeModuleId);
+                console.log('Start Quiz result', { hasQuestions: !!result?.questions, questionCount: result?.questions?.length });
+                if (!result?.questions || result.questions.length === 0) {
+                  setToast({ type: 'error', message: 'Quiz was not generated. Please try again.' });
+                }
+              } catch (err) {
+                console.error('Start Quiz error', err);
+                setToast({ type: 'error', message: err.message || 'Failed to start quiz' });
+              }
+            }
+          });
+        }
+      }
+    }
+    
+    if (sessionMessages.length === 0) return chips;
+    
+    const lastMessage = sessionMessages[sessionMessages.length - 1];
+    if (lastMessage.role !== 'assistant') return chips;
+    
+    const content = lastMessage.content.toLowerCase();
+    
+    // Check for "start quiz" or similar phrases in message content (fallback)
     // Only show for STUDY mode, not revision mode
     if ((content.includes('start quiz') || content.includes('begin quiz') || content.includes('take quiz') || content.includes('ready for quiz')) && learningStyle === 'studying') {
-      chips.push({
-        label: 'Start Quiz',
-        action: async () => {
-          try {
-            if (activeModuleId) {
-              // This is a STUDY quiz - use startQuizFromChat
-              await startQuizFromChat(activeModuleId);
-            } else {
-              await sendChatMessage('start quiz');
+      // Only add if not already present from milestone completion check
+      if (!chips.find(c => c.label === 'Start Quiz')) {
+        chips.push({
+          label: 'Start Quiz',
+          action: async () => {
+            try {
+              console.log('Start Quiz button clicked (fallback)', { activeModuleId, phase });
+              if (activeModuleId) {
+                // This is a STUDY quiz - use startQuizFromChat
+                const result = await startQuizFromChat(activeModuleId);
+                console.log('Start Quiz result (fallback)', { hasQuestions: !!result?.questions, questionCount: result?.questions?.length });
+                if (!result?.questions || result.questions.length === 0) {
+                  setToast({ type: 'error', message: 'Quiz was not generated. Please try again.' });
+                }
+              } else {
+                await sendChatMessage('start quiz');
+              }
+            } catch (err) {
+              console.error('Start Quiz error (fallback)', err);
+              setToast({ type: 'error', message: err.message || 'Failed to start quiz' });
             }
-          } catch (err) {
-            setToast({ type: 'error', message: err.message || 'Failed to start quiz' });
           }
-        }
-      });
+        });
+      }
     }
     
     // Check for "restart revision" or similar phrases
@@ -122,8 +165,23 @@ function ChatInterface() {
       });
     }
     
+    // Check for "ready" phrase - user should say 'ready' to continue
+    if (content.includes('say \'ready\'') || content.includes("say 'ready'") || content.includes('say "ready"') || 
+        (content.includes('ready') && content.includes('when you are ready'))) {
+      chips.push({
+        label: 'Ready',
+        action: async () => {
+          try {
+            await sendChatMessage('ready');
+          } catch (err) {
+            setToast({ type: 'error', message: err.message || 'Failed to continue' });
+          }
+        }
+      });
+    }
+    
     return chips;
-  }, [sessionMessages, activeModuleId, topic, learningStyle, startQuizFromChat, startRevisionQuiz, sendChatMessage]);
+  }, [sessionMessages, activeModuleId, topic, learningStyle, phase, plan, startQuizFromChat, startRevisionQuiz, sendChatMessage]);
   
   const actionChips = getActionChips();
   
@@ -181,6 +239,17 @@ function ChatInterface() {
   useEffect(() => {
     adjustTextareaHeight();
   }, [inputValue, adjustTextareaHeight]);
+
+  // Clear modificationRequest when phase changes from planning to learning
+  // This prevents stale modificationRequest from interfering with chat input
+  useEffect(() => {
+    if (phase !== 'planning' && modificationRequest) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:188',message:'Phase changed, clearing modificationRequest',data:{phase,modificationRequest,inputValue},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      setModificationRequest('');
+    }
+  }, [phase, modificationRequest]);
 
   // Initialize session if none exists
   useEffect(() => {
@@ -251,10 +320,19 @@ function ChatInterface() {
   const hasMessages = sessionMessages.length > 0;
   const isCompleted = phase === 'completed' && plan && plan.length > 0 && plan.every(m => m.status === 'passed');
   
-  // Determine placeholder text based on mode
-  const chatPlaceholder = learningStyle === 'revision' 
-    ? 'What you want to revise...' 
-    : 'What you want to learn/study...';
+  // Determine placeholder text based on mode and phase
+  // Show appropriate placeholder for initial state or learning phase
+  const isInitialState = phase === 'pre' && sessionMessages.length === 0;
+  const isLearningPhase = ['learning', 'quizzing', 'feedback', 'completed'].includes(phase) && sessionMessages.length > 0;
+  
+  let chatPlaceholder = '';
+  if (isInitialState) {
+    chatPlaceholder = learningStyle === 'revision' 
+      ? 'What you want to revise...' 
+      : 'What you want to learn/study...';
+  } else if (isLearningPhase) {
+    chatPlaceholder = 'Reply...';
+  }
   
   // Handle Revision button click
   const handleRevision = async () => {
@@ -390,9 +468,15 @@ function ChatInterface() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:400',message:'handleSubmit entry',data:{inputValue,modificationRequest,phase,loading},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     if (!inputValue.trim() || loading) return;
 
     const message = inputValue.trim();
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:406',message:'handleSubmit before clear',data:{message,inputValue,modificationRequest},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     setInputValue(''); // Clear input immediately
     adjustTextareaHeight(); // Reset textarea height
 
@@ -429,6 +513,9 @@ function ChatInterface() {
       
       // Always use sendChatMessage - it handles shouldTriggerAssessment automatically
       // The session store will detect learning intent and trigger assessment if needed
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:442',message:'handleSubmit before sendChatMessage',data:{message,phase,currentInputValue:inputValue,currentModificationRequest:modificationRequest},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       await sendChatMessage(message);
     } catch (err) {
       console.error('Error sending message:', err);
@@ -576,7 +663,30 @@ function ChatInterface() {
               <div className="flex gap-4 items-center justify-center">
                 <button
                   type="button"
-                  onClick={() => setLearningStyle("studying")}
+                  onClick={async () => {
+                    // #region agent log
+                    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:588',message:'Studying button clicked',data:{currentMode:learningStyle,currentSessionId:sessionId,currentPhase:phase,currentTopic:topic,currentChatTitle:chatTitle,messagesCount:sessionMessages.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+                    // #endregion
+                    // Clear current session when switching to studying mode from revision
+                    // A new session will be created when the user sends their first message
+                    // This ensures study sessions are separate from revision sessions
+                    const { sessionId: currentSessionId } = useSessionStore.getState();
+                    // #region agent log
+                    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:595',message:'Before clearing session',data:{sessionIdBefore:currentSessionId,modeBefore:learningStyle},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+                    // #endregion
+                    if (currentSessionId && learningStyle === 'revision') {
+                      // Clear current session - new one will be created on first message
+                      useSessionStore.setState({ sessionId: null, phase: 'pre', topic: '', chatTitle: '', plan: [], messages: [] });
+                    }
+                    // Set mode after clearing session
+                    setLearningStyle("studying");
+                    // #region agent log
+                    setTimeout(() => {
+                      const afterState = useSessionStore.getState();
+                      fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:605',message:'After setLearningStyle studying',data:{sessionIdAfter:afterState.sessionId,topicAfter:afterState.topic,chatTitleAfter:afterState.chatTitle,phaseAfter:afterState.phase,modeAfter:afterState.mode},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+                    }, 100);
+                    // #endregion
+                  }}
                   className={`flex gap-3 items-center justify-center px-5 py-2.5 rounded-lg border bg-white transition-all duration-200 ${
                     learningStyle === "studying" 
                       ? "border-[#4e81ee] text-[#4e81ee]" 
@@ -784,8 +894,8 @@ function ChatInterface() {
                       <div className="flex flex-wrap gap-2 mb-2">
                         {[
                           "Make it more beginner-friendly",
-                          "Reduce to 3 modules",
-                          "Add more practice quizzes"
+                          "Reduce milestones",
+                          "Add more milestones"
                         ].map((chip, idx) => (
                           <button
                             key={idx}
@@ -823,10 +933,23 @@ function ChatInterface() {
                               setToast({ message: 'Please enter a modification request', type: 'error' });
                               return;
                             }
+                            // #region agent log
+                            const requestToSend = modificationRequest;
+                            fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:859',message:'modifyPlan button clicked',data:{modificationRequest:requestToSend,inputValue,phase},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'C'})}).catch(()=>{});
+                            // #endregion
                             try {
-                              await modifyPlan(modificationRequest);
+                              await modifyPlan(requestToSend);
+                              // #region agent log
+                              fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:864',message:'modifyPlan success, clearing modificationRequest',data:{modificationRequestBefore:requestToSend},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'C'})}).catch(()=>{});
+                              // #endregion
                               setModificationRequest('');
                               setToast({ message: 'Plan modification requested', type: 'success' });
+                              // #region agent log
+                              setTimeout(() => {
+                                const stateAfter = useSessionStore.getState();
+                                fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:869',message:'after modifyPlan clear',data:{phaseAfter:stateAfter.phase},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'C'})}).catch(()=>{});
+                              }, 100);
+                              // #endregion
                             } catch (err) {
                               setToast({ message: err.message || 'Failed to modify plan', type: 'error' });
                             }
@@ -871,60 +994,18 @@ function ChatInterface() {
 message.role === 'user' ? 'text-sm' : 'text-base'
                           }`}>
                             {message.role === 'assistant' ? (
-                              <div className="prose prose-sm max-w-none">
-                                {message.content.split('\n').map((line, lineIndex) => {
-                                  // Handle bold text formatting (entire line)
-                                  if (line.trim().startsWith('**') && line.trim().endsWith('**') && line.trim().split('**').length === 3) {
-                                    return (
-                                      <div key={lineIndex} className="font-bold text-[#030712] mb-2">
-                                        {line.trim().slice(2, -2)}
-                                      </div>
-                                    );
-                                  }
-                                  // Handle inline bold formatting within text
-                                  const renderWithBold = (text) => {
-                                    const parts = [];
-                                    const regex = /\*\*([^*]+)\*\*/g;
-                                    let lastIndex = 0;
-                                    let match;
-                                    
-                                    while ((match = regex.exec(text)) !== null) {
-                                      // Add text before the bold
-                                      if (match.index > lastIndex) {
-                                        parts.push(text.substring(lastIndex, match.index));
-                                      }
-                                      // Add bold text
-                                      parts.push(
-                                        <strong key={match.index} className="font-semibold">
-                                          {match[1]}
-                                        </strong>
-                                      );
-                                      lastIndex = regex.lastIndex;
-                                    }
-                                    // Add remaining text
-                                    if (lastIndex < text.length) {
-                                      parts.push(text.substring(lastIndex));
-                                    }
-                                    
-                                    return parts.length > 0 ? parts : text;
-                                  };
-                                  
-                                  // Handle bullet points
-                                  if (line.startsWith('- ')) {
-                                    return (
-                                      <div key={lineIndex} className="ml-4 mb-1">
-                                        • {renderWithBold(line.slice(2))}
-                                      </div>
-                                    );
-                                  }
-                                  // Regular text with inline bold support
-                                  return (
-                                    <div key={lineIndex} className={lineIndex === 0 ? 'mb-2' : 'mb-1'}>
-                                      {renderWithBold(line)}
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                              <MessageContent 
+                                content={message.content}
+                                isLastMessage={index === sessionMessages.length - 1}
+                                points={points}
+                                gems={gems}
+                                progressPct={progressPct}
+                                milestoneInfo={activeModuleId && meta?.currentMilestoneIndex !== undefined ? {
+                                  current: (meta.currentMilestoneIndex || 0) + 1,
+                                  total: plan.find(m => m.id === activeModuleId)?.milestones?.length || 0,
+                                  moduleNum: plan.findIndex(m => m.id === activeModuleId) + 1
+                                } : null}
+                              />
                             ) : (
                               message.content
                             )}
@@ -982,150 +1063,121 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                 </div>
 
                 {/* Completed Topic Actions - Show Revision and Summarize buttons when topic is completed */}
-                {isCompleted ? (
-                  <div className="flex-shrink-0 bg-[#f7f8f8] p-6">
-                    <div className="flex items-center justify-center gap-4 max-w-4xl mx-auto">
+                {phase === 'completed' && (
+                  <div className="flex-shrink-0 bg-[#f7f8f8] px-4 sm:px-6 py-4">
+                    <div className="max-w-4xl mx-auto flex flex-col sm:flex-row gap-3">
                       <button
-                        onClick={handleRevision}
-                        disabled={loading || !sessionId || !topic}
-                        className="flex items-center gap-2 px-6 py-3 bg-[#4e81ee] text-white rounded-[24px] font-medium text-base hover:bg-blue-600 transition-all duration-200 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        onClick={handleStartRevision}
+                        disabled={loading}
+                        className="w-full sm:w-auto px-6 py-2.5 bg-[#4e81ee] hover:bg-blue-600 active:bg-blue-700 text-white font-semibold text-sm sm:text-base rounded-lg shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <span>🔄</span>
-                        <span>Revision</span>
+                        Start Revision Quiz
                       </button>
                       <button
-                        onClick={handleSummarize}
-                        disabled={isSummarizing || !sessionId}
-                        className="flex items-center gap-2 px-6 py-3 bg-[#10b981] text-white rounded-[24px] font-medium text-base hover:bg-green-600 transition-all duration-200 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        onClick={handleSummarizeTopic}
+                        disabled={loading}
+                        className="w-full sm:w-auto px-6 py-2.5 bg-[#ff9500] hover:bg-orange-600 active:bg-orange-700 text-white font-semibold text-sm sm:text-base rounded-lg shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <span>📝</span>
-                        <span>{isSummarizing ? 'Summarizing...' : 'Summarize'}</span>
+                        Summarize Topic
                       </button>
                     </div>
                   </div>
-                ) : (
-                  /* Composer - Fixed at bottom when there are messages (hide in planning phase) */
-                  !isViewOnly && !isPlanning && (
-                    <div className="flex-shrink-0 bg-[#f7f8f8] pt-2">
-                      <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-4">
-                        {/* Composer Container */}
-                        <div className="bg-white rounded-[24px] border border-[#e6e7e8] overflow-hidden focus-within:border-[#4e81ee] focus-within:ring-2 focus-within:ring-blue-100 transition-all">
-                          {/* Textarea Section */}
-                          <div className="relative">
-                            <textarea
-                              ref={textareaRef}
-                              placeholder={chatPlaceholder}
-                              className="w-full resize-none border-none outline-none bg-transparent p-4 pb-2 text-base leading-[24px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.25px] overflow-y-auto"
-                              style={{ 
-                                minHeight: "24px",
-                                maxHeight: "200px",
-                                lineHeight: "24px"
-                              }}
-                              value={inputValue}
-                              maxLength={2000}
-                              onChange={(e) => {
-                                if (e.target.value.length <= 2000) {
-                                  setInputValue(e.target.value);
-                                  adjustTextareaHeight();
-                                }
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                  e.preventDefault();
-                                  handleSubmit(e);
-                                }
-                              }}
-                              disabled={loading}
-                              rows={1}
-                            />
+                )}
+
+                {/* Input Area */}
+                <div className="flex-shrink-0 bg-[#f7f8f8] px-4 sm:px-6 py-4">
+                  <div className="max-w-4xl mx-auto">
+                    {/* Action Chips */}
+                    {actionChips.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {actionChips.map((chip, idx) => (
+                          <button
+                            key={idx}
+                            onClick={chip.action}
+                            className="px-3 py-1.5 text-sm font-medium text-[#4e81ee] bg-blue-50 border border-blue-200 rounded-full hover:bg-blue-100 hover:border-blue-300 transition-colors"
+                          >
+                            {chip.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {phase === 'planning' ? (
+                      <div className="text-center py-4">
+                        <p className="text-sm text-[#686d77]">Please approve or request modifications to the learning plan above.</p>
+                      </div>
+                    ) : isViewOnly ? (
+                      <div className="text-center py-4">
+                        <p className="text-sm text-[#686d77]">This is a view-only session. You cannot send messages.</p>
+                      </div>
+                    ) : (
+                      <div className="bg-white border flex flex-col gap-4 items-start px-4 py-3 rounded-[24px] w-full relative transition-all duration-200 border-[#4e81ee]">
+                        <textarea
+                          ref={textareaRef}
+                          placeholder={chatPlaceholder}
+                          className="w-full resize-none border-none outline-none bg-transparent text-base leading-[24px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.25px] overflow-y-auto"
+                          style={{ 
+                            minHeight: "24px",
+                            maxHeight: "200px",
+                            lineHeight: "24px"
+                          }}
+                          value={inputValue}
+                          maxLength={2000}
+                          onChange={(e) => {
+                            if (e.target.value.length <= 2000) {
+                              setInputValue(e.target.value);
+                              adjustTextareaHeight();
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSubmit(e);
+                            }
+                          }}
+                          rows={1}
+                        />
+                        
+                        {/* Controls at bottom */}
+                        <div className="flex gap-2 items-center justify-end w-full">
+                          {/* Model selector dropdown */}
+                          <div className="flex items-center gap-1">
+                            <select 
+                              value={model}
+                              onChange={(e) => setModel(e.target.value)}
+                              className="font-normal text-base leading-[21px] text-[#424855] tracking-[-0.25px] bg-transparent border-none outline-none cursor-pointer appearance-none"
+                            >
+                              <option value="llama">Llama</option>
+                            </select>
+                            <svg className="w-3 h-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
                           </div>
                           
-                          {/* Control Section - Separate row below textarea */}
-                          <div className="px-4 pb-3 pt-1">
-                            {/* Action Chips - Show when predefined messages detected */}
-                            {actionChips.length > 0 && (
-                              <div className="flex flex-wrap gap-2 mb-2">
-                                {actionChips.map((chip, idx) => (
-                                  <button
-                                    key={idx}
-                                    onClick={chip.action}
-                                    disabled={loading}
-                                    className="px-3 py-1 text-xs font-medium text-[#4e81ee] bg-blue-50 border border-blue-200 rounded-full hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                  >
-                                    {chip.label}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                            
-                            <div className="flex items-center justify-between">
-                              {/* Left side - Model Selector */}
-                              <div className="flex items-center gap-2">
-                                <div className="flex items-center gap-1">
-                                  <select 
-                                    value={model}
-                                    onChange={(e) => setModel(e.target.value)}
-                                    className="bg-transparent border-none outline-none text-sm leading-[21px] text-[#424855] tracking-[-0.25px] cursor-pointer appearance-none font-normal pr-5"
-                                  >
-                                    <option value="llama">Llama</option>
-                                  </select>
-                                  <svg className="w-3 h-3 pointer-events-none -ml-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                  </svg>
-                                </div>
-                              </div>
-                              
-                              {/* Right side - Send Button */}
-                              <button 
-                                className={`flex h-9 w-9 items-center justify-center rounded-[50px] transition-all duration-200 ${
-                                  inputValue.trim() && !loading
-                                    ? 'bg-[#4e81ee] hover:bg-blue-600' 
-                                    : 'bg-gray-300 cursor-not-allowed'
-                                }`}
-                                onClick={handleSubmit} 
-                                disabled={loading || !inputValue.trim()}
-                              >
-                                <img 
-                                  src="/icons/send-arrow.svg" 
-                                  alt="send" 
-                                  className={`w-5 h-5 ${
-                                    inputValue.trim() && !loading ? 'filter-none' : 'filter grayscale opacity-50'
-                                  }`}
-                                />
-                              </button>
-                            </div>
-                          </div>
+                          {/* Send button */}
+                          <button
+                            type="submit"
+                            onClick={handleSubmit}
+                            disabled={loading || !inputValue.trim()}
+                            className="flex items-center justify-center w-8 h-8 bg-[#4e81ee] hover:bg-blue-600 active:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-full transition-all duration-200"
+                            title="Send message (Enter)"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                            </svg>
+                          </button>
                         </div>
                       </div>
-                    </div>
-                  )
-                )}
+                    )}
+                  </div>
+                </div>
               </>
             ) : null}
           </>
         ) : null}
-      </div>
-
-      {/* Error toast notification */}
-      {error && (
-        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg shadow-soft">
-          <span>{error}</span>
-          <button onClick={clearError} className="ml-2 text-red-500">×</button>
         </div>
-      )}
-
-      {/* Toast Notifications */}
-      {toast && (
-        <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-lg shadow-soft ${
-          toast.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
-          toast.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
-          'bg-blue-50 text-blue-700 border border-blue-200'
-        }`}>
-          {toast.message}
-        </div>
-      )}
-    </>
-  );
-}
-
-export default ChatInterface;
+      </>
+    );
+  }
+  
+  export default ChatInterface;

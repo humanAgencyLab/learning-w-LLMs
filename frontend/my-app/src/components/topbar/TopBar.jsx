@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import useSessionStore from '../../state/sessionStore';
 
 function TopBar({ onStartNewChat }) {
-  const { phase, chatTitle, sessionId, mode } = useSessionStore();
+  const { phase, chatTitle, sessionId, mode, topic, messages } = useSessionStore();
   const location = useLocation();
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   
@@ -35,15 +35,35 @@ function TopBar({ onStartNewChat }) {
     }).join(' ');
   };
 
-  // Only show title when on /chat route and in active learning phases
+  // Show title when on /chat route and:
+  // 1. In active learning phases (learning, quizzing, feedback, completed), OR
+  // 2. Has sessionId (existing/resumed chat) with chatTitle or topic
+  // BUT NOT in initial state (phase === 'pre' with no messages)
+  // AND NOT in planning phase
   const isChatRoute = location.pathname === '/chat';
-  const showTitle = isChatRoute && ['learning', 'quizzing', 'feedback', 'completed'].includes(phase);
+  const hasSession = sessionId && (chatTitle || topic);
+  const isInitialState = phase === 'pre' && (!messages || messages.length === 0);
+  const isPlanning = phase === 'planning';
+  const showTitle = isChatRoute && !isInitialState && !isPlanning && (
+    ['learning', 'quizzing', 'feedback', 'completed'].includes(phase) || 
+    hasSession
+  );
+  
+  // #region agent log
+  useEffect(() => {
+    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TopBar.jsx:42',message:'TopBar showTitle calculation',data:{isChatRoute,hasSession,isInitialState,isPlanning,sessionId,chatTitle,topic,phase,messagesCount:messages?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TopBar.jsx:48',message:'TopBar showTitle result',data:{showTitle},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
+  }, [isChatRoute, hasSession, isInitialState, isPlanning, sessionId, chatTitle, topic, phase, messages, showTitle]);
+  // #endregion
   
   // Determine title text based on mode
   const getTitleText = () => {
-    if (!chatTitle) return null;
+    // Use chatTitle if available, otherwise fallback to topic
+    const displayTitle = chatTitle || topic;
+    if (!displayTitle) return null;
+    
     const isRevision = mode === 'reviewing' || mode === 'revision';
-    const titleCaseTitle = toTitleCase(chatTitle);
+    const titleCaseTitle = toTitleCase(displayTitle);
     
     if (isRevision) {
       return (
@@ -64,9 +84,9 @@ function TopBar({ onStartNewChat }) {
     <>
       <div className="bg-white flex gap-6 items-center justify-between px-16 py-4 w-full">
         <div className="text-base font-semibold">
-          {showTitle && chatTitle ? (
+          {showTitle && getTitleText() ? (
             <div className="flex items-center gap-2">
-                  <img src="/icons/studying.svg" alt="graduation cap" className="h-6 w-6" />
+              <img src="/icons/studying.svg" alt="graduation cap" className="h-6 w-6" />
               {getTitleText()}
             </div>
           ) : null}
