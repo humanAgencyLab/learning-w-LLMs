@@ -593,15 +593,18 @@ function ChatInterface() {
               </p>
 
               {/* Composer Card */}
-              <div className={`bg-white border flex flex-col gap-4 items-start px-4 py-3 rounded-[24px] w-full relative transition-all duration-200 ${
-                inputValue.trim() ? 'border-[#4e81ee]' : 'border-[#e6e7e8]'
-              }`}>
+              <div 
+                className={`bg-white border flex flex-col gap-4 items-start px-4 py-3 rounded-[24px] w-full relative transition-all duration-200 cursor-text ${
+                  inputValue.trim() ? 'border-[#4e81ee]' : 'border-[#e6e7e8]'
+                }`}
+                onClick={() => preSurfaceTextareaRef.current?.focus()}
+              >
                 <textarea
                   ref={preSurfaceTextareaRef}
                   placeholder={chatPlaceholder}
                   className="w-full resize-none border-none outline-none bg-transparent text-base leading-[24px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.25px] overflow-y-auto"
                   style={{ 
-                    minHeight: "24px",
+                    minHeight: "48px",
                     maxHeight: "200px",
                     lineHeight: "24px"
                   }}
@@ -622,7 +625,7 @@ function ChatInterface() {
                   onPaste={(e) => {
                     e.preventDefault();
                   }}
-                  rows={1}
+                  rows={2}
                 />
                 
                 {/* Controls at bottom */}
@@ -1114,13 +1117,16 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                         <p className="text-sm text-[#686d77]">This is a view-only session. You cannot send messages.</p>
                       </div>
                     ) : (
-                      <div className="bg-white border flex flex-col gap-4 items-start px-4 py-3 rounded-[24px] w-full relative transition-all duration-200 border-[#4e81ee]">
+                      <div 
+                        className="bg-white border flex flex-col gap-4 items-start px-4 py-3 rounded-[24px] w-full relative transition-all duration-200 border-[#4e81ee] cursor-text"
+                        onClick={() => textareaRef.current?.focus()}
+                      >
                         <textarea
                           ref={textareaRef}
                           placeholder={chatPlaceholder}
                           className="w-full resize-none border-none outline-none bg-transparent text-base leading-[24px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.25px] overflow-y-auto"
                           style={{ 
-                            minHeight: "24px",
+                            minHeight: "48px",
                             maxHeight: "200px",
                             lineHeight: "24px"
                           }}
@@ -1141,7 +1147,7 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                           onPaste={(e) => {
                             e.preventDefault();
                           }}
-                          rows={1}
+                          rows={2}
                         />
                         
                         {/* Controls at bottom */}
