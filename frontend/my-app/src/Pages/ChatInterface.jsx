@@ -594,42 +594,47 @@ function ChatInterface() {
 
               {/* Composer Card */}
               <div 
-                className={`bg-white border flex flex-col gap-4 items-start px-4 py-3 rounded-[24px] w-full relative transition-all duration-200 cursor-text ${
+                className={`bg-white border flex flex-col gap-2 items-start px-4 py-3 rounded-[24px] w-full relative transition-all duration-200 ${
                   inputValue.trim() ? 'border-[#4e81ee]' : 'border-[#e6e7e8]'
                 }`}
-                onClick={() => preSurfaceTextareaRef.current?.focus()}
               >
-                <textarea
-                  ref={preSurfaceTextareaRef}
-                  placeholder={chatPlaceholder}
-                  className="w-full resize-none border-none outline-none bg-transparent text-base leading-[24px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.25px] overflow-y-auto"
-                  style={{ 
-                    minHeight: "48px",
-                    maxHeight: "200px",
-                    lineHeight: "24px"
-                  }}
-                  value={inputValue}
-                  maxLength={2000}
-                  onChange={(e) => {
-                    if (e.target.value.length <= 2000) {
-                      setInputValue(e.target.value);
-                      adjustTextareaHeight();
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
+                {/* Clickable area that focuses textarea */}
+                <div 
+                  className="w-full cursor-text"
+                  onClick={() => preSurfaceTextareaRef.current?.focus()}
+                >
+                  <textarea
+                    ref={preSurfaceTextareaRef}
+                    placeholder={chatPlaceholder}
+                    className="w-full resize-none border-none outline-none bg-transparent text-base leading-[24px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.25px] overflow-y-auto cursor-text"
+                    style={{ 
+                      minHeight: "48px",
+                      maxHeight: "200px",
+                      lineHeight: "24px"
+                    }}
+                    value={inputValue}
+                    maxLength={2000}
+                    onChange={(e) => {
+                      if (e.target.value.length <= 2000) {
+                        setInputValue(e.target.value);
+                        adjustTextareaHeight();
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSubmit(e);
+                      }
+                    }}
+                    onPaste={(e) => {
                       e.preventDefault();
-                      handleSubmit(e);
-                    }
-                  }}
-                  onPaste={(e) => {
-                    e.preventDefault();
-                  }}
-                  rows={2}
-                />
+                    }}
+                    rows={2}
+                  />
+                </div>
                 
-                {/* Controls at bottom - stopPropagation to prevent focus on button clicks */}
-                <div className="flex gap-2 items-center justify-end w-full" onClick={(e) => e.stopPropagation()}>
+                {/* Controls at bottom */}
+                <div className="flex gap-2 items-center justify-end w-full">
                   {/* Model selector dropdown */}
                   <div className="flex items-center gap-1 cursor-pointer">
                     <select 
@@ -1118,40 +1123,45 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                       </div>
                     ) : (
                       <div 
-                        className="bg-white border flex flex-col gap-4 items-start px-4 py-3 rounded-[24px] w-full relative transition-all duration-200 border-[#4e81ee] cursor-text"
-                        onClick={() => textareaRef.current?.focus()}
+                        className="bg-white border flex flex-col gap-2 items-start px-4 py-3 rounded-[24px] w-full relative transition-all duration-200 border-[#4e81ee]"
                       >
-                        <textarea
-                          ref={textareaRef}
-                          placeholder={chatPlaceholder}
-                          className="w-full resize-none border-none outline-none bg-transparent text-base leading-[24px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.25px] overflow-y-auto"
-                          style={{ 
-                            minHeight: "48px",
-                            maxHeight: "200px",
-                            lineHeight: "24px"
-                          }}
-                          value={inputValue}
-                          maxLength={2000}
-                          onChange={(e) => {
-                            if (e.target.value.length <= 2000) {
-                              setInputValue(e.target.value);
-                              adjustTextareaHeight();
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
+                        {/* Clickable area that focuses textarea */}
+                        <div 
+                          className="w-full cursor-text"
+                          onClick={() => textareaRef.current?.focus()}
+                        >
+                          <textarea
+                            ref={textareaRef}
+                            placeholder={chatPlaceholder}
+                            className="w-full resize-none border-none outline-none bg-transparent text-base leading-[24px] text-[#030712] placeholder:text-[#aeb1b6] tracking-[-0.25px] overflow-y-auto cursor-text"
+                            style={{ 
+                              minHeight: "48px",
+                              maxHeight: "200px",
+                              lineHeight: "24px"
+                            }}
+                            value={inputValue}
+                            maxLength={2000}
+                            onChange={(e) => {
+                              if (e.target.value.length <= 2000) {
+                                setInputValue(e.target.value);
+                                adjustTextareaHeight();
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSubmit(e);
+                              }
+                            }}
+                            onPaste={(e) => {
                               e.preventDefault();
-                              handleSubmit(e);
-                            }
-                          }}
-                          onPaste={(e) => {
-                            e.preventDefault();
-                          }}
-                          rows={2}
-                        />
+                            }}
+                            rows={2}
+                          />
+                        </div>
                         
-                        {/* Controls at bottom - stopPropagation to prevent focus on button clicks */}
-                        <div className="flex gap-2 items-center justify-end w-full" onClick={(e) => e.stopPropagation()}>
+                        {/* Controls at bottom */}
+                        <div className="flex gap-2 items-center justify-end w-full">
                           {/* Model selector dropdown */}
                           <div className="flex items-center gap-1 cursor-pointer">
                             <select 
