@@ -628,10 +628,10 @@ function ChatInterface() {
                   rows={2}
                 />
                 
-                {/* Controls at bottom */}
-                <div className="flex gap-2 items-center justify-end w-full">
+                {/* Controls at bottom - stopPropagation to prevent focus on button clicks */}
+                <div className="flex gap-2 items-center justify-end w-full" onClick={(e) => e.stopPropagation()}>
                   {/* Model selector dropdown */}
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 cursor-pointer">
                     <select 
                       value={model}
                       onChange={(e) => setModel(e.target.value)}
@@ -1150,10 +1150,10 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                           rows={2}
                         />
                         
-                        {/* Controls at bottom */}
-                        <div className="flex gap-2 items-center justify-end w-full">
+                        {/* Controls at bottom - stopPropagation to prevent focus on button clicks */}
+                        <div className="flex gap-2 items-center justify-end w-full" onClick={(e) => e.stopPropagation()}>
                           {/* Model selector dropdown */}
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 cursor-pointer">
                             <select 
                               value={model}
                               onChange={(e) => setModel(e.target.value)}
