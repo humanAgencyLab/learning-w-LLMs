@@ -10,14 +10,6 @@ const UserSchema = new mongoose.Schema({
     maxlength: 30,
     match: [/^[a-zA-Z0-9_]+$/, 'Username must contain only letters, numbers, and underscores']
   },
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    lowercase: true,
-    trim: true,
-    match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email address']
-  },
   passwordHash: {
     type: String,
     required: true,
@@ -33,10 +25,6 @@ const UserSchema = new mongoose.Schema({
   avatarUrl: {
     type: String,
     default: null // Will store URL/path to avatar image
-  },
-  emailVerified: {
-    type: Boolean,
-    default: false
   },
   emailVerificationToken: {
     type: String,
@@ -240,7 +228,6 @@ const UserSchema = new mongoose.Schema({
 
 // Indexes
 UserSchema.index({ username: 1 }, { unique: true });
-UserSchema.index({ email: 1 }, { unique: true });
 UserSchema.index({ emailVerificationToken: 1 }, { sparse: true });
 UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
 // Note: certificateId uniqueness is handled at application level, not via index

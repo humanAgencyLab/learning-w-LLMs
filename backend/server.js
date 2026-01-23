@@ -28,8 +28,35 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ai_edu_ap
       const StudySession = require('./models/StudySession');
       const ChatLog = require('./models/ChatLog');
       
-      // Ensure unique email index exists (critical for preventing duplicate accounts)
-      await User.collection.createIndex({ email: 1 }, { unique: true });
+      // Drop legacy indexes that shouldn't exist
+      try {
+        const userIndexes = await User.collection.indexes();
+        
+        // Drop email index if it exists (legacy from when email field existed)
+        const emailIndex = userIndexes.find(idx => idx.key && idx.key.email);
+        if (emailIndex) {
+          console.log('🗑️  Dropping legacy email index...');
+          await User.collection.dropIndex(emailIndex.name);
+          console.log('✅ Legacy email index removed');
+        }
+        
+        // Drop certificates.certificateId unique index (uniqueness handled at application level)
+        const certIndex = userIndexes.find(idx => 
+          idx.key && idx.key['certificates.certificateId'] && idx.unique === true
+        );
+        if (certIndex) {
+          console.log('🗑️  Dropping certificates.certificateId unique index...');
+          await User.collection.dropIndex(certIndex.name);
+          console.log('✅ Certificates index removed');
+        }
+      } catch (dropError) {
+        // Index might not exist, which is fine
+        if (dropError.code !== 27) { // 27 = IndexNotFound
+          console.log('⚠️  Warning while checking indexes:', dropError.message);
+        }
+      }
+      
+      // Email field and index removed - no longer needed
       await ChatLog.collection.createIndex({ sessionId: 1 });
       await StudySession.collection.createIndex({ updatedAt: -1 });
       console.log('✅ Database indexes created');
@@ -61,18 +88,13 @@ app.listen(PORT, () => {
   try {
     const authRoutes = require('./routes/authRoutes');
     console.log(`📋 Auth routes registered: ${authRoutes.stack.filter(l => l.route).length}`);
-    const checkEmailRoute = authRoutes.stack.find(l => l.route && l.route.path === '/check-email');
-    if (checkEmailRoute) {
-      console.log(`✅ check-email route found: ${Object.keys(checkEmailRoute.route.methods).join(', ').toUpperCase()} /v1/auth${checkEmailRoute.route.path}`);
-    } else {
-      console.log(`❌ check-email route NOT found in authRoutes`);
-      console.log('Available routes:');
-      authRoutes.stack.forEach((layer, idx) => {
-        if (layer.route) {
-          console.log(`  ${idx}: ${Object.keys(layer.route.methods).join(', ').toUpperCase()} ${layer.route.path}`);
-        }
-      });
-    }
+    // Email check route removed - no longer needed
+    console.log('Available auth routes:');
+    authRoutes.stack.forEach((layer, idx) => {
+      if (layer.route) {
+        console.log(`  ${idx}: ${Object.keys(layer.route.methods).join(', ').toUpperCase()} ${layer.route.path}`);
+      }
+    });
   } catch (err) {
     console.error('Error checking routes:', err.message);
   }

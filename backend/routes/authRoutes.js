@@ -98,67 +98,7 @@ router.post('/check-username', async (req, res) => {
   }
 });
 
-/**
- * POST /v1/auth/check-email
- * Check if email already exists (for signup validation)
- */
-router.post('/check-email', async (req, res) => {
-  try {
-    const { email } = req.body;
-    
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        error: 'Email is required',
-        code: 'VALIDATION_ERROR'
-      });
-    }
-    
-    // Validate email format
-    const emailRegex = /^\S+@\S+\.\S+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid email format',
-        code: 'VALIDATION_ERROR'
-      });
-    }
-    
-    // Check if user already exists
-    const normalizedEmail = email.toLowerCase().trim();
-    const existingUser = await User.findOne({ email: normalizedEmail });
-    
-    if (existingUser) {
-      return res.json({
-        success: true,
-        data: {
-          exists: true,
-          message: 'Email already registered'
-        }
-      });
-    }
-    
-    res.json({
-      success: true,
-      data: {
-        exists: false,
-        message: 'Email is available'
-      }
-    });
-  } catch (error) {
-    logger.error({
-      requestId: req.requestId,
-      error: error.message,
-      stack: error.stack
-    }, 'Check email error');
-    
-    res.status(500).json({
-      success: false,
-      error: 'Failed to check email',
-      code: 'SERVER_ERROR'
-    });
-  }
-});
+// Email check route removed - email field no longer exists
 
 /**
  * POST /v1/auth/signup
@@ -166,23 +106,27 @@ router.post('/check-email', async (req, res) => {
  */
 router.post('/signup', async (req, res) => {
   try {
-    const { email, password, name, username, autoGenerateUsername } = req.body;
+    const { password, name, username, autoGenerateUsername } = req.body;
+    
+    logger.info({
+      requestId: req.requestId,
+      hasPassword: !!password,
+      hasName: !!name,
+      hasUsername: !!username,
+      autoGenerateUsername: autoGenerateUsername,
+      bodyKeys: Object.keys(req.body)
+    }, 'Signup request received');
     
     // Validation
-    if (!email || !password || !name) {
+    if (!password || !name) {
+      logger.warn({
+        requestId: req.requestId,
+        hasPassword: !!password,
+        hasName: !!name
+      }, 'Signup validation failed: missing password or name');
       return res.status(400).json({
         success: false,
-        error: 'Email, password, and name are required',
-        code: 'VALIDATION_ERROR'
-      });
-    }
-    
-    // Validate email format
-    const emailRegex = /^\S+@\S+\.\S+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid email format',
+        error: 'Password and name are required',
         code: 'VALIDATION_ERROR'
       });
     }
@@ -247,36 +191,109 @@ router.post('/signup', async (req, res) => {
     // Normalize username for storage (lowercase for uniqueness, but preserve original case in display)
     const normalizedUsername = finalUsername.toLowerCase();
     
-    // Check if user already exists by email (case-insensitive)
-    const normalizedEmail = email.toLowerCase().trim();
-    const existingUser = await User.findOne({ email: normalizedEmail });
-    if (existingUser) {
-      logger.warn({
-        requestId: req.requestId,
-        email: normalizedEmail
-      }, 'Attempted signup with existing email');
-      return res.status(409).json({
-        success: false,
-        error: 'Email already registered',
-        code: 'EMAIL_EXISTS'
-      });
-    }
-    
     // Hash password
     const passwordHash = await hashPassword(password);
     
-    // Create user (use normalized email and username)
-    const user = new User({
-      username: normalizedUsername,
-      email: normalizedEmail,
-      passwordHash,
-      name: name.trim(),
-      emailVerified: false // For MVP, skip email verification
-    });
+    // Declare user variable outside try block
+    let user;
     
-    // Save user - MongoDB unique index will also catch duplicates (race condition protection)
+    // Save user directly to MongoDB using insertOne - completely bypass Mongoose
+    // This ensures NO email field can be added by Mongoose schema defaults or hooks
     try {
-      await user.save();
+      logger.info({
+        requestId: req.requestId,
+        username: normalizedUsername,
+        name: name.trim()
+      }, 'Creating user document (direct MongoDB insert)');
+      
+      // Build document as plain JavaScript object - NO Mongoose involvement
+      const userDoc = {
+        username: normalizedUsername,
+        passwordHash: passwordHash,
+        name: name.trim(),
+        avatarUrl: null,
+        emailVerificationToken: null,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+        preferences: {
+          defaultModel: 'llama-3.1-8b',
+          explanationLength: 'balanced',
+          theme: 'light',
+          fontSize: 16,
+          notifications: true
+        },
+        profile: {
+          source: 'user',
+          mobile: '',
+          background: '',
+          goals: [],
+          strengths: [],
+          gaps: [],
+          timePerDayMins: 30,
+          preferredStyle: 'mixed',
+          skillLevel: 'Beginner',
+          learningType: 'Visual',
+          major: '',
+          currentCourses: [],
+          daysPerWeek: 3,
+          minutesPerSession: 30,
+          recentTopics: [],
+          selfRating: '',
+          primaryGoal: '',
+          defaultMode: 'Studying',
+          explanationLength: 'Balanced',
+          examplesPreference: 'Many',
+          language: 'English',
+          onboardingCompleted: false
+        },
+        certificates: [],
+        stats: {
+          pointsTotal: 0,
+          gemsTotal: 0,
+          trophiesTotal: 0,
+          sessionsCompleted: 0
+        },
+        lastLoginAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      // Verify email is NOT in document
+      if ('email' in userDoc || userDoc.email !== undefined) {
+        throw new Error('CRITICAL: Email field detected in user document!');
+      }
+      
+      logger.info({
+        requestId: req.requestId,
+        documentKeys: Object.keys(userDoc),
+        hasEmail: 'email' in userDoc
+      }, 'Document ready for insert (email-free)');
+      
+      // Insert directly into MongoDB collection - bypass Mongoose completely
+      const result = await User.collection.insertOne(userDoc);
+      
+      logger.info({
+        requestId: req.requestId,
+        insertedId: result.insertedId,
+        username: normalizedUsername
+      }, 'User inserted successfully via direct MongoDB insert');
+      
+      // Create a Mongoose user instance from the inserted document for token generation
+      const savedUser = await User.findById(result.insertedId);
+      if (!savedUser) {
+        throw new Error('Failed to retrieve inserted user');
+      }
+      
+      // Assign to outer scope variable (not const - use the let user declared above)
+      user = savedUser;
+      
+      logger.info({
+        requestId: req.requestId,
+        userId: user._id,
+        username: user.username,
+        savedSuccessfully: true,
+        insertedId: result.insertedId
+      }, 'User saved successfully to database using insertOne');
     } catch (saveError) {
       // Handle duplicate key error (MongoDB unique index violation)
       if (saveError.code === 11000 || saveError.name === 'MongoServerError') {
@@ -292,26 +309,47 @@ router.post('/signup', async (req, res) => {
             error: 'Username already taken',
             code: 'USERNAME_EXISTS'
           });
-        } else if (saveError.keyPattern?.email) {
+        }
+        if (saveError.keyPattern?.email) {
+          // This shouldn't happen if email is not provided, but log full details
           logger.warn({
             requestId: req.requestId,
-            email: normalizedEmail,
-            error: saveError.message
-          }, 'Duplicate email detected during save (race condition)');
-          return res.status(409).json({
+            error: saveError.message,
+            keyPattern: saveError.keyPattern,
+            keyValue: saveError.keyValue,
+            errorCode: saveError.code,
+            fullError: saveError
+          }, 'Duplicate email detected during save (unexpected - email not provided in request)');
+          // Since we're not providing email, this is likely a database/index issue
+          // Return a more helpful error message
+          return res.status(500).json({
             success: false,
-            error: 'Email already registered',
-            code: 'EMAIL_EXISTS'
+            error: 'Account creation failed due to database constraint. Please try again or contact support.',
+            code: 'DATABASE_ERROR',
+            details: process.env.NODE_ENV === 'development' ? saveError.message : undefined
           });
         }
       }
-      // Re-throw other errors
+      // Handle validation errors
+      if (saveError.name === 'ValidationError') {
+        const validationErrors = Object.values(saveError.errors).map(err => err.message).join(', ');
+        logger.warn({
+          requestId: req.requestId,
+          validationErrors
+        }, 'Validation error during user save');
+        return res.status(400).json({
+          success: false,
+          error: validationErrors,
+          code: 'VALIDATION_ERROR'
+        });
+      }
+      // Re-throw other errors to be caught by outer catch
       throw saveError;
     }
     
     // Generate tokens (convert ObjectId to string)
-    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username, email: user.email });
-    const refreshToken = generateRefreshToken({ userId: user._id.toString(), username: user.username, email: user.email });
+    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username });
+    const refreshToken = generateRefreshToken({ userId: user._id.toString(), username: user.username });
     
     // Set refresh token in httpOnly cookie
     // For cross-origin requests, sameSite must be 'none' with secure=true
@@ -326,8 +364,7 @@ router.post('/signup', async (req, res) => {
     logger.info({
       requestId: req.requestId || 'unknown',
       userId: user._id,
-      username: user.username,
-      email: user.email
+      username: user.username
     }, 'User signed up');
     
     // Return user data (without sensitive fields)
@@ -344,31 +381,67 @@ router.post('/signup', async (req, res) => {
     logger.error({
       requestId: req.requestId,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
+      errorCode: error.code,
+      errorName: error.name,
+      keyPattern: error.keyPattern
     }, 'Signup error');
     
     // Handle duplicate key error
-    if (error.code === 11000) {
+    if (error.code === 11000 || error.name === 'MongoServerError') {
       if (error.keyPattern?.username) {
         return res.status(409).json({
           success: false,
           error: 'Username already taken',
           code: 'USERNAME_EXISTS'
         });
-      } else if (error.keyPattern?.email) {
-        return res.status(409).json({
+      }
+      if (error.keyPattern?.email) {
+        // This shouldn't happen if email is not provided, but log full details
+        logger.error({
+          requestId: req.requestId,
+          error: error.message,
+          keyPattern: error.keyPattern,
+          keyValue: error.keyValue,
+          errorCode: error.code,
+          stack: error.stack
+        }, 'Email duplicate error during signup (email not provided in request)');
+        // Since we're not providing email, this is likely a database/index issue
+        // Return a more helpful error message
+        return res.status(500).json({
           success: false,
-          error: 'Email already registered',
-          code: 'EMAIL_EXISTS'
+          error: 'Account creation failed due to database constraint. Please try again or contact support.',
+          code: 'DATABASE_ERROR',
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
       }
     }
     
-    res.status(500).json({
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message).join(', ');
+      return res.status(400).json({
+        success: false,
+        error: validationErrors,
+        code: 'VALIDATION_ERROR'
+      });
+    }
+    
+    // In development, include more error details
+    const errorResponse = {
       success: false,
       error: 'Failed to create account',
       code: 'SERVER_ERROR'
-    });
+    };
+    
+    if (process.env.NODE_ENV === 'development') {
+      errorResponse.details = error.message;
+      errorResponse.stack = error.stack;
+      errorResponse.errorName = error.name;
+      errorResponse.errorCode = error.code;
+    }
+    
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -417,8 +490,8 @@ router.post('/login', async (req, res) => {
     await user.updateLastLogin();
     
     // Generate tokens (convert ObjectId to string)
-    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username, email: user.email });
-    const refreshToken = generateRefreshToken({ userId: user._id.toString(), username: user.username, email: user.email });
+    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username });
+    const refreshToken = generateRefreshToken({ userId: user._id.toString(), username: user.username });
     
     // Set refresh token in httpOnly cookie
     // For cross-origin requests, sameSite must be 'none' with secure=true
@@ -433,8 +506,7 @@ router.post('/login', async (req, res) => {
     logger.info({
       requestId: req.requestId,
       userId: user._id,
-      username: user.username,
-      email: user.email
+      username: user.username
     }, 'User logged in');
     
     // Return user data (without sensitive fields)
@@ -505,7 +577,7 @@ router.post('/refresh', async (req, res) => {
     }
     
     // Generate new access token (convert ObjectId to string)
-    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username, email: user.email });
+    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username });
     
     res.json({
       success: true,
@@ -600,19 +672,21 @@ router.get('/me', requireAuth, async (req, res) => {
  */
 router.post('/forgot-password', async (req, res) => {
   try {
-    const { email } = req.body;
+    const { username } = req.body;
     
-    if (!email) {
+    if (!username) {
       return res.status(400).json({
         success: false,
-        error: 'Email is required',
+        error: 'Username is required',
         code: 'VALIDATION_ERROR'
       });
     }
     
-    const user = await User.findOne({ email: email.toLowerCase() });
+    // Find user by username (case-insensitive)
+    const normalizedUsername = username.toLowerCase();
+    const user = await User.findOne({ username: normalizedUsername }).select('+passwordResetToken +passwordResetExpires');
     
-    // Always return success (don't reveal if email exists)
+    // Always return success (don't reveal if username exists)
     if (user) {
       // Generate reset token
       const resetToken = crypto.randomBytes(32).toString('hex');
@@ -623,7 +697,7 @@ router.post('/forgot-password', async (req, res) => {
       user.passwordResetExpires = resetExpires;
       await user.save();
       
-      // TODO: Send email with reset link (not implemented for MVP)
+      // TODO: Send reset link via notification (not implemented for MVP)
       // For MVP, return token in response (REMOVE IN PRODUCTION!)
       logger.info({
         requestId: req.requestId,
@@ -661,7 +735,7 @@ router.post('/forgot-password', async (req, res) => {
     
     res.json({
       success: true,
-      message: 'If email exists, password reset link has been sent'
+      message: 'If username exists, password reset link has been sent'
     });
   } catch (error) {
     logger.error({

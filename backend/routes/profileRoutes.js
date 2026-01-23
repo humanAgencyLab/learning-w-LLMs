@@ -73,7 +73,6 @@ router.get('/', requireAuth, async (req, res) => {
     // Ensure mobile is included in the response
     const profileResponse = {
       name: userData.name,
-      email: userData.email,
       avatarUrl: userData.avatarUrl,
       ...userData.profile
     };
@@ -316,7 +315,6 @@ router.put('/', requireAuth, async (req, res) => {
       data: {
         profile: {
           name: userData.name,
-          email: userData.email,
           avatarUrl: userData.avatarUrl,
           ...userData.profile
         }
@@ -514,98 +512,6 @@ router.post('/avatar', requireAuth, uploadAvatar, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to upload avatar',
-      code: 'SERVER_ERROR'
-    });
-  }
-});
-
-/**
- * PATCH /v1/profile/email
- * Update user email
- */
-router.patch('/email', requireAuth, async (req, res) => {
-  try {
-    const { email } = req.body;
-    
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        error: 'Email is required',
-        code: 'VALIDATION_ERROR'
-      });
-    }
-    
-    // Validate email format
-    const emailRegex = /^\S+@\S+\.\S+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid email format',
-        code: 'VALIDATION_ERROR'
-      });
-    }
-    
-    const user = await User.findById(req.userId);
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found',
-        code: 'USER_NOT_FOUND'
-      });
-    }
-    
-    // Check if email is already taken by another user
-    const existingUser = await User.findOne({ 
-      email: email.toLowerCase().trim(),
-      _id: { $ne: req.userId }
-    });
-    
-    if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        error: 'Email already registered',
-        code: 'EMAIL_EXISTS'
-      });
-    }
-    
-    // Update email
-    user.email = email.toLowerCase().trim();
-    user.emailVerified = false; // Require re-verification after email change
-    await user.save();
-    
-    logger.info({
-      requestId: req.requestId,
-      userId: req.userId,
-      newEmail: user.email
-    }, 'Email updated');
-    
-    res.json({
-      success: true,
-      message: 'Email updated successfully',
-      data: {
-        email: user.email
-      }
-    });
-  } catch (error) {
-    logger.error({
-      requestId: req.requestId,
-      userId: req.userId,
-      error: error.message,
-      stack: error.stack
-    }, 'Update email error');
-    
-    if (error.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        error: 'Email already registered',
-        code: 'EMAIL_EXISTS'
-      });
-    }
-    
-    res.status(500).json({
-      success: false,
-      error: 'Failed to update email',
       code: 'SERVER_ERROR'
     });
   }

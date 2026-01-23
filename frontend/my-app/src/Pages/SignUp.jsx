@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import '../styles/SignUp.css';
-import EmailIcon from '../components/SignIn/EmailIcon';
 import UserIcon from '../components/Icons-Avatars/UserIcon';
 import LockIcon from '../components/SignIn/LockIcon';
 import useAuthStore from '../state/authStore';
@@ -12,14 +11,11 @@ function SignUp() {
   const navigate = useNavigate();
   const { signup, isLoading, error, isAuthenticated, clearError } = useAuthStore();
   
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [autoGenerateUsername, setAutoGenerateUsername] = useState(false);
   const [localError, setLocalError] = useState('');
-  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [isGeneratingUsername, setIsGeneratingUsername] = useState(false);
 
@@ -40,8 +36,14 @@ function SignUp() {
     setLocalError('');
 
     // Validation
-    if (!firstName || !lastName || !email || !password) {
+    if (!name || !password) {
       setLocalError('Please fill in all required fields');
+      return;
+    }
+
+    // Validate name (required for certificate)
+    if (name.trim().length === 0) {
+      setLocalError('Name is required for certificate generation');
       return;
     }
 
@@ -71,46 +73,25 @@ function SignUp() {
       return;
     }
 
-    // Validate email format
-    const emailRegex = /^\S+@\S+\.\S+$/;
-    if (!emailRegex.test(email)) {
-      setLocalError('Please enter a valid email address');
-      return;
-    }
-
-    setIsCheckingEmail(true);
     setIsCheckingUsername(true);
     try {
-      const normalizedEmail = email.trim().toLowerCase();
-      
-      // FIRST: Check database for existing registered users (most important check)
-      const emailCheck = await authApi.checkEmail(normalizedEmail);
-      
-      if (emailCheck.exists) {
-        setLocalError('This email is already registered. Please use a different email or sign in instead.');
-        setIsCheckingEmail(false);
-        setIsCheckingUsername(false);
-        return;
-      }
-
-      // SECOND: Check username
+      // Check username
       const usernameCheck = await authApi.checkUsername(username);
       if (usernameCheck.exists) {
         setLocalError('This username is already taken. Please choose a different username or click "Generate a Username".');
-        setIsCheckingEmail(false);
         setIsCheckingUsername(false);
         return;
       }
       
-      // SECOND: Check sessionStorage for pending signup with same email
+      // Check sessionStorage for pending signup with same username
       // This prevents duplicate signups when user hasn't completed onboarding yet
       const existingPendingSignup = sessionStorage.getItem('pendingSignup');
       if (existingPendingSignup) {
         try {
           const pendingData = JSON.parse(existingPendingSignup);
-          if (pendingData.email && pendingData.email.toLowerCase() === normalizedEmail) {
-            setLocalError('You already have a signup in progress with this email. Please complete the onboarding process or use a different email.');
-            setIsCheckingEmail(false);
+          if (pendingData.username && pendingData.username.toLowerCase() === username.toLowerCase()) {
+            setLocalError('You already have a signup in progress with this username. Please complete the onboarding process or use a different username.');
+            setIsCheckingUsername(false);
             return;
           }
         } catch (parseError) {
@@ -119,28 +100,25 @@ function SignUp() {
         }
       }
 
-      // Email and username are available - store signup data temporarily in sessionStorage
-      // Use normalized email (lowercase) for consistency
+      // Username is available - store signup data temporarily in sessionStorage
       const signupData = {
-        name: `${firstName} ${lastName}`,
-        email: normalizedEmail,
+        name: name.trim(),
         password: password,
         username: username,
         autoGenerateUsername: false // User provided username manually
       };
       sessionStorage.setItem('pendingSignup', JSON.stringify(signupData));
       
-      setIsCheckingEmail(false);
       setIsCheckingUsername(false);
       
       // Redirect to onboarding - account will be created after onboarding is complete
       navigate('/onboarding', { replace: true });
     } catch (err) {
       // Provide more specific error messages
-      let errorMessage = 'Failed to check email. Please try again.';
+      let errorMessage = 'Failed to check username. Please try again.';
       const errMsg = err.message || '';
       
-      console.error('Error checking email:', err);
+      console.error('Error checking username:', err);
       
       if (errMsg.includes('endpoint not found') || errMsg.includes('Route not found') || errMsg.includes('404')) {
         errorMessage = 'Unable to connect to backend server. Please check your connection and try again.';
@@ -150,7 +128,6 @@ function SignUp() {
         errorMessage = errMsg || errorMessage;
       }
       setLocalError(errorMessage);
-      setIsCheckingEmail(false);
       setIsCheckingUsername(false);
     }
   };
@@ -180,65 +157,27 @@ function SignUp() {
           )}
 
           <form className="signup-form" onSubmit={handleSubmit}>
-            {/* First Name and Last Name */}
-            <div className="name-row">
-              <div className="input-field">
-                <label className="input-label">First Name</label>
-                <div className="input-group input-group-no-icon">
-                  <input 
-                    type="text" 
-                    placeholder="First Name" 
-                    value={firstName}
-                    maxLength={50}
-                    onChange={(e) => {
-                      if (e.target.value.length <= 50) {
-                        setFirstName(e.target.value);
-                      }
-                    }}
-                    required 
-                    disabled={isLoading}
-                  />
-                </div>
-              </div>
-              <div className="input-field">
-                <label className="input-label">Last Name</label>
-                <div className="input-group input-group-no-icon">
-                  <input 
-                    type="text" 
-                    placeholder="Last Name" 
-                    value={lastName}
-                    maxLength={50}
-                    onChange={(e) => {
-                      if (e.target.value.length <= 50) {
-                        setLastName(e.target.value);
-                      }
-                    }}
-                    required 
-                    disabled={isLoading}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Email */}
+            {/* Display Name */}
             <div className="input-field">
-              <label className="input-label">Mail</label>
-              <div className="input-group input-group-with-icon">
-                <EmailIcon className="input-icon" />
+              <label className="input-label">Display Name</label>
+              <div className="input-group input-group-no-icon">
                 <input 
-                  type="email" 
-                  placeholder="yourname@mail.com" 
-                  value={email}
-                  maxLength={255}
+                  type="text" 
+                  placeholder="Enter your name or a pseudonym" 
+                  value={name}
+                  maxLength={100}
                   onChange={(e) => {
-                    if (e.target.value.length <= 255) {
-                      setEmail(e.target.value);
+                    if (e.target.value.length <= 100) {
+                      setName(e.target.value);
                     }
                   }}
                   required 
-                  disabled={isLoading || isCheckingEmail}
+                  disabled={isLoading}
                 />
               </div>
+              <p className="password-requirements" style={{ marginTop: '4px', fontSize: '12px', color: '#666' }}>
+                Pseudonyms are welcome! This name will appear on certificates.
+              </p>
             </div>
 
             {/* Username */}
@@ -266,7 +205,7 @@ function SignUp() {
                 onClick={async () => {
                   // Generate username client-side based on name
                   setIsGeneratingUsername(true);
-                  const fullName = `${firstName} ${lastName}`.trim();
+                  const fullName = name.trim();
                   let cleanBase = fullName.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 15);
                   if (!cleanBase) cleanBase = 'user';
                   
@@ -299,7 +238,7 @@ function SignUp() {
                     setIsGeneratingUsername(false);
                   }
                 }}
-                disabled={isLoading || isCheckingUsername || isGeneratingUsername || !firstName || !lastName}
+                disabled={isLoading || isCheckingUsername || isGeneratingUsername || !name}
                 style={{
                   marginTop: '8px',
                   padding: '8px 16px',
@@ -309,8 +248,8 @@ function SignUp() {
                   color: '#4e81ee',
                   fontSize: '14px',
                   fontWeight: '600',
-                  cursor: (isLoading || isCheckingUsername || isGeneratingUsername || !firstName || !lastName) ? 'not-allowed' : 'pointer',
-                  opacity: (isLoading || isCheckingUsername || isGeneratingUsername || !firstName || !lastName) ? 0.5 : 1
+                  cursor: (isLoading || isCheckingUsername || isGeneratingUsername || !name) ? 'not-allowed' : 'pointer',
+                  opacity: (isLoading || isCheckingUsername || isGeneratingUsername || !name) ? 0.5 : 1
                 }}
               >
                 {isGeneratingUsername || isCheckingUsername ? 'Generating...' : 'Generate a Username'}
@@ -345,10 +284,10 @@ function SignUp() {
             <button 
               type="submit" 
               className="signup-button"
-              disabled={isLoading || isCheckingEmail || isCheckingUsername}
+              disabled={isLoading || isCheckingUsername}
             >
-              {(isCheckingEmail || isCheckingUsername) ? 'Checking...' : 'Continue to Onboarding'}
-              {!isCheckingEmail && (
+              {isCheckingUsername ? 'Checking...' : 'Continue to Onboarding'}
+              {!isCheckingUsername && (
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '12px' }}>
                   <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import '../styles/ResetPassword.css';
-import EmailIcon from '../components/SignIn/EmailIcon';
+import UserIcon from '../components/Icons-Avatars/UserIcon';
 import LockIcon from '../components/SignIn/LockIcon';
 import * as authApi from '../lib/authApi';
 
@@ -10,7 +10,7 @@ function ResetPassword() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
 
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -28,14 +28,14 @@ function ResetPassword() {
     setError('');
     setSuccess(false);
 
-    if (!email) {
-      setError('Please enter your email address');
+    if (!username) {
+      setError('Please enter your username');
       setIsLoading(false);
       return;
     }
 
     try {
-      const response = await authApi.forgotPassword(email);
+      const response = await authApi.forgotPassword(username);
       // MVP: Token is returned in response (remove in production!)
       if (response.data?.resetToken) {
         setResetToken(response.data.resetToken);
@@ -43,7 +43,7 @@ function ResetPassword() {
         setSuccess(true);
         setError('');
       } else {
-        // User doesn't exist or email not found
+        // User doesn't exist or username not found
         setSuccess(true);
         setError('');
         setResetToken('');
@@ -207,7 +207,7 @@ function ResetPassword() {
           ) : (
             <>
               <p className="resetpassword-description">
-                Enter your email to receive a password reset link
+                Enter your username to receive a password reset link
               </p>
 
               {error && (
@@ -251,24 +251,25 @@ function ResetPassword() {
 
               {success && !resetToken && (
                 <div className="success-message">
-                  If an account exists with this email, a password reset link has been sent.
+                  If an account exists with this username, a password reset link has been sent.
                 </div>
               )}
 
               <form className="resetpassword-form" onSubmit={handleForgotPassword}>
-                {/* Email */}
+                {/* Username */}
                 <div className="input-field">
-                  <label className="input-label">Mail</label>
+                  <label className="input-label">Username</label>
                   <div className="input-group input-group-with-icon">
-                    <EmailIcon className="input-icon" />
+                    <UserIcon className="input-icon" />
                     <input
-                      type="email"
-                      placeholder="yourname@mail.com"
-                      value={email}
-                      maxLength={255}
+                      type="text"
+                      placeholder="Enter your username"
+                      value={username}
+                      maxLength={30}
                       onChange={(e) => {
-                        if (e.target.value.length <= 255) {
-                          setEmail(e.target.value);
+                        const value = e.target.value.replace(/[^a-zA-Z0-9_]/g, '');
+                        if (value.length <= 30) {
+                          setUsername(value);
                         }
                       }}
                       required

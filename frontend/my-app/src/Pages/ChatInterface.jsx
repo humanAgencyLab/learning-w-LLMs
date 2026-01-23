@@ -588,7 +588,7 @@ function ChatInterface() {
           <div className="flex-1 flex items-center justify-center bg-[#f7f8f8]">
             <div className="flex flex-col gap-8 items-center w-[700px] max-w-full px-4">
               {/* Title */}
-              <p className="font-bold text-[21px] leading-7 text-[#030712] tracking-[-0.6px] text-center">
+              <p className="font-bold text-[21px] leading-7 text-[#030712] tracking-[-0.6px] text-center cursor-default">
                 Ready when you are.
               </p>
 
@@ -598,7 +598,7 @@ function ChatInterface() {
                   inputValue.trim() ? 'border-[#4e81ee]' : 'border-[#e6e7e8]'
                 }`}
               >
-                {/* Clickable area that focuses textarea */}
+                {/* Textarea area - clickable to focus */}
                 <div 
                   className="w-full cursor-text"
                   onClick={() => preSurfaceTextareaRef.current?.focus()}
@@ -1125,7 +1125,7 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                       <div 
                         className="bg-white border flex flex-col gap-2 items-start px-4 py-3 rounded-[24px] w-full relative transition-all duration-200 border-[#4e81ee]"
                       >
-                        {/* Clickable area that focuses textarea */}
+                        {/* Textarea area - clickable to focus */}
                         <div 
                           className="w-full cursor-text"
                           onClick={() => textareaRef.current?.focus()}

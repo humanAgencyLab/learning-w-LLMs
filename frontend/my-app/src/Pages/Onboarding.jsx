@@ -31,14 +31,15 @@ function Onboarding() {
   // But only if we're not in the middle of onboarding flow (no pendingSignup)
   useEffect(() => {
     // Don't redirect if we're currently submitting (handled by handleSubmit)
-    if (isSubmitting) return;
+    if (isSubmitting || isLoading) return;
     
     const pendingSignup = sessionStorage.getItem('pendingSignup');
     // Only redirect if authenticated AND no pending signup AND not currently loading/submitting
-    if (isAuthenticated && !pendingSignup && !isLoading) {
+    // AND we're not on step 2 (which means we're in the middle of onboarding)
+    if (isAuthenticated && !pendingSignup && currentStep !== 2) {
       navigate('/chat', { replace: true });
     }
-  }, [isAuthenticated, navigate, isLoading, isSubmitting]);
+  }, [isAuthenticated, navigate, isLoading, isSubmitting, currentStep]);
 
   const handleNext = () => {
     if (currentStep < 2) {
@@ -46,8 +47,12 @@ function Onboarding() {
     }
   };
 
-  const handleBack = () => {
-    if (currentStep > 1) {
+  const handleBack = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (currentStep > 1 && !isLoading && !isSubmitting) {
       setCurrentStep(currentStep - 1);
     }
   };
@@ -68,7 +73,7 @@ function Onboarding() {
         try {
           signupData = JSON.parse(pendingSignupStr);
           // Validate that signupData has required fields
-          if (signupData && signupData.email && signupData.password && signupData.name) {
+          if (signupData && signupData.password && signupData.name && signupData.username) {
             shouldCreateAccount = true;
           } else {
             // Invalid pending signup data - clear it
@@ -85,12 +90,12 @@ function Onboarding() {
       // If user needs to create account, do it first
       if (shouldCreateAccount && signupData) {
         try {
-          // Double-check email doesn't exist in DB (race condition protection)
-          // This is a backup check in case someone else registered with this email
+          // Double-check username doesn't exist in DB (race condition protection)
+          // This is a backup check in case someone else registered with this username
           // between the signup page check and onboarding completion
-          const emailCheck = await authApi.checkEmail(signupData.email);
-          if (emailCheck.exists) {
-            setError('This email was registered while you were completing onboarding. Please sign in instead.');
+          const usernameCheck = await authApi.checkUsername(signupData.username);
+          if (usernameCheck.exists) {
+            setError('This username was registered while you were completing onboarding. Please sign in instead.');
             setIsLoading(false);
             setIsSubmitting(false);
             // Ensure we stay on step 4 to show the error
@@ -102,7 +107,6 @@ function Onboarding() {
           
           await signup({
             name: signupData.name,
-            email: signupData.email,
             password: signupData.password,
             username: signupData.username,
             autoGenerateUsername: signupData.autoGenerateUsername || false
@@ -110,14 +114,7 @@ function Onboarding() {
           // Clear pending signup data immediately after signup succeeds
           sessionStorage.removeItem('pendingSignup');
         } catch (signupError) {
-          // Handle duplicate email/username errors specifically
-          if (signupError.code === 'EMAIL_EXISTS' || signupError.message.toLowerCase().includes('email already registered')) {
-            setError('This email is already registered. Please use a different email address or sign in instead.');
-            setIsLoading(false);
-            setIsSubmitting(false);
-            setCurrentStep(4);
-            return;
-          }
+          // Handle duplicate username errors specifically
           if (signupError.code === 'USERNAME_EXISTS' || signupError.message.toLowerCase().includes('username already taken')) {
             setError('This username is already taken. Please choose a different username or enable auto-generate in signup.');
             setIsLoading(false);
@@ -150,12 +147,23 @@ function Onboarding() {
         onboardingCompleted: true, // Mark onboarding as completed
       });
       
+      // Clear any pending signup data first
+      sessionStorage.removeItem('pendingSignup');
+      
       // Clear loading state
       setIsLoading(false);
+      setIsSubmitting(false); // Reset submitting flag on success
       
       // Navigate immediately - don't wait, and use replace to prevent back navigation
-      navigate('/chat', { replace: true });
+      // Use window.location as a fallback if navigate doesn't work
+      try {
+        navigate('/chat', { replace: true });
+      } catch (navError) {
+        console.error('Navigation error, using window.location:', navError);
+        window.location.href = '/chat';
+      }
     } catch (err) {
+      console.error('Onboarding submission error:', err);
       setError(err.message || 'Failed to save profile');
       setIsLoading(false);
       setIsSubmitting(false); // Reset submitting flag on error
@@ -394,9 +402,13 @@ function Onboarding() {
             {currentStep > 1 && (
               <button
                 type="button"
-                onClick={handleBack}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleBack(e);
+                }}
                 className="back-button"
-                disabled={isLoading}
+                disabled={isLoading || isSubmitting}
                 style={{
                   padding: '12px 24px',
                   borderRadius: '8px',
@@ -432,11 +444,26 @@ function Onboarding() {
             ) : (
               <button
                 type="button"
-                onClick={handleSubmit}
+                onClick={async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  
+                  // Prevent multiple clicks
+                  if (isLoading || isSubmitting) {
+                    return;
+                  }
+                  
+                  try {
+                    await handleSubmit();
+                  } catch (error) {
+                    // Error is already handled in handleSubmit
+                    console.error('Finish button error:', error);
+                  }
+                }}
                 className="next-button"
-                disabled={isLoading}
+                disabled={isLoading || isSubmitting}
               >
-                {isLoading ? 'Saving...' : 'Finish'}
+                {isLoading || isSubmitting ? 'Saving...' : 'Finish'}
               </button>
             )}
           </div>

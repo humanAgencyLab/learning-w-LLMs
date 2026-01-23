@@ -2,10 +2,10 @@
 import React from 'react';
 import styles from './InputDesign.module.css';
 import StatusBar from './StatusBar';
-import EmailIcon from './EmailIcon';
 import LockIcon from './LockIcon';
 import InputField from './InputField';
 import SignUpPrompt from './SignUpPrompt';
+import UserIcon from '../Icons-Avatars/UserIcon';
 
 function InputDesign() {
   return (
@@ -27,7 +27,7 @@ function InputDesign() {
         <h1 className={styles.heading}>Welcome Back!</h1>
 
         <form>
-          <InputField type="email" placeholder="Email" icon={<EmailIcon />} />
+          <InputField type="text" placeholder="Username" icon={<UserIcon />} />
 
           <InputField
             type="password"

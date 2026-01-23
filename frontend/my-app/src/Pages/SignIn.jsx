@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import '../styles/SignIn.css';
-import EmailIcon from '../components/SignIn/EmailIcon';
 import UserIcon from '../components/Icons-Avatars/UserIcon';
 import LockIcon from '../components/SignIn/LockIcon';
 import useAuthStore from '../state/authStore';

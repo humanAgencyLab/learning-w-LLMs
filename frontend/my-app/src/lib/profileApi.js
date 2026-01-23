@@ -109,41 +109,6 @@ export async function uploadAvatar(file) {
 }
 
 /**
- * Update user email
- * @param {string} email - New email address
- * @returns {Promise<{email: string}>}
- */
-export async function updateEmail(email) {
-  const response = await fetch(`${API_PREFIX}/email`, {
-    method: 'PATCH',
-    headers: getAuthHeaders(),
-    credentials: 'include',
-    body: JSON.stringify({ email }),
-  });
-
-  const data = await safeReadResponse(response);
-
-  if (!response.ok) {
-    // Check if this is an email already exists error
-    const isEmailExists = response.status === 409 || 
-                         (typeof data === 'object' && data.code === 'EMAIL_EXISTS');
-    
-    const errorMessage = extractErrorMessage(response, 'Failed to update email', data);
-    const error = new Error(errorMessage);
-    
-    // Attach metadata to error for easier detection
-    if (isEmailExists) {
-      error.code = 'EMAIL_EXISTS';
-      error.status = 409;
-    }
-    
-    throw error;
-  }
-
-  return (typeof data === 'object' && data.data) ? data.data : data;
-}
-
-/**
  * Change user password
  * @param {string} currentPassword - Current password
  * @param {string} newPassword - New password

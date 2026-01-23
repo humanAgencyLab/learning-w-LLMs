@@ -10,14 +10,14 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your-secret-key-chang
 
 /**
  * Generate an access token (short-lived)
- * @param {Object} payload - Token payload (typically { userId, email })
+ * @param {Object} payload - Token payload (typically { userId, username })
  * @returns {string} JWT access token
  */
 function generateAccessToken(payload) {
   return jwt.sign(
     {
       userId: payload.userId,
-      email: payload.email,
+      username: payload.username,
       type: 'access'
     },
     JWT_SECRET,
@@ -31,14 +31,14 @@ function generateAccessToken(payload) {
 
 /**
  * Generate a refresh token (long-lived)
- * @param {Object} payload - Token payload (typically { userId, email })
+ * @param {Object} payload - Token payload (typically { userId, username })
  * @returns {string} JWT refresh token
  */
 function generateRefreshToken(payload) {
   return jwt.sign(
     {
       userId: payload.userId,
-      email: payload.email,
+      username: payload.username,
       type: 'refresh'
     },
     JWT_SECRET,

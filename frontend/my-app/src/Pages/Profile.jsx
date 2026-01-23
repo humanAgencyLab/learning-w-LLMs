@@ -4,9 +4,7 @@ import '../styles/Profile.css';
 import { avatars } from '../utils/avatars';
 import useAuthStore from '../state/authStore';
 import * as profileApi from '../lib/profileApi';
-import EmailIcon from '../components/SignIn/EmailIcon';
 import LockIcon from '../components/SignIn/LockIcon';
-import PhoneIcon from '../components/Icons-Avatars/PhoneIcon';
 import UserIcon from '../components/Icons-Avatars/UserIcon';
 import { API_BASE } from '../config';
 import { getAuthHeaders } from '../lib/authApi';
@@ -36,7 +34,6 @@ function Profile() {
   
   // Settings fields
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -127,7 +124,6 @@ function Profile() {
           // Set all fields from loaded profile data
           setName(profile.name || user?.name || '');
           setUsername(user?.username || '');
-          setEmail(profile.email || user?.email || '');
           setMobile(profile.mobile || '');
           // Handle major - map common abbreviations to full names
           const majorMapping = {
@@ -182,7 +178,6 @@ function Profile() {
           const profile = user.profile;
           setName(user.name || '');
           setUsername(user.username || '');
-          setEmail(user.email || '');
           setMobile(profile.mobile || '');
           
           // Set avatar if user has one
@@ -226,10 +221,8 @@ function Profile() {
           };
           const mappedMajor = majorMapping[profile.major] || profile.major || '';
           setMajor(mappedMajor);
-          setCourses(Array.isArray(profile.currentCourses) ? profile.currentCourses : []);
-          setSelectedSkill(profile.skillLevel || 'Beginner');
-          const learningType = profile.learningType || 'Visual';
-          setSelectedStyle(learningType);
+          setRecentTopics(Array.isArray(profile.recentTopics) ? profile.recentTopics : []);
+          setSelfRating(profile.selfRating || 'Intermediate');
           setDaysPerWeek(profile.daysPerWeek || 3);
           setMinutesPerSession(profile.minutesPerSession || 40);
           
@@ -247,7 +240,6 @@ function Profile() {
           const profile = user.profile;
           setName(user.name || '');
           setUsername(user.username || '');
-          setEmail(user.email || '');
           setMobile(profile.mobile || '');
           // Handle major mapping
           const majorMapping = {
@@ -280,10 +272,8 @@ function Profile() {
           };
           const mappedMajor = majorMapping[profile.major] || profile.major || '';
           setMajor(mappedMajor);
-          setCourses(Array.isArray(profile.currentCourses) ? profile.currentCourses : []);
-          setSelectedSkill(profile.skillLevel || 'Beginner');
-          const learningType = profile.learningType || 'Visual';
-          setSelectedStyle(learningType);
+          setRecentTopics(Array.isArray(profile.recentTopics) ? profile.recentTopics : []);
+          setSelfRating(profile.selfRating || 'Intermediate');
           setDaysPerWeek(profile.daysPerWeek || 3);
           setMinutesPerSession(profile.minutesPerSession || 40);
           setMobile(profile.mobile || '');
@@ -304,17 +294,13 @@ function Profile() {
     loadCertificates();
   }, [user]); // Run when user changes (e.g., after login)
   
-  // Sync email and username from user object when it changes (e.g., after email update)
+  // Sync username from user object when it changes
   useEffect(() => {
-    if (user?.email && user.email !== email) {
-      console.log('Syncing email from user object:', user.email);
-      setEmail(user.email);
-    }
     if (user?.username && user.username !== username) {
       console.log('Syncing username from user object:', user.username);
       setUsername(user.username);
     }
-  }, [user?.email, user?.username]); // Only run when user.email or user.username changes
+  }, [user?.username]); // Only run when user.username changes
 
   // Load certificates
   const loadCertificates = async () => {
@@ -395,16 +381,13 @@ function Profile() {
       recentTopics: [...recentTopics],
       selfRating: selfRating,
       daysPerWeek: daysPerWeek,
-      minutesPerSession: minutesPerSession,
-      mobile: mobile
-      // Note: email is not included here as it's handled in Settings section
+      minutesPerSession: minutesPerSession
+      // Note: mobile is not included here as it's handled in Settings section
     });
     setOriginalAvatar(user?.avatarUrl || selectedAvatar);
     setIsEditing(true);
     // Close all dropdowns when entering edit mode
     setShowAvatarDropdown(false);
-    setShowSkillDropdown(false);
-    setShowStyleDropdown(false);
     setShowMajorDropdown(false);
     setShowDaysDropdown(false);
     setShowMinutesDropdown(false);
@@ -413,7 +396,7 @@ function Profile() {
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
-    // Don't include email/password in main edit flow
+    // Don't include password in main edit flow (handled in Settings section)
   };
   
   const handleEditSettingsClick = () => {
@@ -424,9 +407,7 @@ function Profile() {
     
     // Store original Settings values when entering edit mode
     setOriginalSettingsValues({
-      username: username,
-      email: email,
-      mobile: mobile
+      username: username
     });
     setIsEditingSettings(true);
     setShowPasswordSection(false);
@@ -439,8 +420,6 @@ function Profile() {
     // Revert Settings fields to original values when canceling
     if (originalSettingsValues) {
       setUsername(originalSettingsValues.username || '');
-      setEmail(originalSettingsValues.email);
-      setMobile(originalSettingsValues.mobile);
     }
     setIsEditingSettings(false);
     setShowPasswordSection(false);
@@ -466,51 +445,6 @@ function Profile() {
     setIsSaving(true);
 
     try {
-      // Update email if changed
-      if (email && email.trim() && email !== user?.email) {
-        try {
-          const emailResult = await profileApi.updateEmail(email.trim());
-          console.log('Email update result:', emailResult);
-        } catch (emailErr) {
-          console.error('Email update error:', emailErr);
-          
-          // Check if error is due to email already existing
-          const isEmailExists = emailErr.code === 'EMAIL_EXISTS' || 
-                               emailErr.status === 409 ||
-                               (emailErr.message && (
-                                 emailErr.message.toLowerCase().includes('email already') || 
-                                 emailErr.message.toLowerCase().includes('already registered') ||
-                                 emailErr.message.toLowerCase().includes('email exists')
-                               ));
-          
-          if (isEmailExists) {
-            // Show warning toast for email already exists
-            toastBus.publish({
-              message: 'This email is already registered. Please use a different email address.',
-              type: 'warning',
-              duration: 5000
-            });
-            setError('This email is already registered. Please use a different email address.');
-          } else {
-            setError(emailErr.message || 'Failed to update email');
-          }
-          setIsSaving(false);
-          return;
-        }
-      } else if (!email || !email.trim()) {
-        // Email is required, don't allow empty email
-        setError('Email is required');
-        setIsSaving(false);
-        return;
-      }
-      
-      // Update mobile in profile
-      const profileUpdateData = {
-        mobile: mobile.trim() || '',
-      };
-      
-      await profileApi.updateProfile(profileUpdateData);
-      
       // Update password if provided
       if (showPasswordSection && newPassword) {
         if (newPassword !== confirmPassword) {
@@ -536,56 +470,9 @@ function Profile() {
         }
       }
       
-      // Refresh user data to get updated email
+      // Refresh user data
       // Call fetchUser which will update the authStore and return the updated user
       const updatedUser = await fetchUser();
-      
-      // Reload profile data to ensure everything is in sync
-      const profileData = await profileApi.getProfile();
-      
-      // Update state with fresh values
-      // Email is stored in user object, mobile is in profile
-      // If email was updated, use the updatedUser.email (from fetchUser) or the email we just saved
-      const emailWasUpdated = email && email.trim() && email !== user?.email;
-      
-      // Get the new email - prefer updatedUser.email, fallback to the email we just saved
-      let newEmail;
-      if (emailWasUpdated) {
-        // Email was updated, use the one from the server response or the one we saved
-        newEmail = updatedUser?.email || email.trim();
-      } else {
-        // Email wasn't changed, keep current
-        newEmail = updatedUser?.email || user?.email || email;
-      }
-      
-      const newMobile = profileData?.profile?.mobile || mobile;
-      
-      console.log('Updating Settings state after save:', {
-        emailWasUpdated,
-        updatedUserEmail: updatedUser?.email,
-        savedEmail: email.trim(),
-        currentUserEmail: user?.email,
-        newEmail,
-        profileMobile: profileData?.profile?.mobile,
-        currentMobile: mobile,
-        newMobile
-      });
-      
-      // Update state - force update with the new values
-      setEmail(newEmail);
-      setMobile(newMobile);
-      
-      // Also update the user object in authStore to ensure consistency
-      // The fetchUser() call above should have already done this, but we'll verify
-      const storeUser = getAuthStore().user;
-      if (storeUser && storeUser.email !== newEmail) {
-        console.log('Email mismatch in store, refreshing...');
-        await fetchUser(); // Refresh one more time to ensure consistency
-        const refreshedUser = getAuthStore().user;
-        if (refreshedUser?.email) {
-          setEmail(refreshedUser.email);
-        }
-      }
       
       setSuccess('Settings updated successfully!');
       setIsEditingSettings(false);
@@ -611,8 +498,7 @@ function Profile() {
       setSelfRating(originalValues.selfRating);
       setDaysPerWeek(originalValues.daysPerWeek);
       setMinutesPerSession(originalValues.minutesPerSession);
-      setMobile(originalValues.mobile);
-      // Note: email is not reverted here as it's handled in Settings section
+      // Note: mobile is not reverted here as it's handled in Settings section
     }
     setIsEditing(false);
     setShowAvatarDropdown(false);
@@ -692,7 +578,7 @@ function Profile() {
       const updateResult = await profileApi.updateProfile(profileUpdateData);
       console.log('Profile update result:', updateResult);
       
-      // Email and password are handled in Settings section, not here
+      // Password is handled in Settings section, not here
       
       // Refresh user data first
       try {
@@ -707,7 +593,6 @@ function Profile() {
         if (profileData?.profile) {
           const profile = profileData.profile;
           setName(profile.name || user?.name || '');
-          setEmail(profile.email || user?.email || '');
           setMobile(profile.mobile || '');
           // Update other fields as needed
           const majorMapping = {
@@ -740,10 +625,8 @@ function Profile() {
           };
           const mappedMajor = majorMapping[profile.major] || profile.major || '';
           setMajor(mappedMajor);
-          setCourses(Array.isArray(profile.currentCourses) ? profile.currentCourses : []);
-          setSelectedSkill(profile.skillLevel || 'Beginner');
-          const learningType = profile.learningType || 'Visual';
-          setSelectedStyle(learningType);
+          setRecentTopics(Array.isArray(profile.recentTopics) ? profile.recentTopics : []);
+          setSelfRating(profile.selfRating || 'Intermediate');
           setDaysPerWeek(profile.daysPerWeek || 3);
           setMinutesPerSession(profile.minutesPerSession || 40);
         }
@@ -757,8 +640,6 @@ function Profile() {
       setOriginalValues(null); // Clear original values after successful save
       // Close all dropdowns after saving
       setShowAvatarDropdown(false);
-      setShowSkillDropdown(false);
-      setShowStyleDropdown(false);
       setShowMajorDropdown(false);
       setShowDaysDropdown(false);
       setShowMinutesDropdown(false);
@@ -1298,58 +1179,6 @@ function Profile() {
               disabled={true}
               placeholder="Username (cannot be changed)"
               title="Username cannot be changed after account creation"
-            />
-          </div>
-
-          {/* Email Field */}
-          <div className="profile-field-row">
-            <label className="profile-field-label">
-              <EmailIcon style={{ width: '20px', height: '20px', marginRight: '8px', display: 'inline-block' }} />
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              maxLength={255}
-              onChange={(e) => {
-                if (e.target.value.length <= 255) {
-                  setEmail(e.target.value);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && isEditingSettings && !isSaving) {
-                  handleSaveSettings();
-                }
-              }}
-              className="profile-input"
-              disabled={!isEditingSettings}
-              placeholder="Enter your email"
-            />
-          </div>
-
-          {/* Mobile Field */}
-          <div className="profile-field-row">
-            <label className="profile-field-label">
-              <PhoneIcon style={{ width: '20px', height: '20px', marginRight: '8px', display: 'inline-block' }} />
-              Phone Number
-            </label>
-            <input
-              type="tel"
-              value={mobile}
-              maxLength={20}
-              onChange={(e) => {
-                if (e.target.value.length <= 20) {
-                  setMobile(e.target.value);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && isEditingSettings && !isSaving) {
-                  handleSaveSettings();
-                }
-              }}
-              className="profile-input"
-              disabled={!isEditingSettings}
-              placeholder="Enter your phone number"
             />
           </div>
 

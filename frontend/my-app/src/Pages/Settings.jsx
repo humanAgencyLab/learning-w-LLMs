@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 // import '../styles/Settings.css'; // LEGACY - Using Tailwind CSS
-import EmailIcon from '../components/SignIn/EmailIcon';
 import LockIcon from '../components/SignIn/LockIcon';
 import PhoneIcon from '../components/Icons-Avatars/PhoneIcon';
 import UserIcon from '../components/Icons-Avatars/UserIcon';
@@ -72,19 +71,6 @@ function Settings() {
             >
               Change Picture
             </label>
-          </div>
-
-          <div className={`input-group ${darkMode ? 'dark' : ''}`}>
-            <EmailIcon className="input-icon" />
-            <h2 className={`settings-property ${darkMode ? 'dark' : ''}`}>
-              {' '}
-              Email
-            </h2>
-            <input
-              type="email"
-              placeholder="Enter your email"
-              className={`settings-input ${darkMode ? 'dark' : ''}`}
-            />
           </div>
 
           <div className={`input-group ${darkMode ? 'dark' : ''}`}>
