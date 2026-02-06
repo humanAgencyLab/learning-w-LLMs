@@ -239,6 +239,30 @@ tail -f backend/logs/app.log  # or terminal output
 
 ---
 
+## Admin: Bulk performance export
+
+You can download performance data for **multiple users** in a single CSV.
+
+**Option 1 – API (server running)**  
+- Endpoint: `GET /v1/admin/performance/export?userIds=id1,id2,id3`  
+- Optional: `&format=quiz_attempts` for a flat table (one row per quiz attempt).  
+- Header: `x-admin-key: <ADMIN_API_KEY>`  
+- Set `ADMIN_API_KEY` in your backend `.env`.  
+- Default response: CSV with summary metrics, session details, and quiz attempts (each row includes User ID).  
+- With `format=quiz_attempts`: CSV columns are  
+  `user_id, topic_name, module_id, attempt_number, quiz_score, passed, module_completed, num_user_messages, time_spent_seconds`.
+
+**Option 2 – Script (no server)**  
+- From `backend/`:  
+  `node scripts/exportUsersPerformance.js <userIdOrUsername1> [userIdOrUsername2] ...`  
+  `node scripts/exportUsersPerformance.js --format=quiz_attempts johndoe`  
+- You can pass MongoDB ObjectIds or **usernames** (e.g. `johndoe`).  
+- Uses `MONGODB_URI` from `backend/.env`. Keep `.env` pointing at **localhost** for local dev. To export from **Atlas** without changing `.env`: create `backend/.env.atlas` with `MONGODB_URI=your_atlas_uri` (it’s in `.gitignore`) and run from `backend/`:  
+  `DOTENV_CONFIG_PATH=./.env.atlas node -r dotenv/config scripts/exportUsersPerformance.js --format=quiz_attempts johndoe`  
+- Writes `performance-export-<timestamp>.csv` or `quiz-attempts-export-<timestamp>.csv` into `backend/`.
+
+---
+
 **Version**: 1.0  
 **Last Updated**: 2025
 
