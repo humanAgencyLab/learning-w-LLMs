@@ -265,3 +265,6 @@ For detailed documentation, see:
 - **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)**: Quick reference guide
 - **[ONBOARDING_GUIDE.md](ONBOARDING_GUIDE.md)**: Complete onboarding guide
 - **[docs/TEACHING_SYSTEM_DOCUMENTATION.md](docs/TEACHING_SYSTEM_DOCUMENTATION.md)**: Teaching system documentation
+
+---
+*Last updated: Feb 2026*
