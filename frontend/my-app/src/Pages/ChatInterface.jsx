@@ -37,7 +37,9 @@ function ChatInterface() {
     clearError,
     appendMessage,
     startRevisionQuiz,
-    startQuizFromChat
+    startQuizFromChat,
+    hasMoreMessages,
+    loadOlderMessages
   } = useSessionStore();
   const [inputValue, setInputValue] = useState('');
   const [modificationRequest, setModificationRequest] = useState('');
@@ -47,6 +49,7 @@ function ChatInterface() {
   const [expandedModules, setExpandedModules] = useState(new Set([0])); // Expand first module by default
   const [composerHeight, setComposerHeight] = useState(56); // Track composer height for spacing
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const textareaRef = useRef(null);
   const preSurfaceTextareaRef = useRef(null);
   const messageListRef = useRef(null);
@@ -1002,6 +1005,26 @@ function ChatInterface() {
                   style={{ paddingBottom: '30px', overscrollBehaviorY: 'contain' }}
                 >
                   <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex-shrink-0">
+                    {hasMoreMessages && (
+                      <div className="flex justify-center py-3 pb-4">
+                        <button
+                          type="button"
+                          disabled={loadingOlder || loading}
+                          onClick={async () => {
+                            if (!sessionId || loadingOlder) return;
+                            setLoadingOlder(true);
+                            try {
+                              await loadOlderMessages(sessionId);
+                            } finally {
+                              setLoadingOlder(false);
+                            }
+                          }}
+                          className="text-sm font-medium text-[#4e81ee] hover:text-blue-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {loadingOlder ? 'Loading…' : '↑ Load older messages'}
+                        </button>
+                      </div>
+                    )}
                     <div className="flex flex-col gap-6" style={{ minHeight: 'min-content' }}>
                       {sessionMessages.map((message, index) => (
                         <div

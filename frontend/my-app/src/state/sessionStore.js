@@ -26,6 +26,8 @@ const initial = {
   progressPct: 0,
   isViewOnly: false, 
   messages: [],
+  totalMessageCount: null, // total in session (for paging)
+  hasMoreMessages: false, // true if more older messages can be loaded
   profile: null, // Will be populated from auth store
   model: 'llama',
   meta: {
@@ -325,6 +327,8 @@ const useSessionStore = create(
           progressPct: payload.progressPct !== undefined ? payload.progressPct : prev.progressPct ?? 0,
           isViewOnly: payload.isViewOnly ?? prev.isViewOnly ?? false,
           messages: Array.isArray(payload.lastMessages) ? payload.lastMessages : prev.messages,
+          totalMessageCount: payload.totalMessageCount !== undefined ? payload.totalMessageCount : prev.totalMessageCount,
+          hasMoreMessages: payload.hasMoreMessages ?? prev.hasMoreMessages ?? false,
           profile: payload.profile || prev.profile || null,
           error: null,
           quizDraft: draftItems && draftItems.length > 0
@@ -377,6 +381,8 @@ const useSessionStore = create(
           progressPct: 0,
           isViewOnly: false,
           messages: [],
+          totalMessageCount: null,
+          hasMoreMessages: false,
           model: 'llama',
           meta: {
             countSinceLastCheck: 0,
@@ -1140,6 +1146,33 @@ const useSessionStore = create(
             error: error.message, 
             loading: false 
           });
+          throw error;
+        }
+      },
+
+      /** Load older messages (prepend) for display; used when user scrolls to top. */
+      loadOlderMessages: async (sessionId) => {
+        const state = get();
+        if (!state.hasMoreMessages || !sessionId) return { hasMore: false };
+        set({ loading: true });
+        try {
+          const response = await sessionApi.getSessionMessages(sessionId, {
+            fromEnd: state.messages.length,
+            limit: 20
+          });
+          if (!response.success || !response.data) {
+            set({ loading: false });
+            return { hasMore: false };
+          }
+          const { messages: older, hasMore } = response.data;
+          set(prev => ({
+            messages: [...(older || []), ...prev.messages],
+            hasMoreMessages: !!hasMore,
+            loading: false
+          }));
+          return { hasMore: !!hasMore };
+        } catch (error) {
+          set({ loading: false });
           throw error;
         }
       },

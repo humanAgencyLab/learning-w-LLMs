@@ -654,7 +654,33 @@ router.get('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(async
   }
 });
 
-// POST /v1/sessions/:id/resume - Minimal hydrate payload (requires authentication and ownership)
+// GET /v1/sessions/:id/messages - Paginated messages for display (oldest-first in each page)
+// Query: limit=20, fromEnd=0 (fromEnd=0 => newest 20; fromEnd=20 => next 20 older)
+router.get('/v1/sessions/:id/messages', requireAuth, addRequestId, requireOwnership(async (req) => {
+  const session = await Session.findById(req.params.id);
+  return session?.userId;
+}), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 20), 100);
+    const fromEnd = Math.max(0, parseInt(req.query.fromEnd) || 0);
+    const allMessages = (await Session.findById(id).select('messages').lean())?.messages || [];
+    const totalCount = allMessages.length;
+    const start = Math.max(0, totalCount - fromEnd - limit);
+    const end = totalCount - fromEnd;
+    const messages = start < end ? allMessages.slice(start, end) : [];
+    const hasMore = fromEnd + limit < totalCount;
+    res.json({
+      success: true,
+      data: { messages, totalCount, hasMore }
+    });
+  } catch (error) {
+    req.logger.error('Failed to fetch session messages', { error: error.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// POST /v1/sessions/:id/resume - Initial hydrate: last 20 messages + totalCount for paging
 router.post('/v1/sessions/:id/resume', requireAuth, addRequestId, requireOwnership(async (req) => {
   const session = await Session.findById(req.params.id);
   return session?.userId;
@@ -663,10 +689,10 @@ router.post('/v1/sessions/:id/resume', requireAuth, addRequestId, requireOwnersh
   
   try {
     const { id } = req.params;
+    const INITIAL_PAGE_SIZE = 20;
     
     req.logger.info('Resuming session', { sessionId: id });
     
-    // Validate session ID format
     if (!id.match(/^[0-9a-fA-F]{24}$/)) {
       req.logger.warn('Invalid session ID format', { sessionId: id });
       return res.status(404).json({
@@ -687,12 +713,15 @@ router.post('/v1/sessions/:id/resume', requireAuth, addRequestId, requireOwnersh
       });
     }
     
-    // Get last 20 messages for minimal hydrate
-    const lastMessages = session.messages.slice(-20);
+    const allMessages = session.messages || [];
+    const totalMessageCount = allMessages.length;
+    const lastMessages = allMessages.slice(-INITIAL_PAGE_SIZE);
+    const hasMoreMessages = totalMessageCount > INITIAL_PAGE_SIZE;
     
     req.logger.info('Session resumed successfully', { 
       sessionId: id,
       messageCount: lastMessages.length,
+      totalMessageCount,
       duration: Date.now() - startTime 
     });
     
@@ -709,7 +738,9 @@ router.post('/v1/sessions/:id/resume', requireAuth, addRequestId, requireOwnersh
         gems: session.gems,
         isViewOnly: session.isViewOnly,
         progressPct: session.progressPct,
-        lastMessages: lastMessages,
+        lastMessages,
+        totalMessageCount,
+        hasMoreMessages,
         profile: session.profile
       }
     });

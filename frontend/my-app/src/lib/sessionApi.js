@@ -63,6 +63,22 @@ export async function resumeSession(sessionId) {
   return data;
 }
 
+/** Paginated messages for display. fromEnd=0 returns newest page; increase to load older. */
+export async function getSessionMessages(sessionId, { limit = 20, fromEnd = 0 } = {}) {
+  const url = `${API_BASE}/v1/sessions/${sessionId}/messages?limit=${limit}&fromEnd=${fromEnd}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+    credentials: 'include',
+  });
+  const data = await safeReadResponse(response);
+  if (!response.ok) {
+    const errorMessage = extractErrorMessage(response, 'Failed to load messages', data);
+    throw new Error(errorMessage);
+  }
+  return data;
+}
+
 export async function getSessions(limit = 20, options = {}) {
   const { favorites, search, status } = options;
   let url = `${API_BASE}/v1/sessions?limit=${limit}`;

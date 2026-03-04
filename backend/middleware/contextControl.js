@@ -61,54 +61,42 @@ const contextControl = async (req, res, next) => {
         reason: 'Triggering summarization'
       }, 'Context control: Summarizing conversation');
 
-      // Perform summarization
+      // Perform summarization (for LLM context only - do NOT remove messages from session.messages)
       const summaryResult = await summarizeConversation(session, learningMessages, requestId);
       
-      console.log('Summarization result:', summaryResult.success, 'messages after:', summaryResult.summarizedMessages?.length);
+      console.log('Summarization result:', summaryResult.success, 'summaryMessage:', !!summaryResult.summarizedMessages?.[0]);
       
       if (summaryResult.success) {
-        console.log('Summarization successful, updating session...');
-        // Combine summarized learning messages with non-learning messages
-        const generalMessages = messages.filter(msg => {
-          const intent = msg.metadata?.intent;
-          return intent === 'general' || intent === 'admin';
-        });
-        
-        // Build final message array: [summary, ...remaining learning messages, ...general messages in chronological order]
-        const remainingLearningMessages = learningMessages.slice(SUMMARIZE_CHUNK_SIZE);
-        session.messages = [
-          summaryResult.summarizedMessages[0], // The summary
-          ...remainingLearningMessages, // Remaining learning messages
-          ...generalMessages // General messages (preserve chronology)
-        ];
-        
-        console.log('Final session.messages length:', session.messages.length, 'summary message:', session.messages[0]?.role);
-        
-        // Ensure meta exists and set summaryVersion starting at 1
+        const summaryMessage = summaryResult.summarizedMessages[0];
+        const summaryText = summaryMessage?.content || '';
+        // Store summary in meta only; keep all messages in session.messages (Cursor-style: all visible in UI)
         session.meta = session.meta || {};
         session.meta.summaryVersion = session.meta.summaryVersion || 0;
-        session.meta.summaryVersion += 1; // Start at 1 if first summary
+        session.meta.summaryVersion += 1;
         session.meta.summarizedUpToIndex = summaryResult.summarizedUpToIndex;
+        const previousSummary = session.meta.contextSummary?.text;
+        session.meta.contextSummary = {
+          text: previousSummary ? `${previousSummary}\n\n---\n${summaryText}` : summaryText,
+          summarizedUpToIndex: summaryResult.summarizedUpToIndex,
+          version: session.meta.summaryVersion
+        };
 
-        // Save the updated session
         await session.save();
-        console.log('Session saved successfully');
+        console.log('Context summary stored in meta; session.messages unchanged (length=%d)', (session.messages || []).length);
 
-        // Add summary note to response
         req.contextSummary = {
           summarized: true,
-          summaryNote: "Context compressed for continuity",
-          turnsReduced: turnsBefore - summaryResult.summarizedMessages.length
+          summaryNote: 'Context compressed for LLM; all messages still visible in chat',
+          turnsSummarized: summaryResult.summarizedChunk
         };
 
         logger.info({
           requestId,
           sessionId: session._id,
           turnsBefore,
-          turnsAfter: summaryResult.summarizedMessages.length,
-          summarizedChunk: summaryResult.summarizedChunk,
-          summaryVersion: session.meta.summaryVersion
-        }, 'Context control: Summarization completed');
+          summaryVersion: session.meta.summaryVersion,
+          summarizedUpToIndex: session.meta.summarizedUpToIndex
+        }, 'Context control: Summarization completed (meta only)');
       } else {
         logger.warn({
           requestId,
@@ -179,9 +167,10 @@ function shouldTriggerSummarization(session, messages) {
  */
 async function summarizeConversation(session, messages, requestId) {
   try {
-    // Get the oldest chunk to summarize
-    const chunkToSummarize = messages.slice(0, SUMMARIZE_CHUNK_SIZE);
-    const remainingMessages = messages.slice(SUMMARIZE_CHUNK_SIZE);
+    // Summarize the next chunk (after any previous summary)
+    const lastSummarized = session.meta?.summarizedUpToIndex || 0;
+    const chunkToSummarize = messages.slice(lastSummarized, lastSummarized + SUMMARIZE_CHUNK_SIZE);
+    const remainingMessages = messages.slice(lastSummarized + SUMMARIZE_CHUNK_SIZE);
     
     // Find the current module info
     const currentModule = session.plan?.find(m => m.id === session.activeModuleId);
@@ -242,11 +231,12 @@ async function summarizeConversation(session, messages, requestId) {
     // Combine summary with remaining messages
     const summarizedMessages = [summaryMessage, ...normalizedRemainingMessages];
 
+    const newSummarizedUpToIndex = lastSummarized + SUMMARIZE_CHUNK_SIZE;
     return {
       success: true,
       summarizedMessages,
-      summarizedChunk: SUMMARIZE_CHUNK_SIZE,
-      summarizedUpToIndex: SUMMARIZE_CHUNK_SIZE
+      summarizedChunk: chunkToSummarize.length,
+      summarizedUpToIndex: newSummarizedUpToIndex
     };
   } catch (error) {
     logger.error({
@@ -290,10 +280,20 @@ Be factual and concise. Avoid re-teaching content. No placeholders like "TBD".`;
 
 /**
  * Check context limits and determine max tokens
+ * When contextSummary exists, effective context = summary + messages after summarizedUpToIndex
  */
 async function checkContextLimits(session, routePath, requestId) {
   const messages = session.messages || [];
-  const totalTokens = messages.reduce((sum, msg) => sum + (msg.metadata?.tokens || 0), 0);
+  const meta = session.meta || {};
+  let totalTokens;
+  if (meta.contextSummary && typeof meta.summarizedUpToIndex === 'number') {
+    const summaryTokens = Math.ceil((meta.contextSummary.text || '').length / 4);
+    const recentMessages = messages.slice(meta.summarizedUpToIndex);
+    const recentTokens = recentMessages.reduce((sum, msg) => sum + (msg.metadata?.tokens || Math.ceil((msg.content || '').length / 4)), 0);
+    totalTokens = summaryTokens + recentTokens;
+  } else {
+    totalTokens = messages.reduce((sum, msg) => sum + (msg.metadata?.tokens || 0), 0);
+  }
   
   // Determine max tokens based on route
   let maxTokens;

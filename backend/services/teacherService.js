@@ -38,15 +38,24 @@ const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validati
     }
   ];
 
-  // Add conversation history if session has messages
+  // Add conversation history: use contextSummary + recent messages when available (Cursor-style)
   if (session && session.messages && session.messages.length > 0) {
-    // Get recent messages (last 15 for context, then truncate if needed)
-    const recentMessages = session.messages.slice(-15);
-
-    // Truncate messages if total tokens exceed limit (max 2000 tokens for context)
+    const meta = session.meta || {};
+    let recentMessages;
+    if (meta.contextSummary && typeof meta.summarizedUpToIndex === 'number') {
+      // Summarized context: summary as system context + messages after summarized index
+      const summaryText = meta.contextSummary.text || '';
+      if (summaryText) {
+        messages.push({
+          role: 'system',
+          content: `Previous conversation summary (for context):\n${summaryText}`
+        });
+      }
+      recentMessages = session.messages.slice(meta.summarizedUpToIndex).slice(-15);
+    } else {
+      recentMessages = session.messages.slice(-15);
+    }
     const truncatedMessages = truncateMessages(recentMessages, 2000);
-
-    // Convert session messages to LLM format
     const conversationHistory = truncatedMessages.map((msg) => ({
       role: msg.role,
       content: msg.content
