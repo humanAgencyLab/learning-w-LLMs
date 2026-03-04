@@ -204,6 +204,9 @@ function ChatInterface() {
   
   // Auto-scroll to bottom (only if user is near bottom)
   const scrollToBottom = useCallback((smooth = true) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:scrollToBottom',message:'scrollToBottom called',data:{hasRef:!!messageListRef.current,isUserScrolledUp,willScroll:!!(messageListRef.current&&!isUserScrolledUp)},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     if (messageListRef.current && !isUserScrolledUp) {
       messageListRef.current.scrollTo({
         top: messageListRef.current.scrollHeight,
@@ -215,12 +218,25 @@ function ChatInterface() {
   // Check if user scrolled up
   useEffect(() => {
     const messageList = messageListRef.current;
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:scroll-listener-setup',message:'scroll listener effect run',data:{refNull:!messageList,scrollHeight:messageList?.scrollHeight,clientHeight:messageList?.clientHeight},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     if (!messageList) return;
     
+    let lastLogTs = 0;
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = messageList;
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      const distanceFromTop = scrollTop;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
       setIsUserScrolledUp(!isNearBottom);
+      // #region agent log
+      const now = Date.now();
+      if ((distanceFromTop < 80 || distanceFromBottom > 150) && now - lastLogTs > 500) {
+        lastLogTs = now;
+        fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:handleScroll',message:'scroll values',data:{scrollTop,scrollHeight,clientHeight,distanceFromTop,distanceFromBottom,isNearBottom,canReachTop:scrollHeight>clientHeight},timestamp:now,hypothesisId:'B,C,D'})}).catch(()=>{});
+      }
+      // #endregion
     };
     
     messageList.addEventListener('scroll', handleScroll);
@@ -403,9 +419,16 @@ function ChatInterface() {
   useEffect(() => {
     // Scroll to bottom of messages
     const messageList = document.getElementById('message-list');
+    // #region agent log
+    const beforeTop = messageList?.scrollTop; const beforeHeight = messageList?.scrollHeight; const beforeClient = messageList?.clientHeight;
+    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:sessionMessages-effect',message:'sessionMessages effect running',data:{msgCount:sessionMessages?.length,scrollTopBefore:beforeTop,scrollHeightBefore:beforeHeight,clientHeightBefore:beforeClient,hasElement:!!messageList},timestamp:Date.now(),hypothesisId:'A,E'})}).catch(()=>{});
+    // #endregion
     if (messageList) {
       messageList.scrollTop = messageList.scrollHeight;
     }
+    // #region agent log
+    if (messageList) { fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:sessionMessages-effect-after',message:'after forcing scrollTop',data:{scrollTopAfter:messageList.scrollTop,scrollHeightAfter:messageList.scrollHeight},timestamp:Date.now(),hypothesisId:'A,C'})}).catch(()=>{}); }
+    // #endregion
   }, [sessionMessages]);
 
   useEffect(() => {

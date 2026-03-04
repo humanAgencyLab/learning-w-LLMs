@@ -6,9 +6,11 @@
  * Usage (from backend/):
  *   node scripts/exportUsersPerformance.js <userIdOrUsername1> [userIdOrUsername2] ...
  *   node scripts/exportUsersPerformance.js --format=quiz_attempts <userIdOrUsername1> ...
+ *   node scripts/exportUsersPerformance.js --format=quiz_attempts today
  *
  * You can pass MongoDB ObjectIds (e.g. 6972e009ae7b4ab62853cfaf) or usernames (e.g. johndoe).
- * Script uses MONGODB_URI from backend/.env — for Atlas, set MONGODB_URI to your Atlas connection string.
+ * Use "today" to export all users created today (based on server date).
+ * Script uses MONGODB_URI from backend/.env — for Atlas, use DOTENV_CONFIG_PATH=./.env.atlas node -r dotenv/config ...
  *
  * --format=quiz_attempts  Flat table: user_id, topic_name, module_id, attempt_number, quiz_score, passed, module_completed, num_user_messages, time_spent_seconds.
  *
@@ -25,6 +27,38 @@ const { getUserPerformance } = require('../services/performanceService');
 
 function isValidObjectId(s) {
   return typeof s === 'string' && /^[a-fA-F0-9]{24}$/.test(s);
+}
+
+/** Get user IDs for all users in the database. */
+async function getAllUserIds() {
+  const User = require('../models/User');
+  const users = await User.find({}).select('_id').lean();
+  return users.map(u => u._id.toString());
+}
+
+/** Get user IDs for all users created on the given dates (UTC). dateStrings: array of "YYYY-MM-DD". */
+async function getUsersCreatedOnDates(dateStrings) {
+  const User = require('../models/User');
+  const orConditions = dateStrings.map(s => {
+    const [y, m, d] = s.trim().split('-').map(Number);
+    if (!y || !m || !d) return null;
+    const start = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
+    const end = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
+    return { createdAt: { $gte: start, $lte: end } };
+  }).filter(Boolean);
+  if (orConditions.length === 0) return [];
+  const users = await User.find({ $or: orConditions }).select('_id').lean();
+  return users.map(u => u._id.toString());
+}
+
+/** Get user IDs for all users created today (UTC). */
+async function getTodayCreatedUserIds() {
+  const User = require('../models/User');
+  const now = new Date();
+  const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+  const startOfTomorrow = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
+  const users = await User.find({ createdAt: { $gte: startOfToday, $lt: startOfTomorrow } }).select('_id username').lean();
+  return users.map(u => u._id.toString());
 }
 
 /** Resolve usernames to user IDs. Accepts array of userId (ObjectId string) or username; returns array of ObjectId strings. */
@@ -143,11 +177,19 @@ async function run() {
   const args = process.argv.slice(2);
   const formatArg = args.find(a => a.startsWith('--format='));
   const format = formatArg ? (formatArg.split('=')[1] || '').toLowerCase() : '';
-  const userIds = args.filter(a => !a.startsWith('--')).filter(Boolean);
+  const createdArg = args.find(a => a.startsWith('--created='));
+  const createdDates = createdArg ? (createdArg.split('=')[1] || '').split(',').map(s => s.trim()).filter(Boolean) : [];
+  const rawArgs = args.filter(a => !a.startsWith('--')).filter(Boolean);
+  const isToday = rawArgs.length === 1 && rawArgs[0].toLowerCase() === 'today';
+  const isAll = rawArgs.length === 1 && rawArgs[0].toLowerCase() === 'all';
+  const isCreatedOn = createdDates.length > 0;
 
-  if (userIds.length === 0) {
-    console.log('Usage: node scripts/exportUsersPerformance.js [--format=quiz_attempts] <userId1> [userId2] ...');
+  if (rawArgs.length === 0 && !isCreatedOn) {
+    console.log('Usage: node scripts/exportUsersPerformance.js [--format=quiz_attempts] [--created=YYYY-MM-DD,YYYY-MM-DD] <userId1> ... | today | all');
     console.log('  --format=quiz_attempts  Flat CSV: user_id, topic_name, module_id, attempt_number, quiz_score, passed, module_completed, num_user_messages, time_spent_seconds');
+    console.log('  --created=2026-02-02,2026-02-13  Export users created on these dates (UTC)');
+    console.log('  today                  Export users created today');
+    console.log('  all                    Export all users');
     process.exit(1);
   }
 
@@ -156,14 +198,26 @@ async function run() {
   await mongoose.connect(mongoUri);
   console.log('Connected to MongoDB:', dbDisplay);
 
-  const resolvedIds = await resolveUserIds(userIds);
+  let resolvedIds;
+  if (isCreatedOn) {
+    resolvedIds = await getUsersCreatedOnDates(createdDates);
+    console.log(`Found ${resolvedIds.length} user(s) created on ${createdDates.join(', ')}`);
+  } else if (isToday) {
+    resolvedIds = await getTodayCreatedUserIds();
+    console.log(`Found ${resolvedIds.length} user(s) created today`);
+  } else if (isAll) {
+    resolvedIds = await getAllUserIds();
+    console.log(`Found ${resolvedIds.length} user(s) total`);
+  } else {
+    resolvedIds = await resolveUserIds(rawArgs);
+  }
   if (resolvedIds.length === 0) {
-    console.error('No valid users found. Check usernames/IDs and that MONGODB_URI points to the right database (e.g. Atlas).');
+    console.error(isCreatedOn ? `No users created on ${createdDates.join(', ')}.` : isToday ? 'No users created today.' : isAll ? 'No users in database.' : 'No valid users found. Check usernames/IDs and that MONGODB_URI points to the right database (e.g. Atlas).');
     await mongoose.connection.close();
     process.exit(1);
   }
-  if (resolvedIds.length < userIds.length) {
-    console.warn(`Resolved ${resolvedIds.length} of ${userIds.length} user(s).`);
+  if (!isToday && !isAll && !isCreatedOn && resolvedIds.length < rawArgs.length) {
+    console.warn(`Resolved ${resolvedIds.length} of ${rawArgs.length} user(s).`);
   }
 
   if (format === 'quiz_attempts') {
