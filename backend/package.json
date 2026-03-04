@@ -9,7 +9,9 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "export:quiz-attempts": "node scripts/exportUsersPerformance.js --format=quiz_attempts all",
+    "export:performance": "node scripts/exportUsersPerformance.js all"
   },
   "keywords": [],
   "author": "",

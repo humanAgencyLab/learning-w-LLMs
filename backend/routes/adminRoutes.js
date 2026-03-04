@@ -13,6 +13,36 @@ const addRequestId = (req, res, next) => {
   next();
 };
 
+/** Allow listing users from localhost in development without admin key. */
+function optionalAdminKey(req, res, next) {
+  const key = req.headers['x-admin-key'];
+  const expected = process.env.ADMIN_API_KEY;
+  const isLocal = req.get('host') && (req.get('host').startsWith('localhost') || req.get('host').startsWith('127.0.0.1'));
+  if (process.env.NODE_ENV === 'development' && isLocal) return next();
+  if (expected && key === expected) return next();
+  return res.status(403).json({ success: false, error: 'Invalid or missing admin key', code: 'ADMIN_FORBIDDEN' });
+}
+
+/**
+ * GET /v1/admin/users/list
+ * Return all usernames (and name, _id, createdAt). In development from localhost, no key required; otherwise requires x-admin-key.
+ */
+router.get('/v1/admin/users/list', optionalAdminKey, addRequestId, async (req, res) => {
+  try {
+    const users = await User.find({}).select('username name _id createdAt').sort({ createdAt: 1 }).lean();
+    const list = users.map(u => ({
+      username: u.username,
+      name: u.name,
+      _id: u._id && u._id.toString(),
+      createdAt: u.createdAt
+    }));
+    res.json({ success: true, count: list.length, users: list });
+  } catch (err) {
+    req.logger.error({ err: err.message }, 'Admin list users failed');
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 /**
  * GET /v1/admin/performance/export?userIds=id1,id2,id3[&format=quiz_attempts]
  * Export performance data for multiple users as a single CSV.

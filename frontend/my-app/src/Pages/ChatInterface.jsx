@@ -417,19 +417,19 @@ function ChatInterface() {
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
-    // Scroll to bottom of messages
+    // Scroll to bottom only when user is already near bottom (don't override when they've scrolled up)
     const messageList = document.getElementById('message-list');
     // #region agent log
     const beforeTop = messageList?.scrollTop; const beforeHeight = messageList?.scrollHeight; const beforeClient = messageList?.clientHeight;
-    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:sessionMessages-effect',message:'sessionMessages effect running',data:{msgCount:sessionMessages?.length,scrollTopBefore:beforeTop,scrollHeightBefore:beforeHeight,clientHeightBefore:beforeClient,hasElement:!!messageList},timestamp:Date.now(),hypothesisId:'A,E'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:sessionMessages-effect',message:'sessionMessages effect running',data:{msgCount:sessionMessages?.length,scrollTopBefore:beforeTop,scrollHeightBefore:beforeHeight,hasElement:!!messageList,isUserScrolledUp,willScroll:!!(messageList&&!isUserScrolledUp)},timestamp:Date.now(),runId:'post-fix',hypothesisId:'A,E'})}).catch(()=>{});
     // #endregion
-    if (messageList) {
+    if (messageList && !isUserScrolledUp) {
       messageList.scrollTop = messageList.scrollHeight;
     }
     // #region agent log
-    if (messageList) { fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:sessionMessages-effect-after',message:'after forcing scrollTop',data:{scrollTopAfter:messageList.scrollTop,scrollHeightAfter:messageList.scrollHeight},timestamp:Date.now(),hypothesisId:'A,C'})}).catch(()=>{}); }
+    if (messageList && !isUserScrolledUp) { fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:sessionMessages-effect-after',message:'after forcing scrollTop',data:{scrollTopAfter:messageList.scrollTop,scrollHeightAfter:messageList.scrollHeight},timestamp:Date.now(),runId:'post-fix',hypothesisId:'A,C'})}).catch(()=>{}); }
     // #endregion
-  }, [sessionMessages]);
+  }, [sessionMessages, isUserScrolledUp]);
 
   useEffect(() => {
     if (toast) {

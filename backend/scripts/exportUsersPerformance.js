@@ -17,10 +17,10 @@
  * Output: performance-export-<timestamp>.csv or quiz-attempts-export-<timestamp>.csv in backend/.
  */
 
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const mongoose = require('mongoose');
 const fs = require('fs');
-const path = require('path');
 const User = require('../models/User');
 const Session = require('../models/Session');
 const { getUserPerformance } = require('../services/performanceService');
