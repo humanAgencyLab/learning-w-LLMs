@@ -29,7 +29,7 @@ function ChatInterface() {
     startAssessment,
     approvePlan,
     modifyPlan,
-    messages: sessionMessages,
+    messages: sessionMessagesRaw,
     loading,
     error,
     createSession,
@@ -41,6 +41,7 @@ function ChatInterface() {
     hasMoreMessages,
     loadOlderMessages
   } = useSessionStore();
+  const sessionMessages = Array.isArray(sessionMessagesRaw) ? sessionMessagesRaw : [];
   const [inputValue, setInputValue] = useState('');
   const [modificationRequest, setModificationRequest] = useState('');
   const [showConfetti, setShowConfetti] = useState(false);

@@ -326,7 +326,7 @@ const useSessionStore = create(
           gems: payload.gems !== undefined ? payload.gems : prev.gems ?? 0,
           progressPct: payload.progressPct !== undefined ? payload.progressPct : prev.progressPct ?? 0,
           isViewOnly: payload.isViewOnly ?? prev.isViewOnly ?? false,
-          messages: Array.isArray(payload.lastMessages) ? payload.lastMessages : prev.messages,
+          messages: Array.isArray(payload.lastMessages) ? payload.lastMessages : (Array.isArray(prev.messages) ? prev.messages : []),
           totalMessageCount: payload.totalMessageCount !== undefined ? payload.totalMessageCount : prev.totalMessageCount,
           hasMoreMessages: payload.hasMoreMessages ?? prev.hasMoreMessages ?? false,
           profile: payload.profile || prev.profile || null,
@@ -1153,11 +1153,12 @@ const useSessionStore = create(
       /** Load older messages (prepend) for display; used when user scrolls to top. */
       loadOlderMessages: async (sessionId) => {
         const state = get();
+        const currentMessages = Array.isArray(state.messages) ? state.messages : [];
         if (!state.hasMoreMessages || !sessionId) return { hasMore: false };
         set({ loading: true });
         try {
           const response = await sessionApi.getSessionMessages(sessionId, {
-            fromEnd: state.messages.length,
+            fromEnd: currentMessages.length,
             limit: 20
           });
           if (!response.success || !response.data) {
@@ -1166,7 +1167,7 @@ const useSessionStore = create(
           }
           const { messages: older, hasMore } = response.data;
           set(prev => ({
-            messages: [...(older || []), ...prev.messages],
+            messages: [...(older || []), ...(prev.messages || [])],
             hasMoreMessages: !!hasMore,
             loading: false
           }));
