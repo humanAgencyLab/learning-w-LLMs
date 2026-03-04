@@ -204,9 +204,6 @@ function ChatInterface() {
   
   // Auto-scroll to bottom (only if user is near bottom)
   const scrollToBottom = useCallback((smooth = true) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:scrollToBottom',message:'scrollToBottom called',data:{hasRef:!!messageListRef.current,isUserScrolledUp,willScroll:!!(messageListRef.current&&!isUserScrolledUp)},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     if (messageListRef.current && !isUserScrolledUp) {
       messageListRef.current.scrollTo({
         top: messageListRef.current.scrollHeight,
@@ -214,34 +211,28 @@ function ChatInterface() {
       });
     }
   }, [isUserScrolledUp]);
+
+  // Scroll to first message (so user can always reach the top even if native scroll is stuck)
+  const scrollToTop = useCallback(() => {
+    if (messageListRef.current) {
+      messageListRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, []);
   
-  // Check if user scrolled up
+  // Check if user scrolled up (re-run when message list is shown so listener attaches to the right element)
   useEffect(() => {
     const messageList = messageListRef.current;
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:scroll-listener-setup',message:'scroll listener effect run',data:{refNull:!messageList,scrollHeight:messageList?.scrollHeight,clientHeight:messageList?.clientHeight},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     if (!messageList) return;
     
-    let lastLogTs = 0;
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = messageList;
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-      const distanceFromTop = scrollTop;
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
       setIsUserScrolledUp(!isNearBottom);
-      // #region agent log
-      const now = Date.now();
-      if ((distanceFromTop < 80 || distanceFromBottom > 150) && now - lastLogTs > 500) {
-        lastLogTs = now;
-        fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:handleScroll',message:'scroll values',data:{scrollTop,scrollHeight,clientHeight,distanceFromTop,distanceFromBottom,isNearBottom,canReachTop:scrollHeight>clientHeight},timestamp:now,hypothesisId:'B,C,D'})}).catch(()=>{});
-      }
-      // #endregion
     };
     
     messageList.addEventListener('scroll', handleScroll);
     return () => messageList.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [hasMessages]);
   
   // Auto-scroll when new messages arrive
   useEffect(() => {
@@ -419,16 +410,9 @@ function ChatInterface() {
   useEffect(() => {
     // Scroll to bottom only when user is already near bottom (don't override when they've scrolled up)
     const messageList = document.getElementById('message-list');
-    // #region agent log
-    const beforeTop = messageList?.scrollTop; const beforeHeight = messageList?.scrollHeight; const beforeClient = messageList?.clientHeight;
-    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:sessionMessages-effect',message:'sessionMessages effect running',data:{msgCount:sessionMessages?.length,scrollTopBefore:beforeTop,scrollHeightBefore:beforeHeight,hasElement:!!messageList,isUserScrolledUp,willScroll:!!(messageList&&!isUserScrolledUp)},timestamp:Date.now(),runId:'post-fix',hypothesisId:'A,E'})}).catch(()=>{});
-    // #endregion
     if (messageList && !isUserScrolledUp) {
       messageList.scrollTop = messageList.scrollHeight;
     }
-    // #region agent log
-    if (messageList && !isUserScrolledUp) { fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:sessionMessages-effect-after',message:'after forcing scrollTop',data:{scrollTopAfter:messageList.scrollTop,scrollHeightAfter:messageList.scrollHeight},timestamp:Date.now(),runId:'post-fix',hypothesisId:'A,C'})}).catch(()=>{}); }
-    // #endregion
   }, [sessionMessages, isUserScrolledUp]);
 
   useEffect(() => {
@@ -540,6 +524,16 @@ function ChatInterface() {
       fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:442',message:'handleSubmit before sendChatMessage',data:{message,phase,currentInputValue:inputValue,currentModificationRequest:modificationRequest},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'C'})}).catch(()=>{});
       // #endregion
       await sendChatMessage(message);
+      // After sending, scroll to bottom so user sees their message and the response (standard chat UX, like Cursor)
+      setIsUserScrolledUp(false);
+      setTimeout(() => {
+        if (messageListRef.current) {
+          messageListRef.current.scrollTo({
+            top: messageListRef.current.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
+      }, 150);
     } catch (err) {
       console.error('Error sending message:', err);
       // Set error in the store
@@ -1005,10 +999,10 @@ function ChatInterface() {
                   ref={messageListRef}
                   id="message-list" 
                   className="min-h-0 flex-1 overflow-auto custom-scrollbar bg-[#f7f8f8]"
-                  style={{ paddingBottom: '30px' }}
+                  style={{ paddingBottom: '30px', overscrollBehaviorY: 'contain' }}
                 >
-                  <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4">
-                    <div className="flex flex-col gap-6">
+                  <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex-shrink-0">
+                    <div className="flex flex-col gap-6" style={{ minHeight: 'min-content' }}>
                       {sessionMessages.map((message, index) => (
                         <div
                           key={index}
@@ -1113,6 +1107,21 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                         className="w-full sm:w-auto px-6 py-2.5 bg-[#ff9500] hover:bg-orange-600 active:bg-orange-700 text-white font-semibold text-sm sm:text-base rounded-lg shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isSummarizing ? 'Summarizing...' : 'Summarize Topic'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Scroll to first message - when user has scrolled up and may be stuck */}
+                {isUserScrolledUp && (
+                  <div className="flex-shrink-0 bg-[#f7f8f8] px-4 sm:px-6 pt-2 pb-0">
+                    <div className="max-w-4xl mx-auto">
+                      <button
+                        type="button"
+                        onClick={scrollToTop}
+                        className="text-sm font-medium text-[#4e81ee] hover:text-blue-600 hover:underline"
+                      >
+                        ↑ Scroll to first message
                       </button>
                     </div>
                   </div>
