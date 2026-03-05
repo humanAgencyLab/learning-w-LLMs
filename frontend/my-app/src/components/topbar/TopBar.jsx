@@ -49,13 +49,6 @@ function TopBar({ onStartNewChat }) {
     hasSession
   );
   
-  // #region agent log
-  useEffect(() => {
-    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TopBar.jsx:42',message:'TopBar showTitle calculation',data:{isChatRoute,hasSession,isInitialState,isPlanning,sessionId,chatTitle,topic,phase,messagesCount:messages?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
-    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TopBar.jsx:48',message:'TopBar showTitle result',data:{showTitle},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
-  }, [isChatRoute, hasSession, isInitialState, isPlanning, sessionId, chatTitle, topic, phase, messages, showTitle]);
-  // #endregion
-  
   // Determine title text based on mode
   const getTitleText = () => {
     // Use chatTitle if available, otherwise fallback to topic

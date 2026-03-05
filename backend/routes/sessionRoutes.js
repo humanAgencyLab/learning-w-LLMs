@@ -592,7 +592,6 @@ router.get('/v1/sessions/:id/messages', requireAuth, addRequestId, requireOwners
     const end = totalCount - fromEnd;
     const messages = start < end ? allMessages.slice(start, end) : [];
     const hasMore = fromEnd + limit < totalCount;
-    req.logger.info('GET /messages served', { sessionId: id, fromEnd, totalCount, returnedCount: messages.length, hasMore });
     res.json({
       success: true,
       data: { messages, totalCount, hasMore }

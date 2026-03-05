@@ -145,15 +145,8 @@ async function generateCertificatePDF({ userName, topic, issuedAt = new Date() }
         path.join(__dirname, '../../frontend/my-app/build/logo.png'), // Local dev fallback
       ];
       
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'certificateService.js:147',message:'Logo path resolution debug',data:{__dirname,possibleLogoPaths,cwd:process.cwd()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B'})}).catch(()=>{});
-      // #endregion
-      
       let logoLoaded = false;
       for (const logoPath of possibleLogoPaths) {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'certificateService.js:152',message:'Checking logo path',data:{logoPath,exists:fs.existsSync(logoPath)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,C'})}).catch(()=>{});
-        // #endregion
         try {
           if (fs.existsSync(logoPath)) {
             const logoSize = 60;
@@ -165,9 +158,6 @@ async function generateCertificatePDF({ userName, topic, issuedAt = new Date() }
               fit: [logoSize, logoSize]
             });
             logoLoaded = true;
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'certificateService.js:168',message:'Logo LOADED successfully',data:{logoPath,logoLoaded:true},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B'})}).catch(()=>{});
-            // #endregion
             logger.info({ logoPath }, 'Logo loaded successfully for certificate');
             break;
           }
@@ -180,9 +170,6 @@ async function generateCertificatePDF({ userName, topic, issuedAt = new Date() }
       
       // Fallback to text logo if image not found
       if (!logoLoaded) {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'certificateService.js:178',message:'Logo NOT loaded - using fallback SA text',data:{logoLoaded,possibleLogoPaths},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,C,D'})}).catch(()=>{});
-        // #endregion
         logger.warn('No logo image found, using text fallback');
         const logoText = 'SA';
         doc.fillColor('#1e40af')

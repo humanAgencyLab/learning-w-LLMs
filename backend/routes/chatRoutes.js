@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const { z } = require('zod');
-const fs = require('fs');
 const Session = require('../models/Session');
 const { chatRequestSchema } = require('../validation/chatValidation');
 const { validateInput } = require('../middleware/validationHardening');
@@ -30,7 +29,6 @@ const extractQuestion = (response) => {
 // POST /v1/chat - Teacher chat endpoint (requires authentication)
 router.post('/v1/chat', requireAuth, async (req, res) => {
   const startTime = Date.now();
-  const logPath = '/Users/nibir/Documents/Research/Working Repo/learning-w-LLMs/.cursor/debug.log';
   
   try {
     console.log('Chat request received', { body: req.body });
@@ -537,10 +535,6 @@ Return ONLY valid JSON in this format:
     
     // For learning/feedback phases: Use LLM conversation manager to decide everything
     if (['learning', 'feedback'].includes(session.phase)) {
-      // #region agent log
-      const logEntry = JSON.stringify({sessionId,runId:'run1',hypothesisId:'A',location:'chatRoutes.js:537',message:'Learning phase chat start',data:{phase:session.phase,userMessageLength:userMessage?.length||0},timestamp:Date.now()})+'\n';
-      fs.appendFileSync(logPath,logEntry);
-      // #endregion
       // Initialize meta if not exists
       if (!session.meta) {
         session.meta = {};
@@ -1015,11 +1009,6 @@ Return ONLY valid JSON in this format:
       const groqClient = getGroqClient();
       const decisionPrompt = buildConversationDecisionPrompt(session, userMessage);
       
-      // #region agent log
-      const decisionStartTime = Date.now();
-      const logEntry1 = JSON.stringify({sessionId,runId:'run1',hypothesisId:'A',location:'chatRoutes.js:1012',message:'Conversation decision LLM call start',data:{promptLength:decisionPrompt?.length||0},timestamp:decisionStartTime})+'\n';
-      fs.appendFileSync(logPath,logEntry1);
-      // #endregion
       try {
         const decisionResponse = await groqClient.chat.completions.create({
           model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
@@ -1038,13 +1027,6 @@ Return ONLY valid JSON in this format:
           max_tokens: 600,
           response_format: { type: "json_object" }
         });
-        
-        // #region agent log
-        const decisionEndTime = Date.now();
-        const decisionDuration = decisionEndTime - decisionStartTime;
-        const logEntry2 = JSON.stringify({sessionId,runId:'run1',hypothesisId:'A',location:'chatRoutes.js:1029',message:'Conversation decision LLM call end',data:{duration:decisionDuration,responseLength:decisionResponse?.choices?.[0]?.message?.content?.length||0},timestamp:decisionEndTime})+'\n';
-        fs.appendFileSync(logPath,logEntry2);
-        // #endregion
         
         let llmDecision;
         try {
@@ -1221,11 +1203,6 @@ Return ONLY valid JSON in this format:
             milestoneRetryCount
           );
           
-          // #region agent log
-          const assessmentStartTime = Date.now();
-          const logEntry3 = JSON.stringify({sessionId,runId:'run1',hypothesisId:'B',location:'chatRoutes.js:1195',message:'Assessment analysis LLM call start',data:{promptLength:assessmentPrompt?.length||0},timestamp:assessmentStartTime})+'\n';
-          fs.appendFileSync(logPath,logEntry3);
-          // #endregion
           try {
             const assessmentResponse = await groqClient.chat.completions.create({
               model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
@@ -1244,13 +1221,6 @@ Return ONLY valid JSON in this format:
               max_tokens: 400,
               response_format: { type: "json_object" }
             });
-            
-            // #region agent log
-            const assessmentEndTime = Date.now();
-            const assessmentDuration = assessmentEndTime - assessmentStartTime;
-            const logEntry4 = JSON.stringify({sessionId,runId:'run1',hypothesisId:'B',location:'chatRoutes.js:1223',message:'Assessment analysis LLM call end',data:{duration:assessmentDuration,responseLength:assessmentResponse?.choices?.[0]?.message?.content?.length||0},timestamp:assessmentEndTime})+'\n';
-            fs.appendFileSync(logPath,logEntry4);
-            // #endregion
             
             const assessmentContent = assessmentResponse.choices[0].message.content.trim();
             let assessmentJson = assessmentContent;
@@ -1629,18 +1599,7 @@ Return ONLY valid JSON in this format:
             }
           }
           
-          // #region agent log
-          const teacherStartTime = Date.now();
-          const logEntry5 = JSON.stringify({sessionId,runId:'run1',hypothesisId:'C',location:'chatRoutes.js:1602',message:'Teacher API call start',data:{promptLength:teacherPrompt?.length||0},timestamp:teacherStartTime})+'\n';
-          fs.appendFileSync(logPath,logEntry5);
-          // #endregion
           assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1500, session, validationContext);
-          // #region agent log
-          const teacherEndTime = Date.now();
-          const teacherDuration = teacherEndTime - teacherStartTime;
-          const logEntry6 = JSON.stringify({sessionId,runId:'run1',hypothesisId:'C',location:'chatRoutes.js:1602',message:'Teacher API call end',data:{duration:teacherDuration,responseLength:assistantResponse?.length||0},timestamp:teacherEndTime})+'\n';
-          fs.appendFileSync(logPath,logEntry6);
-          // #endregion
           
           // Extract question if LLM asked one
           if (llmDecision.shouldAskQuestion && llmDecision.questionToAsk) {
@@ -1778,19 +1737,8 @@ Return ONLY valid JSON in this format:
         session.messages.push(userMessageObj, assistantMessage);
         
         // Update context summary after interaction (token-efficient, Cursor IDE-style)
-        // #region agent log
-        const summaryStartTime = Date.now();
-        const logEntry7 = JSON.stringify({sessionId,runId:'run1',hypothesisId:'D',location:'chatRoutes.js:1741',message:'Context summary update start',data:{},timestamp:summaryStartTime})+'\n';
-        fs.appendFileSync(logPath,logEntry7);
-        // #endregion
         try {
           await updateContextSummary(session, userMessage, assistantResponse, groqClient);
-          // #region agent log
-          const summaryEndTime = Date.now();
-          const summaryDuration = summaryEndTime - summaryStartTime;
-          const logEntry8 = JSON.stringify({sessionId,runId:'run1',hypothesisId:'D',location:'chatRoutes.js:1741',message:'Context summary update end',data:{duration:summaryDuration},timestamp:summaryEndTime})+'\n';
-          fs.appendFileSync(logPath,logEntry8);
-          // #endregion
         } catch (summaryError) {
           console.warn('Context summary update failed', { sessionId, error: summaryError.message });
           // Continue even if summary update fails
@@ -1804,12 +1752,6 @@ Return ONLY valid JSON in this format:
         
         const tokensIn = Math.ceil(userMessage.length / 4);
         const tokensOut = Math.ceil(assistantResponse.length / 4);
-        
-        // #region agent log
-        const totalDuration = Date.now() - startTime;
-        const logEntry9 = JSON.stringify({sessionId,runId:'run1',hypothesisId:'E',location:'chatRoutes.js:1756',message:'Chat request complete',data:{totalDuration,phase:session.phase},timestamp:Date.now()})+'\n';
-        fs.appendFileSync(logPath,logEntry9);
-        // #endregion
         
         return res.json({
           success: true,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import Confetti from 'react-confetti';
 import QuizOverlay from '../components/quiz/QuizOverlay';
 import useSessionStore from '../state/sessionStore';
@@ -30,6 +30,8 @@ function ChatInterface() {
     approvePlan,
     modifyPlan,
     messages: sessionMessagesRaw,
+    totalMessageCount,
+    hasMoreMessages,
     loading,
     error,
     createSession,
@@ -40,6 +42,7 @@ function ChatInterface() {
     startQuizFromChat
   } = useSessionStore();
   const sessionMessages = Array.isArray(sessionMessagesRaw) ? sessionMessagesRaw : [];
+  const mightHaveMoreMessages = hasMoreMessages || (sessionMessages.length === 20 && totalMessageCount == null);
   const [inputValue, setInputValue] = useState('');
   const [modificationRequest, setModificationRequest] = useState('');
   const [showConfetti, setShowConfetti] = useState(false);
@@ -51,6 +54,11 @@ function ChatInterface() {
   const textareaRef = useRef(null);
   const preSurfaceTextareaRef = useRef(null);
   const messageListRef = useRef(null);
+  const LOAD_OLDER_THROTTLE_MS = 600;
+  const scrollRestoreBeforePrepend = useRef(null);
+  const skipNextScrollToBottom = useRef(false);
+  const loadOlderThrottleAt = useRef(0);
+  const topSentinelRef = useRef(null);
   
   // Detect predefined messages in last assistant response and generate chips
   const getActionChips = useCallback(() => {
@@ -213,44 +221,66 @@ function ChatInterface() {
     }
   }, [isUserScrolledUp]);
 
-  // Scroll listener: track isUserScrolledUp and auto-load older messages when user scrolls near top (no buttons)
-  const lastAutoLoadAt = useRef(0);
+  // Restore scroll position after prepending older messages so the list doesn't jump (WhatsApp/ChatGPT-style)
+  useLayoutEffect(() => {
+    const el = messageListRef.current;
+    const saved = scrollRestoreBeforePrepend.current;
+    if (!el || !saved) return;
+    const newHeight = el.scrollHeight;
+    const heightDelta = newHeight - saved.scrollHeight;
+    if (heightDelta > 0) {
+      el.scrollTop = saved.scrollTop + heightDelta;
+      skipNextScrollToBottom.current = true;
+    }
+    scrollRestoreBeforePrepend.current = null;
+  }, [sessionMessages.length]);
+
+  // Scroll listener: only track isUserScrolledUp for scroll-to-bottom behavior
   useEffect(() => {
     const messageList = messageListRef.current;
     if (!messageList) return;
-
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = messageList;
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
       setIsUserScrolledUp(!isNearBottom);
-      // Auto-load older messages when scrolled near top (throttle 1.5s)
-      const state = useSessionStore.getState();
-      const mightHaveMore = state.hasMoreMessages || (state.messages?.length === 20 && state.totalMessageCount == null);
-      if (
-        scrollTop < 80 &&
-        mightHaveMore &&
-        !state.loading &&
-        state.sessionId &&
-        Date.now() - lastAutoLoadAt.current > 1500
-      ) {
-        lastAutoLoadAt.current = Date.now();
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:scroll',message:'scroll near top, loading older',data:{scrollTop,mightHaveMore,msgLen:state.messages?.length,sessionId:state.sessionId},timestamp:Date.now(),hypothesisId:'scroll'})}).catch(()=>{});
-        // #endregion
-        state.loadOlderMessages(state.sessionId).catch(() => {});
-      }
     };
-
     messageList.addEventListener('scroll', handleScroll);
     return () => messageList.removeEventListener('scroll', handleScroll);
-  }, [sessionMessages.length]);
-  
-  // Auto-scroll when new messages arrive
+  }, [sessionId, sessionMessages.length]);
+
+  // Load older messages when user scrolls near top: Intersection Observer (reliable with fast scroll, works after session switch)
   useEffect(() => {
-    if (sessionMessages.length > 0) {
-      // Small delay to ensure DOM is updated
-      setTimeout(() => scrollToBottom(true), 100);
+    const listEl = messageListRef.current;
+    const sentinelEl = topSentinelRef.current;
+    if (!listEl || !sentinelEl) return;
+    const state = useSessionStore.getState();
+    if (state.sessionId !== sessionId) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+        const s = useSessionStore.getState();
+        const mightHaveMore = s.hasMoreMessages || (s.messages?.length === 20 && s.totalMessageCount == null);
+        if (!mightHaveMore || s.loading || s.sessionId !== sessionId) return;
+        if (Date.now() - loadOlderThrottleAt.current < LOAD_OLDER_THROTTLE_MS) return;
+        loadOlderThrottleAt.current = Date.now();
+        scrollRestoreBeforePrepend.current = { scrollHeight: listEl.scrollHeight, scrollTop: listEl.scrollTop };
+        s.loadOlderMessages(s.sessionId).catch(() => { scrollRestoreBeforePrepend.current = null; });
+      },
+      { root: listEl, rootMargin: '200px 0px 0px 0px', threshold: 0 }
+    );
+    observer.observe(sentinelEl);
+    return () => observer.disconnect();
+  }, [sessionId, sessionMessages.length]);
+  
+  // Auto-scroll to bottom when new messages arrive (skip after we restored scroll from loading older)
+  useEffect(() => {
+    if (sessionMessages.length === 0) return;
+    if (skipNextScrollToBottom.current) {
+      skipNextScrollToBottom.current = false;
+      return;
     }
+    setTimeout(() => scrollToBottom(true), 100);
   }, [sessionMessages.length, scrollToBottom]);
   
   // Auto-resize textarea on input change
@@ -262,9 +292,6 @@ function ChatInterface() {
   // This prevents stale modificationRequest from interfering with chat input
   useEffect(() => {
     if (phase !== 'planning' && modificationRequest) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:188',message:'Phase changed, clearing modificationRequest',data:{phase,modificationRequest,inputValue},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       setModificationRequest('');
     }
   }, [phase, modificationRequest]);
@@ -486,15 +513,9 @@ function ChatInterface() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:400',message:'handleSubmit entry',data:{inputValue,modificationRequest,phase,loading},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     if (!inputValue.trim() || loading) return;
 
     const message = inputValue.trim();
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:406',message:'handleSubmit before clear',data:{message,inputValue,modificationRequest},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     setInputValue(''); // Clear input immediately
     adjustTextareaHeight(); // Reset textarea height
 
@@ -531,9 +552,6 @@ function ChatInterface() {
       
       // Always use sendChatMessage - it handles shouldTriggerAssessment automatically
       // The session store will detect learning intent and trigger assessment if needed
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:442',message:'handleSubmit before sendChatMessage',data:{message,phase,currentInputValue:inputValue,currentModificationRequest:modificationRequest},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       await sendChatMessage(message);
       // After sending, scroll to bottom so user sees their message and the response (standard chat UX, like Cursor)
       setIsUserScrolledUp(false);
@@ -703,28 +721,16 @@ function ChatInterface() {
                 <button
                   type="button"
                   onClick={async () => {
-                    // #region agent log
-                    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:588',message:'Studying button clicked',data:{currentMode:learningStyle,currentSessionId:sessionId,currentPhase:phase,currentTopic:topic,currentChatTitle:chatTitle,messagesCount:sessionMessages.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
-                    // #endregion
                     // Clear current session when switching to studying mode from revision
                     // A new session will be created when the user sends their first message
                     // This ensures study sessions are separate from revision sessions
                     const { sessionId: currentSessionId } = useSessionStore.getState();
-                    // #region agent log
-                    fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:595',message:'Before clearing session',data:{sessionIdBefore:currentSessionId,modeBefore:learningStyle},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
-                    // #endregion
                     if (currentSessionId && learningStyle === 'revision') {
                       // Clear current session - new one will be created on first message
                       useSessionStore.setState({ sessionId: null, phase: 'pre', topic: '', chatTitle: '', plan: [], messages: [] });
                     }
                     // Set mode after clearing session
                     setLearningStyle("studying");
-                    // #region agent log
-                    setTimeout(() => {
-                      const afterState = useSessionStore.getState();
-                      fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:605',message:'After setLearningStyle studying',data:{sessionIdAfter:afterState.sessionId,topicAfter:afterState.topic,chatTitleAfter:afterState.chatTitle,phaseAfter:afterState.phase,modeAfter:afterState.mode},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
-                    }, 100);
-                    // #endregion
                   }}
                   className={`flex gap-3 items-center justify-center px-5 py-2.5 rounded-lg border bg-white transition-all duration-200 ${
                     learningStyle === "studying" 
@@ -972,23 +978,10 @@ function ChatInterface() {
                               setToast({ message: 'Please enter a modification request', type: 'error' });
                               return;
                             }
-                            // #region agent log
-                            const requestToSend = modificationRequest;
-                            fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:859',message:'modifyPlan button clicked',data:{modificationRequest:requestToSend,inputValue,phase},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'C'})}).catch(()=>{});
-                            // #endregion
                             try {
-                              await modifyPlan(requestToSend);
-                              // #region agent log
-                              fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:864',message:'modifyPlan success, clearing modificationRequest',data:{modificationRequestBefore:requestToSend},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'C'})}).catch(()=>{});
-                              // #endregion
+                              await modifyPlan(modificationRequest);
                               setModificationRequest('');
                               setToast({ message: 'Plan modification requested', type: 'success' });
-                              // #region agent log
-                              setTimeout(() => {
-                                const stateAfter = useSessionStore.getState();
-                                fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatInterface.jsx:869',message:'after modifyPlan clear',data:{phaseAfter:stateAfter.phase},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'C'})}).catch(()=>{});
-                              }, 100);
-                              // #endregion
                             } catch (err) {
                               setToast({ message: err.message || 'Failed to modify plan', type: 'error' });
                             }
@@ -1014,6 +1007,10 @@ function ChatInterface() {
                 >
                   <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex-shrink-0">
                     <div className="flex flex-col gap-6" style={{ minHeight: 'min-content' }}>
+                      {/* Sentinel for load-older: when this enters viewport we fetch more (smooth, works with fast scroll) */}
+                      {mightHaveMoreMessages && (
+                        <div ref={topSentinelRef} className="w-full flex-shrink-0" style={{ height: 1 }} aria-hidden="true" />
+                      )}
                       {sessionMessages.map((message, index) => (
                         <div
                           key={index}

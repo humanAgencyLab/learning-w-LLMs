@@ -1139,9 +1139,6 @@ const useSessionStore = create(
           const response = await sessionApi.resumeSession(sessionId);
           if (response.success) {
             console.log('resumeSessionFromServer success', response.data);
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'sessionStore.js:resume',message:'resume response',data:{totalMessageCount:response.data?.totalMessageCount,hasMoreMessages:response.data?.hasMoreMessages,lastMessagesLen:response.data?.lastMessages?.length},timestamp:Date.now(),hypothesisId:'resume'})}).catch(()=>{});
-            // #endregion
             get().resumeSession(response.data);
             set({ sessionId, loading: false });
             return response.data;
@@ -1163,9 +1160,6 @@ const useSessionStore = create(
         const currentMessages = Array.isArray(state.messages) ? state.messages : [];
         const mightHaveMore = state.hasMoreMessages || (currentMessages.length === 20 && state.totalMessageCount == null);
         if (!mightHaveMore || !sessionId) return { hasMore: false };
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'sessionStore.js:loadOlder',message:'loadOlderMessages start',data:{sessionId,currentLen:currentMessages.length,mightHaveMore},timestamp:Date.now(),hypothesisId:'load'})}).catch(()=>{});
-        // #endregion
         set({ loading: true });
         try {
           const response = await sessionApi.getSessionMessagesWithFallback(sessionId, {
@@ -1177,9 +1171,6 @@ const useSessionStore = create(
             return { hasMore: false };
           }
           const { messages: older, hasMore } = response.data;
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'sessionStore.js:loadOlder',message:'loadOlderMessages success',data:{totalCount:response.data?.totalCount,hasMore,olderLen:(older||[]).length},timestamp:Date.now(),hypothesisId:'load'})}).catch(()=>{});
-          // #endregion
           set(prev => ({
             messages: [...(older || []), ...(prev.messages || [])],
             hasMoreMessages: !!hasMore,
@@ -1188,9 +1179,6 @@ const useSessionStore = create(
           }));
           return { hasMore: !!hasMore };
         } catch (error) {
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'sessionStore.js:loadOlder',message:'loadOlderMessages error',data:{err:error?.message},timestamp:Date.now(),hypothesisId:'load'})}).catch(()=>{});
-          // #endregion
           set({ loading: false, hasMoreMessages: false });
           throw error;
         }

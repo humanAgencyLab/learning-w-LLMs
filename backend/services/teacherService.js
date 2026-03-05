@@ -171,13 +171,6 @@ const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validati
   };
 
   // Use retry logic with exponential backoff
-  // #region agent log
-  const fs = require('fs');
-  const logPath = '/Users/nibir/Documents/Research/Working Repo/learning-w-LLMs/.cursor/debug.log';
-  const retryStartTime = Date.now();
-  const logEntryRetry = JSON.stringify({sessionId:session?.id||'unknown',runId:'run1',hypothesisId:'B',location:'teacherService.js:164',message:'Teacher API retry start',data:{},timestamp:retryStartTime})+'\n';
-  fs.appendFileSync(logPath,logEntryRetry);
-  // #endregion
   const content = await retryWithBackoff(makeAPICall, {
     maxRetries: 3,
     initialDelay: 1000,
@@ -185,10 +178,6 @@ const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validati
     backoffMultiplier: 2,
     onRetry: (attempt, reason, delay) => {
       console.log(`API retry attempt ${attempt}: ${reason}, waiting ${delay}ms`);
-      // #region agent log
-      const retryLogEntry = JSON.stringify({sessionId:session?.id||'unknown',runId:'run1',hypothesisId:'B',location:'teacherService.js:171',message:'Teacher API retry',data:{attempt,reason,delay},timestamp:Date.now()})+'\n';
-      fs.appendFileSync(logPath,retryLogEntry);
-      // #endregion
     },
     shouldRetry: (error) => {
       // Retry on empty responses, rate limits, server errors, or network errors
@@ -205,13 +194,6 @@ const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validati
       return isEmptyResponse || isRateLimit || isServerError || isNetworkError;
     }
   });
-  
-  // #region agent log
-  const retryEndTime = Date.now();
-  const retryDuration = retryEndTime - retryStartTime;
-  const logEntryRetryEnd = JSON.stringify({sessionId:session?.id||'unknown',runId:'run1',hypothesisId:'B',location:'teacherService.js:187',message:'Teacher API retry end',data:{duration:retryDuration,contentLength:content?.length||0},timestamp:retryEndTime})+'\n';
-  fs.appendFileSync(logPath,logEntryRetryEnd);
-  // #endregion
 
   // Check for empty content after retries
   if (!content || content.trim().length === 0) {
