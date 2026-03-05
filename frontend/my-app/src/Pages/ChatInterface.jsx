@@ -225,14 +225,18 @@ function ChatInterface() {
       setIsUserScrolledUp(!isNearBottom);
       // Auto-load older messages when scrolled near top (throttle 1.5s)
       const state = useSessionStore.getState();
+      const mightHaveMore = state.hasMoreMessages || (state.messages?.length === 20 && state.totalMessageCount == null);
       if (
         scrollTop < 80 &&
-        state.hasMoreMessages &&
+        mightHaveMore &&
         !state.loading &&
         state.sessionId &&
         Date.now() - lastAutoLoadAt.current > 1500
       ) {
         lastAutoLoadAt.current = Date.now();
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/825ca111-d219-4473-9ac8-99c04bfe67f7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fa48d7'},body:JSON.stringify({sessionId:'fa48d7',location:'ChatInterface.jsx:scroll',message:'scroll near top, loading older',data:{scrollTop,mightHaveMore,msgLen:state.messages?.length,sessionId:state.sessionId},timestamp:Date.now(),hypothesisId:'scroll'})}).catch(()=>{});
+        // #endregion
         state.loadOlderMessages(state.sessionId).catch(() => {});
       }
     };

@@ -576,6 +576,33 @@ Module 2: Python Fundamentals
   }
 });
 
+// GET /v1/sessions/:id/messages - Paginated messages (must be before GET /v1/sessions/:id so path matches)
+// Query: limit=20, fromEnd=0 (fromEnd=0 => newest 20; fromEnd=20 => next 20 older)
+router.get('/v1/sessions/:id/messages', requireAuth, addRequestId, requireOwnership(async (req) => {
+  const session = await Session.findById(req.params.id);
+  return session?.userId;
+}), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 20), 100);
+    const fromEnd = Math.max(0, parseInt(req.query.fromEnd) || 0);
+    const allMessages = (await Session.findById(id).select('messages').lean())?.messages || [];
+    const totalCount = allMessages.length;
+    const start = Math.max(0, totalCount - fromEnd - limit);
+    const end = totalCount - fromEnd;
+    const messages = start < end ? allMessages.slice(start, end) : [];
+    const hasMore = fromEnd + limit < totalCount;
+    req.logger.info('GET /messages served', { sessionId: id, fromEnd, totalCount, returnedCount: messages.length, hasMore });
+    res.json({
+      success: true,
+      data: { messages, totalCount, hasMore }
+    });
+  } catch (error) {
+    req.logger.error('Failed to fetch session messages', { error: error.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // GET /v1/sessions/:id - Full fetch of session (requires authentication and ownership)
 router.get('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(async (req) => {
   const session = await Session.findById(req.params.id);
@@ -588,7 +615,6 @@ router.get('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(async
     
     req.logger.info('Fetching session', { sessionId: id });
     
-    // Validate session ID format
     if (!id.match(/^[0-9a-fA-F]{24}$/)) {
       req.logger.warn('Invalid session ID format', { sessionId: id });
       return res.status(404).json({
@@ -651,32 +677,6 @@ router.get('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(async
       success: false,
       error: 'Internal server error'
     });
-  }
-});
-
-// GET /v1/sessions/:id/messages - Paginated messages for display (oldest-first in each page)
-// Query: limit=20, fromEnd=0 (fromEnd=0 => newest 20; fromEnd=20 => next 20 older)
-router.get('/v1/sessions/:id/messages', requireAuth, addRequestId, requireOwnership(async (req) => {
-  const session = await Session.findById(req.params.id);
-  return session?.userId;
-}), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 20), 100);
-    const fromEnd = Math.max(0, parseInt(req.query.fromEnd) || 0);
-    const allMessages = (await Session.findById(id).select('messages').lean())?.messages || [];
-    const totalCount = allMessages.length;
-    const start = Math.max(0, totalCount - fromEnd - limit);
-    const end = totalCount - fromEnd;
-    const messages = start < end ? allMessages.slice(start, end) : [];
-    const hasMore = fromEnd + limit < totalCount;
-    res.json({
-      success: true,
-      data: { messages, totalCount, hasMore }
-    });
-  } catch (error) {
-    req.logger.error('Failed to fetch session messages', { error: error.message });
-    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
