@@ -37,9 +37,7 @@ function ChatInterface() {
     clearError,
     appendMessage,
     startRevisionQuiz,
-    startQuizFromChat,
-    hasMoreMessages,
-    loadOlderMessages
+    startQuizFromChat
   } = useSessionStore();
   const sessionMessages = Array.isArray(sessionMessagesRaw) ? sessionMessagesRaw : [];
   const [inputValue, setInputValue] = useState('');
@@ -50,7 +48,6 @@ function ChatInterface() {
   const [expandedModules, setExpandedModules] = useState(new Set([0])); // Expand first module by default
   const [composerHeight, setComposerHeight] = useState(56); // Track composer height for spacing
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
-  const [loadingOlder, setLoadingOlder] = useState(false);
   const textareaRef = useRef(null);
   const preSurfaceTextareaRef = useRef(null);
   const messageListRef = useRef(null);
@@ -216,27 +213,33 @@ function ChatInterface() {
     }
   }, [isUserScrolledUp]);
 
-  // Scroll to first message (so user can always reach the top even if native scroll is stuck)
-  const scrollToTop = useCallback(() => {
-    if (messageListRef.current) {
-      messageListRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, []);
-  
-  // Check if user scrolled up (re-run when message list is shown so listener attaches to the right element)
+  // Scroll listener: track isUserScrolledUp and auto-load older messages when user scrolls near top (no buttons)
+  const lastAutoLoadAt = useRef(0);
   useEffect(() => {
     const messageList = messageListRef.current;
     if (!messageList) return;
-    
+
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = messageList;
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
       setIsUserScrolledUp(!isNearBottom);
+      // Auto-load older messages when scrolled near top (throttle 1.5s)
+      const state = useSessionStore.getState();
+      if (
+        scrollTop < 80 &&
+        state.hasMoreMessages &&
+        !state.loading &&
+        state.sessionId &&
+        Date.now() - lastAutoLoadAt.current > 1500
+      ) {
+        lastAutoLoadAt.current = Date.now();
+        state.loadOlderMessages(state.sessionId).catch(() => {});
+      }
     };
-    
+
     messageList.addEventListener('scroll', handleScroll);
     return () => messageList.removeEventListener('scroll', handleScroll);
-  }, [hasMessages]);
+  }, [sessionMessages.length]);
   
   // Auto-scroll when new messages arrive
   useEffect(() => {
@@ -1006,26 +1009,6 @@ function ChatInterface() {
                   style={{ paddingBottom: '30px', overscrollBehaviorY: 'contain' }}
                 >
                   <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex-shrink-0">
-                    {hasMoreMessages && (
-                      <div className="flex justify-center py-3 pb-4">
-                        <button
-                          type="button"
-                          disabled={loadingOlder || loading}
-                          onClick={async () => {
-                            if (!sessionId || loadingOlder) return;
-                            setLoadingOlder(true);
-                            try {
-                              await loadOlderMessages(sessionId);
-                            } finally {
-                              setLoadingOlder(false);
-                            }
-                          }}
-                          className="text-sm font-medium text-[#4e81ee] hover:text-blue-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {loadingOlder ? 'Loading…' : '↑ Load older messages'}
-                        </button>
-                      </div>
-                    )}
                     <div className="flex flex-col gap-6" style={{ minHeight: 'min-content' }}>
                       {sessionMessages.map((message, index) => (
                         <div
@@ -1131,21 +1114,6 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                         className="w-full sm:w-auto px-6 py-2.5 bg-[#ff9500] hover:bg-orange-600 active:bg-orange-700 text-white font-semibold text-sm sm:text-base rounded-lg shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isSummarizing ? 'Summarizing...' : 'Summarize Topic'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Scroll to first message - when user has scrolled up and may be stuck */}
-                {isUserScrolledUp && (
-                  <div className="flex-shrink-0 bg-[#f7f8f8] px-4 sm:px-6 pt-2 pb-0">
-                    <div className="max-w-4xl mx-auto">
-                      <button
-                        type="button"
-                        onClick={scrollToTop}
-                        className="text-sm font-medium text-[#4e81ee] hover:text-blue-600 hover:underline"
-                      >
-                        ↑ Scroll to first message
                       </button>
                     </div>
                   </div>
