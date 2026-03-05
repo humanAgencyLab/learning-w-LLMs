@@ -79,6 +79,37 @@ export async function getSessionMessages(sessionId, { limit = 20, fromEnd = 0 } 
   return data;
 }
 
+/**
+ * Load a page of older messages. Uses GET /v1/sessions/:id/messages when available (new backend).
+ * If that route returns 404 (old backend not yet deployed), falls back to GET /v1/sessions/:id
+ * and slices messages client-side so "load more" works on both old and new server.
+ * Returns same shape: { success: true, data: { messages, totalCount, hasMore } }.
+ */
+export async function getSessionMessagesWithFallback(sessionId, { limit = 20, fromEnd = 0 } = {}) {
+  const url = `${API_BASE}/v1/sessions/${sessionId}/messages?limit=${limit}&fromEnd=${fromEnd}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+    credentials: 'include',
+  });
+  const data = await safeReadResponse(response);
+  if (response.ok && data && data.success && data.data) {
+    return data;
+  }
+  if (response.status === 404) {
+    const full = await getSession(sessionId);
+    const allMessages = (full?.data?.messages ?? full?.messages ?? []);
+    const totalCount = allMessages.length;
+    const start = Math.max(0, totalCount - fromEnd - limit);
+    const end = totalCount - fromEnd;
+    const messages = start < end ? allMessages.slice(start, end) : [];
+    const hasMore = fromEnd + limit < totalCount;
+    return { success: true, data: { messages, totalCount, hasMore } };
+  }
+  const errorMessage = extractErrorMessage(response, 'Failed to load messages', data);
+  throw new Error(errorMessage);
+}
+
 export async function getSessions(limit = 20, options = {}) {
   const { favorites, search, status } = options;
   let url = `${API_BASE}/v1/sessions?limit=${limit}`;

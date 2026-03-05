@@ -295,6 +295,10 @@ const useSessionStore = create(
 
       resumeSession: (payload) => {
         if (!payload) return;
+        // Normalize for old backend: it may send full messages array instead of lastMessages/totalMessageCount/hasMoreMessages
+        const lastMessages = Array.isArray(payload.lastMessages) ? payload.lastMessages : (Array.isArray(payload.messages) ? payload.messages.slice(-20) : null);
+        const totalMessageCount = payload.totalMessageCount !== undefined ? payload.totalMessageCount : (Array.isArray(payload.messages) ? payload.messages.length : undefined);
+        const hasMoreMessages = payload.hasMoreMessages ?? (Array.isArray(payload.messages) && payload.messages.length > 20);
         
         const currentSessionId = get().sessionId;
         const resolvedSessionId = payload.sessionId ?? payload.id ?? currentSessionId ?? null;
@@ -326,9 +330,9 @@ const useSessionStore = create(
           gems: payload.gems !== undefined ? payload.gems : prev.gems ?? 0,
           progressPct: payload.progressPct !== undefined ? payload.progressPct : prev.progressPct ?? 0,
           isViewOnly: payload.isViewOnly ?? prev.isViewOnly ?? false,
-          messages: Array.isArray(payload.lastMessages) ? payload.lastMessages : (Array.isArray(prev.messages) ? prev.messages : []),
-          totalMessageCount: payload.totalMessageCount !== undefined ? payload.totalMessageCount : prev.totalMessageCount,
-          hasMoreMessages: payload.hasMoreMessages ?? prev.hasMoreMessages ?? false,
+          messages: Array.isArray(lastMessages) ? lastMessages : (Array.isArray(prev.messages) ? prev.messages : []),
+          totalMessageCount: totalMessageCount !== undefined ? totalMessageCount : prev.totalMessageCount,
+          hasMoreMessages: hasMoreMessages ?? prev.hasMoreMessages ?? false,
           profile: payload.profile || prev.profile || null,
           error: null,
           quizDraft: draftItems && draftItems.length > 0
@@ -1164,7 +1168,7 @@ const useSessionStore = create(
         // #endregion
         set({ loading: true });
         try {
-          const response = await sessionApi.getSessionMessages(sessionId, {
+          const response = await sessionApi.getSessionMessagesWithFallback(sessionId, {
             fromEnd: currentMessages.length,
             limit: 20
           });
