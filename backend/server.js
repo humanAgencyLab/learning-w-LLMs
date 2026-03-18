@@ -71,7 +71,8 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ai_edu_ap
   })
   .catch((error) => {
     console.error('❌ MongoDB connection error:', error);
-    process.exit(1);
+    console.error('⚠️  Server will keep running but API requests requiring the database will fail. Start MongoDB (e.g. mongod) to fix.');
+    // Do not exit: keep HTTP server up so proxy can reach it; health and API will reflect DB unreachable
   });
 
 // Check for Groq API key

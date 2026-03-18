@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const logger = require('../utils/logger');
 
@@ -12,9 +13,11 @@ const version = process.env.VERSION || '1.0.0';
  */
 router.get('/v1/health', (req, res) => {
   const uptimeSec = Math.floor((Date.now() - startedAt.getTime()) / 1000);
-  
+  const dbConnected = mongoose.connection.readyState === 1;
+
   const healthData = {
-    status: 'healthy',
+    status: dbConnected ? 'healthy' : 'degraded',
+    dbConnected,
     timestamp: new Date().toISOString(),
     uptimeSec,
     startedAt: startedAt.toISOString(),

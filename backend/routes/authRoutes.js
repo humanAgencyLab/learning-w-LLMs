@@ -682,9 +682,12 @@ router.post('/forgot-password', async (req, res) => {
       });
     }
     
-    // Find user by username (case-insensitive)
-    const normalizedUsername = username.toLowerCase();
-    const user = await User.findOne({ username: normalizedUsername }).select('+passwordResetToken +passwordResetExpires');
+    // Find user by username (case-insensitive — matches legacy mixed-case usernames)
+    const trimmed = String(username).trim();
+    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const user = await User.findOne({
+      username: { $regex: new RegExp(`^${escaped}$`, 'i') }
+    }).select('+passwordResetToken +passwordResetExpires');
     
     // Always return success (don't reveal if username exists)
     if (user) {
@@ -718,17 +721,24 @@ router.post('/forgot-password', async (req, res) => {
           frontendUrl = `https://${projectId}.web.app`;
         }
       } else {
-        // Development: use localhost
         frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const origin = req.get('Origin');
+        if (origin && /^https?:\/\/[^/]+/i.test(origin)) {
+          try {
+            const u = new URL(origin);
+            frontendUrl = `${u.protocol}//${u.host}`;
+          } catch (_) { /* keep FRONTEND_URL */ }
+        }
       }
-      
-      // MVP: Return token in response (remove in production!)
+
+      const resetLink = `${frontendUrl.replace(/\/$/, '')}/resetpassword?token=${encodeURIComponent(resetToken)}`;
+      // MVP: Return token + link in response (no email in MVP)
       return res.json({
         success: true,
         message: 'Password reset token generated',
         data: {
-          resetToken, // MVP ONLY - remove in production
-          resetLink: `${frontendUrl}/resetpassword?token=${resetToken}`
+          resetToken,
+          resetLink
         }
       });
     }

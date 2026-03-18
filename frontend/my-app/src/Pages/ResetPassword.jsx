@@ -36,14 +36,23 @@ function ResetPassword() {
 
     try {
       const response = await authApi.forgotPassword(username);
-      // MVP: Token is returned in response (remove in production!)
-      if (response.data?.resetToken) {
-        setResetToken(response.data.resetToken);
-        setResetLink(response.data.resetLink);
+      const d = response?.data ?? response?.result ?? response;
+      const token =
+        (d && d.resetToken) ||
+        (typeof response?.resetToken === 'string' ? response.resetToken : null);
+      const linkFromApi =
+        (d && d.resetLink) ||
+        (typeof response?.resetLink === 'string' ? response.resetLink : null);
+      if (token) {
+        const origin = window.location.origin;
+        const link =
+          linkFromApi ||
+          `${origin}/resetpassword?token=${encodeURIComponent(token)}`;
+        setResetToken(token);
+        setResetLink(link);
         setSuccess(true);
         setError('');
       } else {
-        // User doesn't exist or username not found
         setSuccess(true);
         setError('');
         setResetToken('');
@@ -251,7 +260,7 @@ function ResetPassword() {
 
               {success && !resetToken && (
                 <div className="success-message">
-                  If an account exists with this username, a password reset link has been sent.
+                  No account found with that username. Check the spelling and try again — when it&apos;s correct, the reset link will appear above.
                 </div>
               )}
 

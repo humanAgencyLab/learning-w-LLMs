@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import CodeBlock from './CodeBlock';
 import ProgressIndicator from './ProgressIndicator';
 import { parseMarkdown, extractBoldText } from '../../utils/markdownParser';
@@ -44,7 +44,7 @@ const renderInlineCode = (text) => {
   return parts.length > 0 ? parts : [<span key="text">{text}</span>];
 };
 
-const MessageContent = ({ content, isLastMessage = false, points, gems, progressPct, milestoneInfo }) => {
+const MessageContent = memo(function MessageContent({ content, isLastMessage = false, points, gems, progressPct, milestoneInfo }) {
   // Parse content to separate code blocks and text
   const blocks = parseMarkdown(content);
   
@@ -102,19 +102,6 @@ const MessageContent = ({ content, isLastMessage = false, points, gems, progress
         // Assessment question detection: must be the last item AND end with '?'
         const isAssessmentQuestion = itemIndex === lastQuestionIndex && isLastParagraphQuestion;
         const isFirstParagraph = itemIndex === 0;
-        
-        // Debug: log assessment question detection (can be removed later)
-        if (itemIndex === lastQuestionIndex) {
-          console.log('Assessment Question Detection:', {
-            itemIndex,
-            lastQuestionIndex,
-            isLastParagraphQuestion,
-            isAssessmentQuestion,
-            paragraphText: lastParagraphText.substring(0, 50) + '...',
-            textWithoutBold: textWithoutBold.substring(0, 50) + '...',
-            endsWithQuestionMark: textWithoutBold.charAt(textWithoutBold.length - 1) === '?'
-          });
-        }
         
         return (
           <div key={item.paragraphIndex} className={isAssessmentQuestion ? "mt-6" : "mb-3"}>
@@ -325,6 +312,6 @@ const MessageContent = ({ content, isLastMessage = false, points, gems, progress
       })}
     </div>
   );
-};
+});
 
 export default MessageContent;

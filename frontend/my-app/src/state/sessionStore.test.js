@@ -93,12 +93,14 @@ describe('SessionStore', () => {
       });
 
       expect(result.current.messages).toHaveLength(1);
-      expect(result.current.messages[0]).toEqual({
+      expect(result.current.messages[0]).toMatchObject({
         role: 'user',
         content: 'Hello',
         ts: '2024-01-01T00:00:00Z',
         tokens: 0
       });
+      expect(result.current.messages[0].id).toBeDefined();
+      expect(typeof result.current.messages[0].id).toBe('string');
     });
 
     it('should enforce valid phase transitions', () => {

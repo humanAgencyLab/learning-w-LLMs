@@ -38,6 +38,7 @@ function ChatInterface() {
     resumeSessionFromServer,
     clearError,
     appendMessage,
+    removeLastAssistantMessage,
     startRevisionQuiz,
     startQuizFromChat
   } = useSessionStore();
@@ -59,6 +60,8 @@ function ChatInterface() {
   const skipNextScrollToBottom = useRef(false);
   const loadOlderThrottleAt = useRef(0);
   const topSentinelRef = useRef(null);
+  const isSubmittingRef = useRef(false);
+  const prevLoadingRef = useRef(loading);
   
   // Detect predefined messages in last assistant response and generate chips
   const getActionChips = useCallback(() => {
@@ -235,17 +238,30 @@ function ChatInterface() {
     scrollRestoreBeforePrepend.current = null;
   }, [sessionMessages.length]);
 
-  // Scroll listener: only track isUserScrolledUp for scroll-to-bottom behavior
+  // Scroll listener: track isUserScrolledUp for scroll-to-bottom behavior (throttled for performance)
   useEffect(() => {
     const messageList = messageListRef.current;
     if (!messageList) return;
+    let rafId = null;
+    let lastRun = 0;
+    const THROTTLE_MS = 80;
     const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = messageList;
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-      setIsUserScrolledUp(!isNearBottom);
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const now = Date.now();
+        if (now - lastRun < THROTTLE_MS) return;
+        lastRun = now;
+        const { scrollTop, scrollHeight, clientHeight } = messageList;
+        const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+        setIsUserScrolledUp(!isNearBottom);
+      });
     };
-    messageList.addEventListener('scroll', handleScroll);
-    return () => messageList.removeEventListener('scroll', handleScroll);
+    messageList.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      messageList.removeEventListener('scroll', handleScroll);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
   }, [sessionId, sessionMessages.length]);
 
   // Load older messages when user scrolls near top: Intersection Observer (reliable with fast scroll, works after session switch)
@@ -357,13 +373,41 @@ function ChatInterface() {
     }
   }, [sessionId, phase, plan]);
   
-  // Determine UI state based on phase
-  const isPreSurface = phase === 'pre' && sessionMessages.length === 0; // Only show pre-surface when there are no messages
+  // Determine UI state based on phase (declare before use in composerVisible)
+  const isPreSurface = phase === 'pre' && sessionMessages.length === 0;
   const isAssessing = phase === 'assessing';
   const isPlanning = phase === 'planning';
   const isActiveLearning = ['assessing', 'planning', 'learning', 'quizzing', 'feedback', 'completed'].includes(phase) || (phase === 'pre' && sessionMessages.length > 0);
   const hasMessages = sessionMessages.length > 0;
   const isCompleted = phase === 'completed' && plan && plan.length > 0 && plan.every(m => m.status === 'passed');
+
+  // Auto-focus chat input when composer is visible so user can type immediately
+  const composerVisible = isPreSurface || (!isPlanning && !isViewOnly && !isPreSurface);
+  useEffect(() => {
+    if (!composerVisible) return;
+    const timer = setTimeout(() => {
+      const target = isPreSurface ? preSurfaceTextareaRef.current : textareaRef.current;
+      target?.focus({ preventScroll: true });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [composerVisible, isPreSurface]);
+
+  // Refocus input after assistant finishes responding so user can type next message without clicking
+  useEffect(() => {
+    const wasLoading = prevLoadingRef.current;
+    prevLoadingRef.current = loading;
+    if (wasLoading && !loading && hasMessages && !isPlanning && !isViewOnly) {
+      const timer = setTimeout(() => {
+        if (skipNextScrollToBottom.current) return;
+        const input = textareaRef.current || preSurfaceTextareaRef.current;
+        input?.focus({ preventScroll: true });
+        if (messageListRef.current) {
+          messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
+        }
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, hasMessages, isPlanning, isViewOnly]);
   
   // Determine placeholder text based on mode and phase
   // Show appropriate placeholder for initial state or learning phase
@@ -418,12 +462,10 @@ function ChatInterface() {
       
       setSummary(summaryText);
       setToast({ type: 'success', message: 'Session summarized successfully' });
-      // Append summary as a system message
       appendMessage({
-        role: 'system',
+        role: 'assistant',
         content: summaryText,
-        timestamp: Date.now(),
-        metadata: { summaryVersion: 1 }
+        ts: new Date().toISOString()
       });
     } catch (error) {
       console.error('Failed to summarize session:', error);
@@ -434,24 +476,7 @@ function ChatInterface() {
     }
   };
   
-  // Debug logging
-  console.log('ChatInterface render - sessionMessages:', sessionMessages);
-  console.log('ChatInterface render - hasMessages:', hasMessages);
-  console.log('ChatInterface render - loading:', loading);
-  console.log('ChatInterface render - error:', error);
-  console.log('ChatInterface render - phase:', phase);
-  console.log('ChatInterface render - isActiveLearning:', isActiveLearning);
-  console.log('ChatInterface render - isPreSurface:', isPreSurface);
-
   const [toast, setToast] = useState(null);
-
-  useEffect(() => {
-    // Scroll to bottom only when user is already near bottom (don't override when they've scrolled up)
-    const messageList = document.getElementById('message-list');
-    if (messageList && !isUserScrolledUp) {
-      messageList.scrollTop = messageList.scrollHeight;
-    }
-  }, [sessionMessages, isUserScrolledUp]);
 
   useEffect(() => {
     if (toast) {
@@ -459,6 +484,14 @@ function ChatInterface() {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  // Surface store error as toast and clear so it doesn't persist
+  useEffect(() => {
+    if (error) {
+      setToast({ type: 'error', message: error });
+      clearError();
+    }
+  }, [error, clearError]);
 
 
   // Helper function to intelligently determine intent based on conversation context
@@ -513,29 +546,20 @@ function ChatInterface() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!inputValue.trim() || loading) return;
+    if (!inputValue.trim() || loading || isSubmittingRef.current) return;
 
     const message = inputValue.trim();
-    setInputValue(''); // Clear input immediately
-    adjustTextareaHeight(); // Reset textarea height
+    setInputValue('');
+    adjustTextareaHeight();
+    isSubmittingRef.current = true;
 
     try {
       // Ensure we have a valid session before sending
       let currentSessionId = sessionId;
       if (!currentSessionId) {
-        console.log('No session found, creating one...');
         try {
           await createSession();
-          // Wait a bit for the store to update with the new sessionId
-          await new Promise(resolve => setTimeout(resolve, 300));
           currentSessionId = useSessionStore.getState().sessionId;
-          
-          if (!currentSessionId) {
-            // Try one more time after a longer wait
-            await new Promise(resolve => setTimeout(resolve, 500));
-            currentSessionId = useSessionStore.getState().sessionId;
-          }
-          
           if (!currentSessionId) {
             throw new Error('Failed to create session. Please refresh the page and try again.');
           }
@@ -553,8 +577,8 @@ function ChatInterface() {
       // Always use sendChatMessage - it handles shouldTriggerAssessment automatically
       // The session store will detect learning intent and trigger assessment if needed
       await sendChatMessage(message);
-      // After sending, scroll to bottom so user sees their message and the response (standard chat UX, like Cursor)
       setIsUserScrolledUp(false);
+      // Scroll to bottom and refocus textarea so user can type next message without clicking
       setTimeout(() => {
         if (messageListRef.current) {
           messageListRef.current.scrollTo({
@@ -562,13 +586,15 @@ function ChatInterface() {
             behavior: 'smooth'
           });
         }
+        const input = textareaRef.current || preSurfaceTextareaRef.current;
+        input?.focus({ preventScroll: true });
       }, 150);
     } catch (err) {
       console.error('Error sending message:', err);
-      // Set error in the store
       useSessionStore.setState({ error: err.message || 'Failed to send message' });
-      // Also show error to user
-      alert(err.message || 'Failed to send message. Please try again.');
+      setToast({ type: 'error', message: err.message || 'Failed to send message. Please try again.' });
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
@@ -581,18 +607,15 @@ function ChatInterface() {
   const handleRetryLastMessage = async () => {
     if (loading) return;
 
-    // Get the last user message from session store
-    const lastUserMsg = sessionMessages
-      .filter(msg => msg.role === 'user')
-      .pop();
-    
+    const lastUserMsg = sessionMessages.filter(msg => msg.role === 'user').pop();
     if (!lastUserMsg) return;
 
     try {
-      // Use sendChatMessage which handles shouldTriggerAssessment automatically
-      await sendChatMessage(lastUserMsg.content);
+      removeLastAssistantMessage();
+      await sendChatMessage(lastUserMsg.content, { skipUserAppend: true });
     } catch (err) {
       console.error('Error retrying message:', err);
+      setToast({ type: 'error', message: err.message || 'Failed to retry.' });
     }
   };
 
@@ -1013,7 +1036,7 @@ function ChatInterface() {
                       )}
                       {sessionMessages.map((message, index) => (
                         <div
-                          key={index}
+                          key={message.id ?? `msg-${index}-${message.ts ?? index}`}
                           className={`flex flex-col gap-2 ${
                             message.role === 'user' ? 'items-end' : 'items-start'
                           }`}

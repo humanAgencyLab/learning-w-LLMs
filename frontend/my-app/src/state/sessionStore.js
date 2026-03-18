@@ -170,17 +170,30 @@ const useSessionStore = create(
       },
 
       appendMessage: ({ role, content, ts, tokens }) => {
+        const tsVal = ts || new Date().toISOString();
         const newMessage = {
+          id: `msg-${tsVal}-${Math.random().toString(36).slice(2, 11)}`,
           role,
           content,
-          ts: ts || new Date().toISOString(),
+          ts: tsVal,
           tokens: tokens || 0
         };
         
         set(state => ({
           messages: [...state.messages, newMessage]
         }));
-  },
+      },
+
+      /** Remove the last message if it is from assistant (for retry flow). */
+      removeLastAssistantMessage: () => {
+        set(state => {
+          const messages = Array.isArray(state.messages) ? state.messages : [];
+          if (messages.length === 0) return state;
+          const last = messages[messages.length - 1];
+          if (last.role !== 'assistant') return state;
+          return { messages: messages.slice(0, -1) };
+        });
+      },
 
   setPhase: (phase) => {
     const validPhases = ['pre', 'assessing', 'learning', 'quizzing', 'feedback', 'completed'];
@@ -302,8 +315,7 @@ const useSessionStore = create(
         
         const currentSessionId = get().sessionId;
         const resolvedSessionId = payload.sessionId ?? payload.id ?? currentSessionId ?? null;
-        console.log('resumeSession applying payload', { resolvedSessionId, phase: payload.phase, prevPhase: get().phase, draftLen: payload.quizAttempts?.length });
-        
+
         const draftAttempt = Array.isArray(payload.quizAttempts)
           ? payload.quizAttempts
               .filter(attempt => attempt && attempt.status === 'draft')
@@ -317,6 +329,11 @@ const useSessionStore = create(
         // Map backend 'reviewing' to frontend 'revision'
         const mappedMode = payload.mode === 'reviewing' ? 'revision' : (payload.mode || prev.mode || 'studying');
         
+        const prevMessages = get().messages;
+        const messagesWithIds = Array.isArray(lastMessages)
+          ? lastMessages.map((m, i) => ({ ...m, id: m.id || m._id || `msg-resumed-${i}-${m.ts || ''}-${String(m.content || '').slice(0, 40)}` }))
+          : (Array.isArray(prevMessages) ? prevMessages : []);
+
         set(prev => ({
           sessionId: resolvedSessionId,
           phase: payload.phase || prev.phase || 'pre',
@@ -330,7 +347,7 @@ const useSessionStore = create(
           gems: payload.gems !== undefined ? payload.gems : prev.gems ?? 0,
           progressPct: payload.progressPct !== undefined ? payload.progressPct : prev.progressPct ?? 0,
           isViewOnly: payload.isViewOnly ?? prev.isViewOnly ?? false,
-          messages: Array.isArray(lastMessages) ? lastMessages : (Array.isArray(prev.messages) ? prev.messages : []),
+          messages: messagesWithIds,
           totalMessageCount: totalMessageCount !== undefined ? totalMessageCount : prev.totalMessageCount,
           hasMoreMessages: hasMoreMessages ?? prev.hasMoreMessages ?? false,
           profile: payload.profile || prev.profile || null,
@@ -472,6 +489,9 @@ const useSessionStore = create(
             // Map backend 'reviewing' to frontend 'revision'
             const sessionMode = actualSession.mode === 'reviewing' ? 'revision' : (actualSession.mode || 'studying');
             
+            const messagesWithIds = Array.isArray(actualSession.messages)
+              ? actualSession.messages.map((m, i) => ({ ...m, id: m.id || m._id || `msg-created-${i}-${m.ts || ''}` }))
+              : [];
             set({
               sessionId: actualSession.id,
               profile: actualSession.profile,
@@ -485,7 +505,7 @@ const useSessionStore = create(
               gems: actualSession.gems || 0,
               progressPct: actualSession.progressPct || 0,
               isViewOnly: actualSession.isViewOnly || false,
-              messages: Array.isArray(actualSession.messages) ? actualSession.messages : [],
+              messages: messagesWithIds,
               model: 'llama',
               meta: {
                 countSinceLastCheck: 0,
@@ -631,46 +651,36 @@ const useSessionStore = create(
         }
       },
 
-      sendChatMessage: async (userMessage) => {
+      sendChatMessage: async (userMessage, options = {}) => {
         const state = get();
-        console.log('sendChatMessage called with:', userMessage);
-        console.log('Current sessionId:', state.sessionId);
-        console.log('Current phase:', state.phase);
-        console.log('Current messages count:', state.messages.length);
+        const skipUserAppend = options.skipUserAppend === true; // true when retrying (don't re-append user message)
         
         if (!state.sessionId) {
           throw new Error('No active session');
         }
 
-        // If in assessing phase, don't try to send to chat - assessment is already being handled
         if (state.phase === 'assessing') {
-          console.log('Session is already in assessing phase, waiting for assessment to complete');
           set({ loading: false });
           return;
         }
 
-        // Add user message immediately
-        get().appendMessage({
-          role: 'user',
-          content: userMessage,
-          ts: new Date().toISOString()
-        });
-        
-        console.log('User message added. Messages count now:', get().messages.length);
+        if (!skipUserAppend) {
+          get().appendMessage({
+            role: 'user',
+            content: userMessage,
+            ts: new Date().toISOString()
+          });
+        }
 
         set({ loading: true, error: null });
 
         try {
-          console.log('Sending request to backend...');
-          // Map frontend 'revision' to backend 'reviewing'
           const backendMode = state.mode === 'revision' ? 'reviewing' : (state.mode || 'studying');
           const response = await chatApi.sendMessage({
             sessionId: state.sessionId,
             userMessage,
             mode: backendMode
           });
-          
-          console.log('Backend response:', JSON.stringify(response, null, 2));
 
               // Check if we should trigger assessment
               if (response.data?.shouldTriggerAssessment) {
@@ -687,30 +697,22 @@ const useSessionStore = create(
                 return response;
               }
 
-              // Add assistant response for normal chat
               get().appendMessage({
                 role: 'assistant',
                 content: response.data.message,
                 ts: new Date().toISOString(),
                 tokens: response.data.tokensOut
               });
-              
-              console.log('Assistant message added. Messages count now:', get().messages.length);
 
               // Update meta if provided
               if (response.data?.meta || response.meta) {
                 set({ meta: { ...state.meta, ...(response.data?.meta || response.meta) } });
               }
 
-              // Update phase if it changed (e.g., from 'pre' to 'learning')
               if (response.data?.phase && response.data.phase !== state.phase) {
-                console.log('Phase changed from', state.phase, 'to', response.data.phase);
                 set({ phase: response.data.phase });
               }
-              
-              // Update plan and progress from backend response (for milestone completion sync)
               if (response.data?.plan) {
-                console.log('Updating plan from backend response', response.data.plan);
                 set({ plan: response.data.plan });
               }
               
@@ -740,15 +742,6 @@ const useSessionStore = create(
                   ? response.data.progressPct 
                   : newPoints;
                 
-                // Atomic update: set points, gems, and progressPct together
-                console.log('Updating points/gems/progress from response', {
-                  newPoints,
-                  newGems,
-                  newProgressPct,
-                  currentPoints: get().points,
-                  currentGems: get().gems,
-                  currentProgressPct: get().progressPct
-                });
                 set({ 
                   points: newPoints,
                   gems: newGems,
@@ -771,16 +764,13 @@ const useSessionStore = create(
               }
               
               // Update milestone completion status
+              // Plan and activeModuleId are already updated from response above - no need to
+              // call resumeSessionFromServer (which replaces messages and causes chat "reload" UX)
               if (response.data?.milestoneCompleted) {
-                console.log('Milestone completed, syncing state', {
+                console.log('Milestone completed, plan/activeModuleId already synced from response', {
                   currentMilestoneIndex: response.data.currentMilestoneIndex,
                   totalMilestones: response.data.totalMilestones
                 });
-                // The plan update above should handle milestone completion
-                // Force a refresh to ensure UI updates
-                if (state.sessionId) {
-                  await get().resumeSessionFromServer(state.sessionId);
-                }
                 
                 // Refresh user data to sync gems in profile chip after milestone completion
                 try {
@@ -1171,8 +1161,9 @@ const useSessionStore = create(
             return { hasMore: false };
           }
           const { messages: older, hasMore } = response.data;
+          const olderWithIds = (older || []).map((m, i) => ({ ...m, id: m.id || m._id || `msg-old-${i}-${m.ts || ''}` }));
           set(prev => ({
-            messages: [...(older || []), ...(prev.messages || [])],
+            messages: [...olderWithIds, ...(prev.messages || [])],
             hasMoreMessages: !!hasMore,
             totalMessageCount: response.data.totalCount ?? prev.totalMessageCount,
             loading: false
