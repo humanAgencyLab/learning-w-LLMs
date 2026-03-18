@@ -16,6 +16,8 @@ const { updateContextSummary } = require('../prompts/context_summarizer');
 const { updateProgress } = require('../services/progressService');
 const { callTeacherAPI } = require('../services/teacherService');
 const { requireAuth, requireOwnership } = require('../middleware/auth');
+const { useMultiAgent } = require('../agents/framework/featureFlag');
+const { runIntentAgent } = require('../agents/intentAgent');
 
 // Extract question from assistant response
 const extractQuestion = (response) => {
@@ -248,7 +250,66 @@ Return ONLY valid JSON in this format:
     }
 
     // Handle 'pre' phase - LLM analyzes intent and decides action
-        if (session.phase === 'pre') {
+        if (session.phase === 'pre' && useMultiAgent()) {
+      // ── Multi-agent path (behind USE_MULTI_AGENT flag) ──
+      try {
+        const intentResult = await runIntentAgent({ session, userMessage });
+        const { payload } = intentResult;
+
+        if (payload.intent === 'learning' && payload.action === 'trigger_assessment') {
+          const userMsg = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: userMessage,
+            timestamp: new Date(),
+            metadata: { intent: 'learning', phaseAtSend: 'pre', agentPath: true },
+          };
+          session.messages.push(userMsg);
+          session.phase = 'assessing';
+          await session.save();
+
+          return res.json({
+            success: true,
+            data: {
+              message: "I'll create a personalized learning plan for you right away!",
+              intent: 'triggers_assessment',
+              phase: 'assessing',
+              shouldTriggerAssessment: true,
+              originalMessage: payload.topic || userMessage,
+            },
+          });
+        }
+
+        // Non-learning intents
+        const assistantText = payload.response || "Hi! I'm here to help you learn. What would you like to learn about today?";
+        const userMsg = {
+          id: `msg_${Date.now()}`,
+          role: 'user',
+          content: userMessage,
+          timestamp: new Date(),
+          metadata: { intent: payload.intent, phaseAtSend: 'pre', agentPath: true },
+        };
+        const assistantMsg = {
+          id: `msg_${Date.now() + 1}`,
+          role: 'assistant',
+          content: assistantText,
+          timestamp: new Date(),
+          metadata: { intent: payload.action, phaseAtSend: 'pre', agentPath: true },
+        };
+        session.messages.push(userMsg, assistantMsg);
+        await session.save();
+
+        return res.json({
+          success: true,
+          data: { message: assistantText, intent: payload.action, phase: 'pre' },
+        });
+      } catch (agentErr) {
+        console.error('Multi-agent intent path failed, falling back to legacy', agentErr.message);
+        // Fall through to legacy handler below
+      }
+    }
+
+    if (session.phase === 'pre') {
         // If we've already entered quizzing or the user explicitly asks to start the quiz
         const wantsQuiz = typeof userMessage === 'string' && /start\s+quiz/i.test(userMessage);
         if ((session.phase === 'quizzing' || session.phase === 'quiz') && (wantsQuiz || !session.meta?.milestoneBeingTaught)) {

@@ -14,6 +14,9 @@ const { buildAssessmentPrompt } = require('../prompts/srl_assessment_prompt');
 const { callTeacherAPI } = require('../services/teacherService');
 const { validateFirstTeaching } = require('../utils/responseValidator');
 const { requireAuth } = require('../middleware/auth');
+const { useMultiAgent } = require('../agents/framework/featureFlag');
+const { runPlanAgent } = require('../agents/planAgent');
+const { runPlanModifyAgent } = require('../agents/planModifyAgent');
 
 // Initialize Pino logger (no transport in production - pino-pretty is dev-only)
 const logger = pino({
@@ -183,6 +186,71 @@ router.post('/v1/assessment', requireAuth, addRequestId, contextControl, async (
     
     await session.save();
     
+    // ── Multi-agent path (behind USE_MULTI_AGENT flag) ──
+    if (useMultiAgent()) {
+      try {
+        const planResult = await runPlanAgent({ userMessage, profile });
+        if (planResult.valid && planResult.payload) {
+          const { topic, chatTitle, rationale, plan } = planResult.payload;
+
+          const finalPlan = plan.map(module => ({
+            id: module.moduleId,
+            title: module.title,
+            description: `Learn ${module.title.toLowerCase()}`,
+            status: 'locked',
+            milestones: (module.targets || []).map(target => ({ text: target, completed: false })),
+            completedMilestones: [],
+            points: module.points,
+            difficulty: module.difficulty || 'core',
+          }));
+
+          if (!session.topic || session.topic !== topic) {
+            session.points = 0;
+            session.gems = 0;
+            session.isViewOnly = false;
+            session.progressPct = 0;
+          }
+          session.topic = topic;
+          session.chatTitle = topic;
+          session.plan = finalPlan;
+          session.activeModuleId = null;
+          session.phase = 'planning';
+          session.planApproved = false;
+          if (session.meta) session.meta.assessClarifyCount = undefined;
+
+          const lastUserMsg = session.messages.filter(m => m.role === 'user').slice(-1)[0];
+          if (!(lastUserMsg && lastUserMsg.content === userMessage)) {
+            session.messages.push({
+              id: `msg_${Date.now()}`,
+              role: 'user',
+              content: userMessage,
+              timestamp: new Date(),
+              metadata: { type: 'assessment_request', agentPath: true },
+            });
+          }
+
+          const planSummary = finalPlan.map((m, i) => `${i + 1}. ${m.title} (${m.points} points)`).join('\n');
+          session.messages.push({
+            id: `msg_${Date.now() + 1}`,
+            role: 'assistant',
+            content: `I've created a personalized learning plan for "${topic}" with ${finalPlan.length} modules:\n\n${planSummary}\n\nPlease review and let me know if you'd like to approve this plan or request any modifications.`,
+            timestamp: new Date(),
+            metadata: { type: 'assessment_plan', moduleCount: finalPlan.length, totalPoints: finalPlan.reduce((s, m) => s + m.points, 0), requiresApproval: true, agentPath: true },
+          });
+          await session.save();
+
+          req.logger.info('Multi-agent plan generated', { sessionId, topic, modulesCount: finalPlan.length });
+          return res.json({
+            success: true,
+            data: { topic, chatTitle, rationale: rationale || 'Personalized learning path', plan: plan, nextPhase: 'planning' },
+          });
+        }
+        req.logger.warn('Multi-agent PlanAgent failed validation, falling through to legacy', { errors: planResult.errors });
+      } catch (agentErr) {
+        req.logger.error('Multi-agent plan path failed, falling back to legacy', { error: agentErr.message });
+      }
+    }
+
     // Always generate plan directly (no user interaction, no clarification questions)
     // Extract key context from recent messages (last 4 messages max)
     const conversationHistory = (session.messages || [])
@@ -993,6 +1061,44 @@ router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, 
       });
     }
     
+    // ── Multi-agent modification path ──
+    if (useMultiAgent()) {
+      try {
+        const modResult = await runPlanModifyAgent({ session, modificationRequest });
+        if (modResult.valid && modResult.payload) {
+          const { topic, chatTitle, rationale, plan } = modResult.payload;
+          const finalPlan = plan.map(module => ({
+            id: module.moduleId,
+            title: module.title,
+            description: `Learn ${module.title.toLowerCase()}`,
+            status: 'locked',
+            milestones: (module.targets || []).map(target => ({ text: target, completed: false })),
+            completedMilestones: [],
+            points: module.points,
+            difficulty: module.difficulty || 'core',
+          }));
+
+          session.topic = topic;
+          session.chatTitle = topic;
+          session.plan = finalPlan;
+          session.planApproved = false;
+
+          const planSummary = finalPlan.map((m, i) => `${i + 1}. ${m.title} (${m.points} points)`).join('\n');
+          session.messages.push(
+            { id: `msg_${Date.now()}`, role: 'user', content: modificationRequest, timestamp: new Date(), metadata: { type: 'plan_modification_request', agentPath: true } },
+            { id: `msg_${Date.now() + 1}`, role: 'assistant', content: `I've updated your learning plan based on your feedback:\n\n${planSummary}\n\nPlease review and let me know if you'd like to approve this modified plan or request further changes.`, timestamp: new Date(), metadata: { type: 'assessment_plan_modified', moduleCount: finalPlan.length, requiresApproval: true, agentPath: true } },
+          );
+          await session.save();
+
+          req.logger.info('Multi-agent plan modification succeeded', { sessionId });
+          return res.json({ success: true, data: { topic, chatTitle, rationale: rationale || 'Modified plan', plan, nextPhase: 'planning' } });
+        }
+        req.logger.warn('Multi-agent PlanModifyAgent validation failed, falling through to legacy', { errors: modResult.errors });
+      } catch (agentErr) {
+        req.logger.error('Multi-agent modify path failed, falling back to legacy', { error: agentErr.message });
+      }
+    }
+
     // Get conversation history (last few messages)
     const conversationHistory = session.messages.slice(-10);
     

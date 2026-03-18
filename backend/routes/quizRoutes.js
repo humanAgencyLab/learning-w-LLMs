@@ -13,6 +13,8 @@ const { updateProgress } = require('../services/progressService');
 const { buildQuizFailureAnalysisPrompt } = require('../prompts/assessment_analyzer');
 const { getGroqClient } = require('../lib/llmClient');
 const { requireAuth } = require('../middleware/auth');
+const { useMultiAgent } = require('../agents/framework/featureFlag');
+const { runQuizAgent } = require('../agents/quizAgent');
 
 // Initialize Pino logger (no transport in production - pino-pretty is dev-only)
 const logger = pino({
@@ -497,6 +499,36 @@ router.post('/v1/quiz/start', requireAuth, addRequestId, async (req, res) => {
       });
     }
     
+    // ── Multi-agent quiz generation path ──
+    if (useMultiAgent()) {
+      try {
+        const quizResult = await runQuizAgent({ module });
+        if (quizResult.valid && quizResult.payload) {
+          const previousAttempts = session.quizAttempts.filter(a => a.moduleId === moduleId);
+          const attemptNo = previousAttempts.length + 1;
+          const attemptId = uuidv4();
+          const draftAttempt = {
+            id: attemptId,
+            moduleId,
+            attemptNo,
+            status: 'draft',
+            items: quizResult.payload.questions,
+            answers: [],
+            createdAt: new Date(),
+          };
+          session.quizAttempts.push(draftAttempt);
+          session.phase = 'quizzing';
+          await session.save();
+
+          req.logger.info('Multi-agent quiz generated', { sessionId, moduleId, questionCount: quizResult.payload.questions.length });
+          return res.json({ success: true, questions: quizResult.payload.questions });
+        }
+        req.logger.warn('Multi-agent QuizAgent validation failed, falling through to legacy', { errors: quizResult.errors });
+      } catch (agentErr) {
+        req.logger.error('Multi-agent quiz path failed, falling back to legacy', { error: agentErr.message });
+      }
+    }
+
     // Generate new quiz - fixed count to maintain structure
     const questionCount = 5;
     const difficulty = module.difficulty || 'core';
