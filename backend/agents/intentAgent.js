@@ -13,6 +13,8 @@ Analyze the user message and return ONLY valid JSON with these fields:
 
 Rules:
 - If the user states a topic they want to learn → intent="learning", action="trigger_assessment"
+- Single words like "python", "javascript", "guitar" = learning (topic is that word)
+- Phrases like "I want to learn X", "teach me X" = learning
 - If the user says hello/hi/hey → intent="greeting", action="respond_naturally"
 - If the message is ambiguous or off-topic → intent="unclear", action="respond_naturally"
 - Never engage in chit-chat. Always steer toward learning.
@@ -52,6 +54,34 @@ async function runIntentAgent({ session, userMessage }) {
     validateIntent,
     { agentName: 'IntentAgent' },
   );
+
+  // Heuristic: message looks like a topic (run for both valid and !valid so we catch validation failures)
+  const lower = (userMessage || '').toLowerCase().trim();
+  const matchLearn = /^i\s+(want\s+to\s+)?learn\s+/i.test(lower);
+  const matchTeach = /^teach\s+me\s+/i.test(lower);
+  const matchLearnAbout = /^i\s+(want\s+to\s+)?learn\s+about\s+/i.test(lower);
+  const matchCommon = ['python', 'javascript', 'react', 'java', 'c', 'guitar', 'piano', 'data', 'structure', 'algorithm', 'machine learning', 'web development', 'swift'].some(t => lower.includes(t));
+  const matchShort = lower.split(/\s+/).length <= 3 && !lower.includes('?');
+  const isTopicLike =
+    lower.length > 0 &&
+    lower.length < 80 &&
+    !/^(hello|hi|hey|what|how|why|thanks|thank you|bye|bye bye)\b/i.test(lower) &&
+    (matchLearn || matchTeach || matchLearnAbout || matchCommon || matchShort);
+
+  if (isTopicLike) {
+    return {
+      type: 'intent',
+      payload: {
+        intent: 'learning',
+        action: 'trigger_assessment',
+        topic: userMessage.trim(),
+        confidence: 'medium',
+        response: '',
+        isFollowUpToOutstanding: false,
+      },
+      uiMessage: '',
+    };
+  }
 
   if (!valid) {
     return {
