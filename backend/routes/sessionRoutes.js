@@ -611,11 +611,13 @@ router.get('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(async
         quizAttempts: session.quizAttempts,
         userId: session.userId,
         meta: session.meta,
+        courseId: session.courseId || null,
+        courseTopicId: session.courseTopicId || null,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt
       }
     });
-    
+
   } catch (error) {
     req.logger.error('Failed to fetch session', { 
       sessionId: req.params.id,
@@ -693,12 +695,14 @@ router.post('/v1/sessions/:id/resume', requireAuth, addRequestId, requireOwnersh
         lastMessages,
         totalMessageCount,
         hasMoreMessages,
-        profile: session.profile
+        profile: session.profile,
+        courseId: session.courseId || null,
+        courseTopicId: session.courseTopicId || null
       }
     });
-    
+
   } catch (error) {
-    req.logger.error('Failed to resume session', { 
+    req.logger.error('Failed to resume session', {
       sessionId: req.params.id,
       error: error.message,
       stack: error.stack,
