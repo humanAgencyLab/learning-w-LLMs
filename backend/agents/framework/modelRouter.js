@@ -6,10 +6,13 @@ const TASK_MODEL_MAP = {
   conversation_manager: 'cheap',
   plan_modify: 'cheap',
   feedback: 'cheap',
+  engagement: 'cheap',
+  material_summary: 'cheap',
   plan: 'expensive',
   assessment: 'expensive',
   teaching: 'expensive',
   quiz: 'expensive',
+  topic_plan: 'expensive',
 };
 
 function getModelForTask(taskName) {

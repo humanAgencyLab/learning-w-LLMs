@@ -240,8 +240,84 @@ const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validati
   return cleanedContent;
 };
 
+/**
+ * Streaming variant: yields text chunks as they arrive. Does not use retry (streaming + retry is complex).
+ * Returns full content when done. Use for SSE responses.
+ *
+ * @param {string} prompt
+ * @param {number} maxTokens
+ * @param {object} session
+ * @param {{ onChunk: (chunk: string) => void }} opts
+ * @returns {Promise<string>} full content when stream completes
+ */
+const callTeacherAPIStream = async (prompt, maxTokens = 1500, session = null, opts = {}) => {
+  const groqClient = getGroqClient();
+  const { onChunk } = opts;
+
+  const messages = [
+    {
+      role: 'system',
+      content:
+        'You are an expert tutor and learning facilitator. Follow the instructions in the user message carefully. Provide complete teaching responses with introduction, teaching content, and assessment question. Adapt your teaching style to the topic and student profile.'
+    }
+  ];
+
+  if (session && session.messages && session.messages.length > 0) {
+    const meta = session.meta || {};
+    let recentMessages;
+    if (meta.contextSummary && typeof meta.summarizedUpToIndex === 'number') {
+      const summaryText = meta.contextSummary?.text || '';
+      if (summaryText) {
+        messages.push({
+          role: 'system',
+          content: `Previous conversation summary (for context):\n${summaryText}`
+        });
+      }
+      recentMessages = session.messages.slice(meta.summarizedUpToIndex).slice(-15);
+    } else {
+      recentMessages = session.messages.slice(-15);
+    }
+    const truncatedMessages = truncateMessages(recentMessages, 2000);
+    truncatedMessages.forEach((msg) => {
+      messages.push({ role: msg.role, content: msg.content });
+    });
+  }
+
+  const userContent = prompt || 'Provide the next teaching response following the required structure.';
+  messages.push({ role: 'user', content: userContent });
+
+  const effectiveMaxTokens = Math.max(maxTokens || 1500, 1500);
+
+  const stream = await groqClient.chat.completions.create({
+    model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+    messages,
+    temperature: 0.7,
+    top_p: 0.9,
+    max_tokens: effectiveMaxTokens,
+    stream: true
+  });
+
+  let fullContent = '';
+  for await (const chunk of stream) {
+    const delta = chunk.choices?.[0]?.delta?.content;
+    if (typeof delta === 'string' && delta.length > 0) {
+      fullContent += delta;
+      if (onChunk) onChunk(delta);
+    }
+  }
+
+  let cleanedContent = fullContent;
+  cleanedContent = cleanedContent.replace(/\*\*?STEP\s*[123]:?\s*\*\*?/gi, '');
+  cleanedContent = cleanedContent.replace(/\*\*?Step\s*[123]:?\s*\*\*?/gi, '');
+  cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n');
+  cleanedContent = cleanedContent.trim();
+
+  return cleanedContent || 'I apologize, but I encountered an issue generating a response. Please try again in a moment.';
+};
+
 module.exports = {
   callTeacherAPI,
+  callTeacherAPIStream,
   estimateTokens
 };
 

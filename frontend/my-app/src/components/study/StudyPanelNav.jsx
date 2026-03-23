@@ -15,6 +15,8 @@ function StudyPanelNav({
                          (sessionData.progressPct !== undefined ? sessionData.progressPct : 
                          (sessionData.progressPercent || 0));
   const displayModules = modules || sessionData.plan || [];
+  const activeModuleId = sessionData.activeModuleId;
+  const currentMilestoneIndex = sessionData?.meta?.currentMilestoneIndex ?? 0;
 
   // Don't render if no topic data
   if (!displayTopic) {
@@ -33,8 +35,9 @@ function StudyPanelNav({
     // Check if current module is completed
     const isCompleted = completedMilestones === totalMilestones && totalMilestones > 0;
     
-    // Check if current module is active (has some progress but not complete)
-    const isActive = completedMilestones > 0 && !isCompleted && previousModuleCompleted;
+    // Check if current module is active:
+    // Use server-truth activeModuleId so a new module is active even with 0 completed milestones.
+    const isActive = !!activeModuleId && module.id === activeModuleId && !isCompleted && previousModuleCompleted;
     
     // Check if module is locked (previous not completed)
     const isLocked = !previousModuleCompleted;
@@ -118,9 +121,16 @@ function StudyPanelNav({
                 <ul className="space-y-1">
                   {module.milestones?.map((milestone, i) => {
                     // Determine milestone state within the module
-                    const previousMilestoneCompleted = i === 0 || module.milestones[i - 1]?.completed;
                     const isMilestoneCompleted = milestone.completed;
-                    const isMilestoneActive = !isMilestoneCompleted && previousMilestoneCompleted && isActive;
+                    // Active milestone:
+                    // - Prefer meta.currentMilestoneIndex for the active module
+                    // - Fallback to "first incomplete after previous completed"
+                    const isActiveModule = !!activeModuleId && module.id === activeModuleId;
+                    const previousMilestoneCompleted = i === 0 || module.milestones[i - 1]?.completed;
+                    const isMilestoneActive = isActive && !isMilestoneCompleted && (
+                      (isActiveModule && i === currentMilestoneIndex) ||
+                      (!isActiveModule && previousMilestoneCompleted)
+                    );
                     const isMilestoneLocked = !previousMilestoneCompleted && !isMilestoneCompleted;
                     
                     return (

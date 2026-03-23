@@ -30,7 +30,7 @@ const quizItemSchema = z.object({
 const quizGenerationSchema = z.object({
   questions: z.array(quizItemSchema)
     .min(3, 'Must have at least 3 questions')
-    .max(5, 'Must have at most 5 questions')
+    .max(10, 'Must have at most 10 questions')
     .refine(questions => {
       // Ensure all question IDs are unique
       const ids = questions.map(q => q.id);

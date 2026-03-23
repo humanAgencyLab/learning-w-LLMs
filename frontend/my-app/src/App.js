@@ -14,6 +14,12 @@ import ProtectedRoute from './components/ProtectedRoute';
 import useAuthStore from './state/authStore';
 import Onboarding from './Pages/Onboarding';
 import { ToastContainer } from './components/ui/toast';
+import InstructorRoute from './components/InstructorRoute';
+import InstructorCoursesPage from './Pages/instructor/InstructorCoursesPage';
+import InstructorCourseDetailPage from './Pages/instructor/InstructorCourseDetailPage';
+import InstructorTopicEditorPage from './Pages/instructor/InstructorTopicEditorPage';
+import StudentCoursesPage from './Pages/student/StudentCoursesPage';
+import StudentCourseTopicsPage from './Pages/student/StudentCourseTopicsPage';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
@@ -78,6 +84,46 @@ function App() {
               <ProtectedRoute>
                 <Profile />
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/courses"
+            element={
+              <ProtectedRoute>
+                <StudentCoursesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/courses/:courseId/topics"
+            element={
+              <ProtectedRoute>
+                <StudentCourseTopicsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/instructor/courses"
+            element={
+              <InstructorRoute>
+                <InstructorCoursesPage />
+              </InstructorRoute>
+            }
+          />
+          <Route
+            path="/instructor/courses/:courseId"
+            element={
+              <InstructorRoute>
+                <InstructorCourseDetailPage />
+              </InstructorRoute>
+            }
+          />
+          <Route
+            path="/instructor/courses/:courseId/topics/:topicId"
+            element={
+              <InstructorRoute>
+                <InstructorTopicEditorPage />
+              </InstructorRoute>
             }
           />
           <Route

@@ -1,59 +1,74 @@
-import React, { useState, memo } from 'react';
+import React, { useState, memo, lazy, Suspense } from 'react';
 import CodeBlock from './CodeBlock';
 import ProgressIndicator from './ProgressIndicator';
 import { parseMarkdown, extractBoldText } from '../../utils/markdownParser';
 import { detectQuestionType, parseMCQQuestion } from '../../utils/questionParser';
 
-// Helper to render inline code (backticks)
-const renderInlineCode = (text) => {
-  const parts = [];
-  const codeRegex = /`([^`]+)`/g;
-  let lastIndex = 0;
-  let match;
-  
-  while ((match = codeRegex.exec(text)) !== null) {
-    // Add text before code
-    if (match.index > lastIndex) {
-      parts.push(<span key={`text-${lastIndex}`}>{text.substring(lastIndex, match.index)}</span>);
+const MermaidDiagram = lazy(() => import('./MermaidDiagram'));
+
+const LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(?<![[("])(https?:\/\/[^\s)<>"]+)/g;
+
+const renderLinksAndCode = (text) => {
+  const tokens = [];
+  let cursor = 0;
+
+  const combined = new RegExp(
+    `(${LINK_RE.source})|(\`[^\`]+\`)`,
+    'g'
+  );
+  let m;
+  while ((m = combined.exec(text)) !== null) {
+    if (m.index > cursor) {
+      tokens.push(<span key={`t-${cursor}`}>{text.substring(cursor, m.index)}</span>);
     }
-    // Add code with styling
-    parts.push(
-      <code 
-        key={`code-${match.index}`}
-        className="bg-gray-100 text-red-600 px-1.5 py-0.5 rounded text-sm font-mono"
-        style={{ 
-          backgroundColor: '#f3f4f6', 
-          color: '#dc2626',
-          padding: '2px 6px',
-          borderRadius: '4px',
-          fontSize: '0.875rem',
-          fontFamily: 'monospace'
-        }}
-      >
-        {match[1]}
-      </code>
-    );
-    lastIndex = codeRegex.lastIndex;
+    if (m[0].startsWith('`')) {
+      tokens.push(
+        <code
+          key={`c-${m.index}`}
+          className="bg-gray-100 text-red-600 px-1.5 py-0.5 rounded text-sm font-mono"
+          style={{ backgroundColor: '#f3f4f6', color: '#dc2626', padding: '2px 6px', borderRadius: '4px', fontSize: '0.875rem', fontFamily: 'monospace' }}
+        >
+          {m[0].slice(1, -1)}
+        </code>
+      );
+    } else {
+      const mdLink = m[0].match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
+      const href = mdLink ? mdLink[2] : m[0];
+      const label = mdLink ? mdLink[1] : href.replace(/^https?:\/\//, '').slice(0, 40);
+      tokens.push(
+        <a
+          key={`l-${m.index}`}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#4e81ee] underline hover:text-blue-700 break-all"
+        >
+          {label}
+        </a>
+      );
+    }
+    cursor = m.index + m[0].length;
   }
-  
-  // Add remaining text
-  if (lastIndex < text.length) {
-    parts.push(<span key={`text-${lastIndex}`}>{text.substring(lastIndex)}</span>);
+  if (cursor < text.length) {
+    tokens.push(<span key={`t-${cursor}`}>{text.substring(cursor)}</span>);
   }
-  
-  return parts.length > 0 ? parts : [<span key="text">{text}</span>];
+  return tokens.length ? tokens : [<span key="t">{text}</span>];
 };
 
-const MessageContent = memo(function MessageContent({ content, isLastMessage = false, points, gems, progressPct, milestoneInfo }) {
-  // Parse content to separate code blocks and text
+const renderInlineCode = renderLinksAndCode;
+
+const MessageContent = memo(function MessageContent({ content, isLastMessage = false, points, gems, progressPct, milestoneInfo, onAnswer }) {
+  const [selectedOption, setSelectedOption] = useState(null);
+
   const blocks = parseMarkdown(content);
   
-  // Split all text blocks into paragraphs to properly detect assessment questions
   const allParagraphs = [];
   let paragraphIndex = 0;
   
   blocks.forEach((block, blockIndex) => {
-    if (block.type === 'code') {
+    if (block.type === 'mermaid') {
+      allParagraphs.push({ ...block, paragraphIndex: paragraphIndex++ });
+    } else if (block.type === 'code') {
       allParagraphs.push({ ...block, paragraphIndex: paragraphIndex++ });
     } else {
       // Split text block by double newlines to get paragraphs
@@ -87,6 +102,13 @@ const MessageContent = memo(function MessageContent({ content, isLastMessage = f
   return (
     <div className="prose prose-sm max-w-none">
       {allParagraphs.map((item, itemIndex) => {
+        if (item.type === 'mermaid') {
+          return (
+            <Suspense key={item.paragraphIndex} fallback={<div className="my-4 p-4 text-sm text-gray-400">Loading diagram...</div>}>
+              <MermaidDiagram chart={item.content} />
+            </Suspense>
+          );
+        }
         if (item.type === 'code') {
           return (
             <CodeBlock 
@@ -157,28 +179,64 @@ const MessageContent = memo(function MessageContent({ content, isLastMessage = f
                     )}
                   </div>
                   
-                  {/* MCQ Options */}
+                  {/* MCQ Options (clickable) */}
                   {isMCQ && mcqData && mcqData.options.length > 0 && (
                     <div className="mt-3 space-y-2">
-                      {mcqData.options.map((option, idx) => (
-                        <div key={idx} className="flex items-start gap-2 p-2 bg-white rounded-lg border border-blue-100 hover:border-blue-300 hover:bg-blue-50 transition-colors">
-                          <span className="font-semibold text-[#4e81ee] min-w-[24px]">{option.letter}.</span>
-                          <span className="text-[#030712]">{option.text}</span>
-                        </div>
-                      ))}
+                      {mcqData.options.map((option, idx) => {
+                        const isSelected = selectedOption === option.letter;
+                        return (
+                          <button
+                            key={idx}
+                            disabled={!!selectedOption}
+                            onClick={() => {
+                              setSelectedOption(option.letter);
+                              if (onAnswer) onAnswer(`${option.letter}) ${option.text}`);
+                            }}
+                            className={`w-full flex items-start gap-2 p-2 rounded-lg border transition-colors text-left ${
+                              isSelected
+                                ? 'border-[#4e81ee] bg-blue-50 ring-2 ring-[#4e81ee]/30'
+                                : selectedOption
+                                  ? 'border-blue-100 bg-white opacity-60 cursor-default'
+                                  : 'border-blue-100 bg-white hover:border-blue-300 hover:bg-blue-50 cursor-pointer'
+                            }`}
+                          >
+                            <span className="font-semibold text-[#4e81ee] min-w-[24px]">{option.letter}.</span>
+                            <span className="text-[#030712]">{option.text}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                   
-                  {/* True/False indicator */}
+                  {/* True/False (clickable) */}
                   {isTrueFalse && (
                     <div className="mt-3 p-3 bg-white rounded-lg border border-blue-200">
                       <div className="flex gap-3">
-                        <button className="px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg font-medium hover:bg-green-100 transition-colors">
-                          True
-                        </button>
-                        <button className="px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded-lg font-medium hover:bg-red-100 transition-colors">
-                          False
-                        </button>
+                        {['True', 'False'].map(val => {
+                          const isSelected = selectedOption === val;
+                          const colors = val === 'True'
+                            ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                            : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100';
+                          return (
+                            <button
+                              key={val}
+                              disabled={!!selectedOption}
+                              onClick={() => {
+                                setSelectedOption(val);
+                                if (onAnswer) onAnswer(val);
+                              }}
+                              className={`px-4 py-2 border rounded-lg font-medium transition-colors ${
+                                isSelected
+                                  ? `${colors} ring-2 ring-offset-1 ring-blue-400`
+                                  : selectedOption
+                                    ? `${colors} opacity-50 cursor-default`
+                                    : `${colors} cursor-pointer`
+                              }`}
+                            >
+                              {val}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

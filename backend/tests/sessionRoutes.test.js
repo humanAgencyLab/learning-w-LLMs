@@ -200,7 +200,10 @@ describe('Session Routes', () => {
             title: 'Module 1',
             description: 'First module',
             status: 'in_progress',
-            milestones: ['Milestone 1', 'Milestone 2'],
+            milestones: [
+              { text: 'Milestone 1', completed: true },
+              { text: 'Milestone 2', completed: false }
+            ],
             completedMilestones: [0],
             points: 50,
             difficulty: 'core'
@@ -332,7 +335,9 @@ describe('Session Routes', () => {
             title: 'Module 1',
             description: 'First module',
             status: 'in_progress',
-            milestones: ['Milestone 1'],
+            milestones: [
+              { text: 'Milestone 1', completed: false }
+            ],
             completedMilestones: [],
             points: 50,
             difficulty: 'core'

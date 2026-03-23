@@ -1064,6 +1064,14 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                                   total: plan.find(m => m.id === activeModuleId)?.milestones?.length || 0,
                                   moduleNum: plan.findIndex(m => m.id === activeModuleId) + 1
                                 } : null}
+                                onAnswer={index === sessionMessages.length - 1 && !isViewOnly && !loading ? async (answer) => {
+                                  try {
+                                    await sendChatMessage(answer);
+                                    setIsUserScrolledUp(false);
+                                  } catch (err) {
+                                    console.error('Error sending answer:', err);
+                                  }
+                                } : undefined}
                               />
                             ) : (
                               message.content

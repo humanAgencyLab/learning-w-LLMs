@@ -35,7 +35,7 @@ const SessionSchema = new mongoose.Schema({
     required: false,
     default: ''
   },
-  
+
   // Learning plan (array of 4 modules)
   plan: [{
     id: {
@@ -78,16 +78,22 @@ const SessionSchema = new mongoose.Schema({
       type: String,
       enum: ['intro', 'core', 'apply', 'challenge'],
       default: 'core'
+    },
+    // Optional instructor-defined quiz style (course-topic sessions)
+    quizPattern: {
+      type: mongoose.Schema.Types.Mixed,
+      required: false,
+      default: undefined
     }
   }],
-  
+
   // Current state
   activeModuleId: {
     type: String,
     required: false,
     default: null
   },
-  
+
   // Progress tracking
   points: {
     type: Number,
@@ -118,7 +124,7 @@ const SessionSchema = new mongoose.Schema({
     min: 0,
     max: 100
   },
-  
+
   // Messages array
   messages: [{
     id: {
@@ -146,7 +152,7 @@ const SessionSchema = new mongoose.Schema({
       // phaseAtSend: 'pre' | 'assessing' | 'learning' | 'quizzing' | 'feedback' | 'completed'
     }
   }],
-  
+
   // User profile (required in production)
   profile: {
     source: {
@@ -258,7 +264,7 @@ const SessionSchema = new mongoose.Schema({
       enum: ['Python', 'JavaScript', 'C++', 'None']
     }
   },
-  
+
   // Quiz attempts
   quizAttempts: [{
     id: {
@@ -267,7 +273,7 @@ const SessionSchema = new mongoose.Schema({
     },
     moduleId: {
       type: String,
-      required: function() {
+      required: function () {
         // moduleId is required for regular quizzes, optional for revision quizzes
         return !this.isRevision;
       }
@@ -341,7 +347,25 @@ const SessionSchema = new mongoose.Schema({
       type: String
     }
   }],
-  
+
+  // Instructor course linkage (null for student-driven sessions)
+  courseId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Course',
+    default: null,
+    index: true
+  },
+  courseTopicId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'CourseTopic',
+    default: null
+  },
+  enrollmentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Enrollment',
+    default: null
+  },
+
   // User reference (required - all sessions must belong to a user)
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -349,7 +373,7 @@ const SessionSchema = new mongoose.Schema({
     required: true,
     index: true
   },
-  
+
   // Chat cadence tracking
   meta: {
     countSinceLastCheck: {
@@ -378,9 +402,9 @@ const SessionSchema = new mongoose.Schema({
       min: 0,
       max: 2
     },
-    // Structured context summary (JSON string)
+    // Structured context summary (object with text, summarizedUpToIndex, version)
     contextSummary: {
-      type: String,
+      type: mongoose.Schema.Types.Mixed,
       default: null
     },
     contextSummaryUpdated: {
@@ -406,13 +430,14 @@ const SessionSchema = new mongoose.Schema({
       default: []
     }
   }
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true
 });
 
 // Indexes for performance
 SessionSchema.index({ userId: 1, createdAt: -1 });
 SessionSchema.index({ phase: 1 });
 SessionSchema.index({ topic: 1 });
+SessionSchema.index({ courseId: 1, courseTopicId: 1, userId: 1 });
 
 module.exports = mongoose.model('Session', SessionSchema);

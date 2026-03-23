@@ -1,5 +1,5 @@
 // Markdown parser utility for chat messages
-// Detects code blocks, sections, lists, headings, etc.
+// Detects code blocks (including mermaid), sections, lists, headings, links, etc.
 
 export const parseMarkdown = (content) => {
   const blocks = [];
@@ -12,14 +12,14 @@ export const parseMarkdown = (content) => {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     
-    // Check for code block start/end
     const codeBlockMatch = line.match(/^```(\w+)?$/);
     if (codeBlockMatch) {
       if (inCodeBlock) {
-        // End of code block
         if (currentBlock.content) {
+          const lang = (currentBlock.language || '').toLowerCase();
           blocks.push({
             ...currentBlock,
+            type: lang === 'mermaid' ? 'mermaid' : 'code',
             content: currentBlock.content.trim()
           });
         }
@@ -27,7 +27,6 @@ export const parseMarkdown = (content) => {
         inCodeBlock = false;
         codeBlockLanguage = '';
       } else {
-        // Start of code block
         if (currentBlock.content.trim()) {
           blocks.push({ ...currentBlock, content: currentBlock.content.trim() });
         }
@@ -39,17 +38,19 @@ export const parseMarkdown = (content) => {
     }
     
     if (inCodeBlock) {
-      // Accumulate code block content
       currentBlock.content += (currentBlock.content ? '\n' : '') + line;
     } else {
-      // Accumulate text content
       currentBlock.content += (currentBlock.content ? '\n' : '') + line;
     }
   }
   
-  // Push the last block
   if (currentBlock.content.trim()) {
-    blocks.push({ ...currentBlock, content: currentBlock.content.trim() });
+    const lang = (currentBlock.language || '').toLowerCase();
+    if (inCodeBlock && lang === 'mermaid') {
+      blocks.push({ type: 'mermaid', content: currentBlock.content.trim(), language: 'mermaid' });
+    } else {
+      blocks.push({ ...currentBlock, content: currentBlock.content.trim() });
+    }
   }
   
   return blocks;

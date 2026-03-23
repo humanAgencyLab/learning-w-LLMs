@@ -22,6 +22,20 @@ const UserSchema = new mongoose.Schema({
     minlength: 1,
     maxlength: 100
   },
+  role: {
+    type: String,
+    enum: ['student', 'instructor'],
+    default: 'student',
+    required: true
+  },
+  // Synthetic unique placeholder for legacy DB indexes; not used for auth flows
+  email: {
+    type: String,
+    unique: true,
+    sparse: true,
+    select: false,
+    default: undefined
+  },
   avatarUrl: {
     type: String,
     default: null // Will store URL/path to avatar image
@@ -237,6 +251,7 @@ UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
 UserSchema.methods.toJSON = function() {
   const userObject = this.toObject();
   delete userObject.passwordHash;
+  delete userObject.email;
   delete userObject.emailVerificationToken;
   delete userObject.passwordResetToken;
   delete userObject.passwordResetExpires;

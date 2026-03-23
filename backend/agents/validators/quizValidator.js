@@ -1,4 +1,4 @@
-function validateQuiz(output) {
+function validateQuiz(output, expectedCount = 5) {
   const errors = [];
 
   if (!output || typeof output !== 'object') {
@@ -10,8 +10,9 @@ function validateQuiz(output) {
     return { valid: false, errors: ['questions must be an array'] };
   }
 
-  if (questions.length !== 5) {
-    errors.push(`Expected exactly 5 questions, got ${questions.length}`);
+  const exp = Math.min(10, Math.max(3, Number(expectedCount) || 5));
+  if (questions.length !== exp) {
+    errors.push(`Expected exactly ${exp} questions, got ${questions.length}`);
   }
 
   const forbiddenPatterns = ['all of the above', 'none of the above', 'both a and b', 'both a and c', 'both b and c'];

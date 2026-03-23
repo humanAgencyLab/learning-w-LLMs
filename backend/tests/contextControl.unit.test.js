@@ -47,7 +47,10 @@ describe('Context Control Middleware - Unit Tests', () => {
           title: 'Variables',
           description: 'Learn about variables',
           status: 'in_progress',
-          milestones: ['Declare variables', 'Use let/const'],
+          milestones: [
+            { text: 'Declare variables', completed: true },
+            { text: 'Use let/const', completed: false }
+          ],
           completedMilestones: [0],
           points: 50,
           difficulty: 'core'
@@ -153,10 +156,12 @@ describe('Context Control Middleware - Unit Tests', () => {
       console.log('After middleware - Messages length:', updatedSession.messages.length);
       console.log('After middleware - Summary version:', updatedSession.meta.summaryVersion);
       console.log('After middleware - Summarized up to index:', updatedSession.meta.summarizedUpToIndex);
-      // Summary replaces chunks, remaining messages should be <= original (1 summary + remaining messages)
-      expect(updatedSession.messages.length).toBeLessThanOrEqual(26); // 1 summary + <=25 remaining
+      // Messages are kept in full (Cursor-style: all visible in UI). Summary stored in meta only.
+      expect(updatedSession.messages.length).toBe(45);
       expect(updatedSession.meta.summaryVersion).toBe(1);
       expect(updatedSession.meta.summarizedUpToIndex).toBeDefined();
+      expect(updatedSession.meta.contextSummary).toBeDefined();
+      expect(updatedSession.meta.contextSummary.text).toBeTruthy();
 
       // Verify next was called
       expect(next).toHaveBeenCalled();

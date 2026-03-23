@@ -23,6 +23,9 @@ const authRoutes = require('./routes/authRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const performanceRoutes = require('./routes/performanceRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const instructorRoutes = require('./routes/instructorRoutes');
+const enrollmentRoutes = require('./routes/enrollmentRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
 const path = require('path');
 
 // Import middleware
@@ -135,6 +138,9 @@ if (process.env.NODE_ENV === 'production') {
   console.log(`✅ Total auth routes registered: ${authRoutes.stack.filter(l => l.route).length}`);
 }
 app.use('/v1/auth', authRoutes);
+app.use('/v1/instructor', instructorRoutes);
+app.use('/v1/instructor', analyticsRoutes);
+app.use('/v1/courses', enrollmentRoutes);
 app.use('/v1/profile', profileRoutes);
 app.use('/', performanceRoutes);
 app.use('/', adminRoutes);

@@ -18,6 +18,8 @@
   "license": "ISC",
   "description": "Backend API for Learning with LLMs application",
   "dependencies": {
+    "@langchain/core": "^1.1.33",
+    "@langchain/langgraph": "^1.2.3",
     "@swc/helpers": "^0.5.17",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
@@ -33,6 +35,7 @@
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
     "openai": "^4.86.2",
+    "pdf-parse": "^1.1.1",
     "pdfkit": "^0.17.2",
     "pino": "^10.1.0",
     "swagger-ui-express": "^5.0.1",

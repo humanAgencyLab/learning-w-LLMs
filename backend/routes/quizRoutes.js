@@ -4,6 +4,7 @@ const pino = require('pino');
 const { z } = require('zod');
 const { v4: uuidv4 } = require('uuid');
 const Session = require('../models/Session');
+const CourseTopic = require('../models/CourseTopic');
 const { 
   quizStartRequestSchema, 
   quizSubmitRequestSchema,
@@ -15,6 +16,8 @@ const { getGroqClient } = require('../lib/llmClient');
 const { requireAuth } = require('../middleware/auth');
 const { useMultiAgent } = require('../agents/framework/featureFlag');
 const { runQuizAgent } = require('../agents/quizAgent');
+const { runStudyGraph } = require('../agents/graph/runGraph');
+const { runEngagementAgent } = require('../agents/engagementAgent');
 
 // Initialize Pino logger (no transport in production - pino-pretty is dev-only)
 const logger = pino({
@@ -27,8 +30,41 @@ const addRequestId = (req, res, next) => {
   next();
 };
 
+/**
+ * Resolve instructor quiz pattern for a module (session plan or linked CourseTopic).
+ */
+async function resolveQuizPatternForModule(session, moduleId) {
+  const mod = session.plan?.find((m) => m.id === moduleId);
+  const p = mod?.quizPattern;
+  if (p && typeof p === 'object' && Object.keys(p).length > 0) return p;
+  if (!session.courseTopicId) return null;
+  const topic = await CourseTopic.findById(session.courseTopicId).lean();
+  const bm = topic?.modules?.find((m) => m.moduleId === moduleId);
+  return bm?.quizPattern && typeof bm.quizPattern === 'object' && Object.keys(bm.quizPattern).length
+    ? bm.quizPattern
+    : null;
+}
+
+function buildQuizPatternAppend(qp) {
+  if (!qp || typeof qp !== 'object') return '';
+  const parts = [];
+  if (qp.questionCount) parts.push(`Generate exactly ${qp.questionCount} questions (not fewer).`);
+  if (qp.cognitiveLevel) parts.push(`Target Bloom-style cognitive level: ${qp.cognitiveLevel}.`);
+  if (qp.difficultyMix) {
+    parts.push(`Difficulty mix guide — easy: ${qp.difficultyMix.easy ?? 30}%, medium: ${qp.difficultyMix.medium ?? 50}%, hard: ${qp.difficultyMix.hard ?? 20}%.`);
+  }
+  if (Array.isArray(qp.questionTypes) && qp.questionTypes.length) {
+    parts.push(`Emphasize question types by weight: ${qp.questionTypes.map((t) => `${t.type}:${t.weight}%`).join(', ')}.`);
+  }
+  if (qp.constraints && String(qp.constraints).trim()) {
+    parts.push(`Additional instructor constraints: ${String(qp.constraints).trim()}`);
+  }
+  if (!parts.length) return '';
+  return `\n\n### Instructor quiz pattern\n${parts.join('\n')}`;
+}
+
 // Quiz generation prompt builder
-const buildQuizPrompt = (moduleTitle, difficulty = 'core', questionCount = 5, milestones = [], teachingMessages = null) => {
+const buildQuizPrompt = (moduleTitle, difficulty = 'core', questionCount = 5, milestones = [], teachingMessages = null, quizPattern = null) => {
   const milestonesText = milestones.length > 0 
     ? `\n\n⚠️⚠️⚠️ MODULE MILESTONES - THESE ARE THE ONLY TOPICS YOU CAN ASK ABOUT:\n${milestones.map((m, i) => `${i + 1}. ${m.text || m}`).join('\n')}\n\n⚠️⚠️⚠️ ABSOLUTE REQUIREMENT: Every single question MUST test understanding of concepts EXPLICITLY covered in the milestones listed above.`
     : '';
@@ -92,7 +128,7 @@ Generate exactly ${questionCount} multiple-choice questions. Each option must be
 
 ⚠️⚠️⚠️ CORRECTION RULE: If ANY question fails the checklist above, you MUST DELETE that question and create a new one that directly tests a milestone concept. Do NOT include questions that pass validation.
 
-⚠️⚠️⚠️ ABSOLUTE REQUIREMENT: Every question MUST include an "explanation" field that explains why the correct answer is correct. Do NOT omit this field for any question.`;
+⚠️⚠️⚠️ ABSOLUTE REQUIREMENT: Every question MUST include an "explanation" field that explains why the correct answer is correct. Do NOT omit this field for any question.${buildQuizPatternAppend(quizPattern)}`;
 };
 
 // Generate revision quiz for a topic (not tied to a module)
@@ -223,10 +259,10 @@ Generate ${questionCount} revision questions for "${topic}". Each option must be
 };
 
 // Generate quiz using LLM
-const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones = [], teachingMessages = null) => {
+const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones = [], teachingMessages = null, quizPattern = null) => {
   try {
     const groqClient = getGroqClient();
-    const prompt = buildQuizPrompt(moduleTitle, difficulty, questionCount, milestones, teachingMessages);
+    const prompt = buildQuizPrompt(moduleTitle, difficulty, questionCount, milestones, teachingMessages, quizPattern);
     
     const response = await groqClient.chat.completions.create({
       model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
@@ -499,11 +535,12 @@ router.post('/v1/quiz/start', requireAuth, addRequestId, async (req, res) => {
       });
     }
     
-    // ── Multi-agent quiz generation path ──
+    // ── LangGraph orchestrated quiz generation ──
     if (useMultiAgent()) {
       try {
-        const quizResult = await runQuizAgent({ module });
-        if (quizResult.valid && quizResult.payload) {
+        const graphResult = await runStudyGraph({ session, userMessage: 'start quiz', requestType: 'quiz_start' });
+        const quizResult = graphResult.success ? graphResult.state?.quizResult : null;
+        if (quizResult?.valid && quizResult.payload) {
           const previousAttempts = session.quizAttempts.filter(a => a.moduleId === moduleId);
           const attemptNo = previousAttempts.length + 1;
           const attemptId = uuidv4();
@@ -520,17 +557,27 @@ router.post('/v1/quiz/start', requireAuth, addRequestId, async (req, res) => {
           session.phase = 'quizzing';
           await session.save();
 
-          req.logger.info('Multi-agent quiz generated', { sessionId, moduleId, questionCount: quizResult.payload.questions.length });
-          return res.json({ success: true, questions: quizResult.payload.questions });
+          req.logger.info('Graph quiz generated', { sessionId, moduleId, questionCount: quizResult.payload.questions.length });
+          const baseMsg = `Nice — quiz is ready. You'll earn points (and 💎 gems) for strong performance.`;
+          const engagement = await runEngagementAgent({
+            session,
+            baseMessage: baseMsg,
+            context: { action: 'quiz_start', phase: 'quizzing' },
+          });
+          const decorated =
+            engagement?.payload?.include && engagement.payload.prefix
+              ? `${engagement.payload.prefix}\n\n${baseMsg}`
+              : baseMsg;
+          return res.json({ success: true, questions: quizResult.payload.questions, message: decorated });
         }
-        req.logger.warn('Multi-agent QuizAgent validation failed, falling through to legacy', { errors: quizResult.errors });
+        req.logger.warn('Graph QuizAgent validation failed, falling through to legacy', { errors: quizResult?.errors });
       } catch (agentErr) {
-        req.logger.error('Multi-agent quiz path failed, falling back to legacy', { error: agentErr.message });
+        req.logger.error('Graph quiz path failed, falling back to legacy', { error: agentErr.message });
       }
     }
 
-    // Generate new quiz - fixed count to maintain structure
-    const questionCount = 5;
+    const quizPattern = await resolveQuizPatternForModule(session, moduleId);
+    const questionCount = Math.min(10, Math.max(3, quizPattern?.questionCount || 5));
     const difficulty = module.difficulty || 'core';
     
     req.logger.info('Generating new quiz', { 
@@ -539,7 +586,8 @@ router.post('/v1/quiz/start', requireAuth, addRequestId, async (req, res) => {
       questionCount, 
       difficulty, 
       milestoneCount: (module.milestones || []).length,
-      milestones: (module.milestones || []).map(m => m.text || m)
+      milestones: (module.milestones || []).map(m => m.text || m),
+      hasQuizPattern: !!quizPattern
     });
     
     // Pass milestones to quiz generation to ensure questions are focused on them
@@ -556,7 +604,7 @@ router.post('/v1/quiz/start', requireAuth, addRequestId, async (req, res) => {
       .join('\n\n');
     
     // Only include teaching context if available (helps LLM understand what was actually taught)
-    const quizData = await generateQuiz(module.title, difficulty, questionCount, milestones, moduleTeachingMessages || null);
+    const quizData = await generateQuiz(module.title, difficulty, questionCount, milestones, moduleTeachingMessages || null, quizPattern);
     
     // Log if explanations are present
     const questionsWithExplanations = quizData.questions.filter(q => q.explanation && q.explanation.trim()).length;
@@ -1086,6 +1134,46 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
       }
     }
     
+    // ── LangGraph orchestrated feedback ──
+    if (useMultiAgent() && !isRevision) {
+      try {
+        const graphResult = await runStudyGraph({
+          session,
+          userMessage: `Quiz completed: ${scorePct}%`,
+          requestType: 'quiz_submit',
+        });
+        const fbResult = graphResult.success ? graphResult.state?.feedbackResult : null;
+        if (fbResult?.payload?.message) {
+          let feedbackMarkdown = '';
+          if (feedbackItems.length > 0) {
+            feedbackMarkdown += feedbackItems.map(item => {
+              let fb = `**Incorrect:** ${item.question}\n- **Correct answer:** ${item.correctAnswer}\n- **Your answer:** ${item.userAnswer}`;
+              if (item.explanation) fb += `\n- **Explanation:** ${item.explanation}`;
+              return fb;
+            }).join('\n\n') + '\n\n';
+          }
+          // Optionally decorate the agent feedback message
+          const engagement = await runEngagementAgent({
+            session,
+            baseMessage: fbResult.payload.message,
+            context: { action: 'quiz_submit', phase: session.phase, milestoneCompleted: false, moduleCompleted: passed },
+          });
+          const decorated =
+            engagement?.payload?.include && engagement.payload.prefix
+              ? `${engagement.payload.prefix}\n\n${fbResult.payload.message}`
+              : fbResult.payload.message;
+          feedbackMarkdown += decorated;
+
+          return res.json({
+            success: true,
+            data: { passed, scorePct, pointsEarned, bonusGems: passed ? bonusGems : 0, feedbackMarkdown },
+          });
+        }
+      } catch (fbErr) {
+        req.logger.error('Graph feedback path failed, falling to legacy', { error: fbErr.message });
+      }
+    }
+
     // Generate feedback with explanations (using stored explanations from quiz generation)
     let feedbackMarkdown = '';
     

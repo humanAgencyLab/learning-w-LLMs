@@ -47,7 +47,7 @@ export function getAuthHeaders() {
  * @param {boolean} [credentials.autoGenerateUsername] - Auto-generate username based on name
  * @returns {Promise<{user: Object, accessToken: string}>}
  */
-export async function signup({ password, name, username, autoGenerateUsername }) {
+export async function signup({ password, name, username, autoGenerateUsername, role, instructorSignupSecret }) {
   let response;
   try {
     response = await fetch(`${API_PREFIX}/signup`, {
@@ -56,7 +56,14 @@ export async function signup({ password, name, username, autoGenerateUsername })
         'Content-Type': 'application/json',
       },
       credentials: 'include', // Include cookies for refresh token
-      body: JSON.stringify({ password, name, username, autoGenerateUsername }),
+      body: JSON.stringify({
+        password,
+        name,
+        username,
+        autoGenerateUsername,
+        ...(role ? { role } : {}),
+        ...(instructorSignupSecret ? { instructorSignupSecret } : {}),
+      }),
     });
   } catch (networkError) {
     throw new Error('Network error: Unable to connect to server. Please check your connection.');

@@ -17,6 +17,8 @@ const { requireAuth } = require('../middleware/auth');
 const { useMultiAgent } = require('../agents/framework/featureFlag');
 const { runPlanAgent } = require('../agents/planAgent');
 const { runPlanModifyAgent } = require('../agents/planModifyAgent');
+const { runStudyGraph } = require('../agents/graph/runGraph');
+const { runEngagementAgent } = require('../agents/engagementAgent');
 
 // Initialize Pino logger (no transport in production - pino-pretty is dev-only)
 const logger = pino({
@@ -186,11 +188,12 @@ router.post('/v1/assessment', requireAuth, addRequestId, contextControl, async (
     
     await session.save();
     
-    // ── Multi-agent path (behind USE_MULTI_AGENT flag) ──
+    // ── LangGraph orchestrated plan generation ──
     if (useMultiAgent()) {
       try {
-        const planResult = await runPlanAgent({ userMessage, profile });
-        if (planResult.valid && planResult.payload) {
+        const graphResult = await runStudyGraph({ session, userMessage, requestType: 'assess' });
+        const planResult = graphResult.success ? graphResult.state?.planResult : null;
+        if (planResult?.valid && planResult.payload) {
           const { topic, chatTitle, rationale, plan } = planResult.payload;
 
           const finalPlan = plan.map(module => ({
@@ -230,10 +233,20 @@ router.post('/v1/assessment', requireAuth, addRequestId, contextControl, async (
           }
 
           const planSummary = finalPlan.map((m, i) => `${i + 1}. ${m.title} (${m.points} points)`).join('\n');
+          const baseMsg = `I've created a personalized learning plan for "${topic}" with ${finalPlan.length} modules:\n\n${planSummary}\n\nPlease review and let me know if you'd like to approve this plan or request any modifications.`;
+          const engagement = await runEngagementAgent({
+            session,
+            baseMessage: baseMsg,
+            context: { action: 'plan', phase: 'planning' },
+          });
+          const decorated =
+            engagement?.payload?.include && engagement.payload.prefix
+              ? `${engagement.payload.prefix}\n\n${baseMsg}`
+              : baseMsg;
           session.messages.push({
             id: `msg_${Date.now() + 1}`,
             role: 'assistant',
-            content: `I've created a personalized learning plan for "${topic}" with ${finalPlan.length} modules:\n\n${planSummary}\n\nPlease review and let me know if you'd like to approve this plan or request any modifications.`,
+            content: decorated,
             timestamp: new Date(),
             metadata: { type: 'assessment_plan', moduleCount: finalPlan.length, totalPoints: finalPlan.reduce((s, m) => s + m.points, 0), requiresApproval: true, agentPath: true },
           });
@@ -245,9 +258,9 @@ router.post('/v1/assessment', requireAuth, addRequestId, contextControl, async (
             data: { topic, chatTitle, rationale: rationale || 'Personalized learning path', plan: plan, nextPhase: 'planning' },
           });
         }
-        req.logger.warn('Multi-agent PlanAgent failed validation, falling through to legacy', { errors: planResult.errors });
+        req.logger.warn('Graph PlanAgent failed validation, falling through to legacy', { errors: planResult?.errors });
       } catch (agentErr) {
-        req.logger.error('Multi-agent plan path failed, falling back to legacy', { error: agentErr.message });
+        req.logger.error('Graph plan path failed, falling back to legacy', { error: agentErr.message });
       }
     }
 
@@ -1061,11 +1074,12 @@ router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, 
       });
     }
     
-    // ── Multi-agent modification path ──
+    // ── LangGraph orchestrated plan modification ──
     if (useMultiAgent()) {
       try {
-        const modResult = await runPlanModifyAgent({ session, modificationRequest });
-        if (modResult.valid && modResult.payload) {
+        const graphResult = await runStudyGraph({ session, userMessage: modificationRequest, requestType: 'modify' });
+        const modResult = graphResult.success ? graphResult.state?.planResult : null;
+        if (modResult?.valid && modResult.payload) {
           const { topic, chatTitle, rationale, plan } = modResult.payload;
           const finalPlan = plan.map(module => ({
             id: module.moduleId,
@@ -1084,18 +1098,28 @@ router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, 
           session.planApproved = false;
 
           const planSummary = finalPlan.map((m, i) => `${i + 1}. ${m.title} (${m.points} points)`).join('\n');
+          const baseMsg = `I've updated your learning plan based on your feedback:\n\n${planSummary}\n\nPlease review and let me know if you'd like to approve this modified plan or request further changes.`;
+          const engagement = await runEngagementAgent({
+            session,
+            baseMessage: baseMsg,
+            context: { action: 'plan_modify', phase: 'planning' },
+          });
+          const decorated =
+            engagement?.payload?.include && engagement.payload.prefix
+              ? `${engagement.payload.prefix}\n\n${baseMsg}`
+              : baseMsg;
           session.messages.push(
             { id: `msg_${Date.now()}`, role: 'user', content: modificationRequest, timestamp: new Date(), metadata: { type: 'plan_modification_request', agentPath: true } },
-            { id: `msg_${Date.now() + 1}`, role: 'assistant', content: `I've updated your learning plan based on your feedback:\n\n${planSummary}\n\nPlease review and let me know if you'd like to approve this modified plan or request further changes.`, timestamp: new Date(), metadata: { type: 'assessment_plan_modified', moduleCount: finalPlan.length, requiresApproval: true, agentPath: true } },
+            { id: `msg_${Date.now() + 1}`, role: 'assistant', content: decorated, timestamp: new Date(), metadata: { type: 'assessment_plan_modified', moduleCount: finalPlan.length, requiresApproval: true, agentPath: true } },
           );
           await session.save();
 
           req.logger.info('Multi-agent plan modification succeeded', { sessionId });
           return res.json({ success: true, data: { topic, chatTitle, rationale: rationale || 'Modified plan', plan, nextPhase: 'planning' } });
         }
-        req.logger.warn('Multi-agent PlanModifyAgent validation failed, falling through to legacy', { errors: modResult.errors });
+        req.logger.warn('Graph PlanModifyAgent validation failed, falling through to legacy', { errors: modResult?.errors });
       } catch (agentErr) {
-        req.logger.error('Multi-agent modify path failed, falling back to legacy', { error: agentErr.message });
+        req.logger.error('Graph modify path failed, falling back to legacy', { error: agentErr.message });
       }
     }
 

@@ -7,7 +7,7 @@ import useAuthStore from '../state/authStore';
  * Redirects to /signin if logged out, /chat if logged in
  */
 function RootRedirect() {
-  const { isAuthenticated, isLoading, initialize } = useAuthStore();
+  const { isAuthenticated, isLoading, initialize, user } = useAuthStore();
 
   // Initialize auth state on mount
   useEffect(() => {
@@ -23,6 +23,9 @@ function RootRedirect() {
 
   // Redirect based on auth status
   if (isAuthenticated) {
+    if (user?.role === 'instructor') {
+      return <Navigate to="/instructor/courses" replace />;
+    }
     return <Navigate to="/chat" replace />;
   }
 

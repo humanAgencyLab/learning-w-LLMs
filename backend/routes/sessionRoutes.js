@@ -7,6 +7,7 @@ const Session = require('../models/Session');
 const User = require('../models/User');
 const { createSessionSchema, resumeSessionSchema } = require('../validation/sessionValidation');
 const { requireAuth, requireOwnership } = require('../middleware/auth');
+const { userProfileToSessionProfile } = require('../utils/userProfileToSessionProfile');
 
 // Initialize Pino logger (no transport in production - pino-pretty is dev-only)
 const logger = pino({
@@ -18,55 +19,6 @@ const addRequestId = (req, res, next) => {
   req.logger = logger.child({ requestId: req.requestId });
   next();
 };
-
-/**
- * Convert user profile to session profile format
- * Must match Session model's profile schema requirements
- */
-function userProfileToSessionProfile(user) {
-  // Handle case where user.profile might be null or undefined
-  const profile = user.profile || {};
-  
-  return {
-    source: 'user',
-    name: user.name || 'User',
-    background: profile.background || 'Student learning with AI assistance', // Required field
-    goals: Array.isArray(profile.goals) ? profile.goals : [],
-    strengths: Array.isArray(profile.strengths) ? profile.strengths : [],
-    gaps: Array.isArray(profile.gaps) ? profile.gaps : [],
-    timePerDayMins: profile.timePerDayMins || 30,
-    preferredStyle: profile.preferredStyle || 'mixed',
-    lastUpdated: new Date().toISOString(),
-    skillLevel: profile.skillLevel || 'Beginner',
-    learningType: profile.learningType || 'Visual', // Must be one of: Visual, Auditory, Reading/Writing, Kinesthetic
-    major: profile.major && ['Computer Science', 'Mathematics', 'Data Science', 'Engineering', 'Other'].includes(profile.major) 
-      ? profile.major 
-      : 'Other', // Must be valid enum value, not empty string
-    currentCourses: Array.isArray(profile.currentCourses) ? profile.currentCourses : [],
-    daysPerWeek: profile.daysPerWeek || 3,
-    minutesPerSession: profile.minutesPerSession || 30,
-    recentTopics: Array.isArray(profile.recentTopics) ? profile.recentTopics : [],
-    selfRating: profile.selfRating && ['None', 'Basic', 'Intermediate', 'Advanced'].includes(profile.selfRating)
-      ? profile.selfRating
-      : 'Basic', // Must be valid enum value, not empty string
-    primaryGoal: profile.primaryGoal && ['Master Basics', 'Exam Prep', 'Revise Gaps', 'Project Help', 'Interview Prep'].includes(profile.primaryGoal)
-      ? profile.primaryGoal
-      : 'Master Basics', // Must be valid enum value, not empty string
-    defaultMode: profile.defaultMode && ['Studying', 'Revision'].includes(profile.defaultMode)
-      ? profile.defaultMode
-      : 'Studying', // Must be valid enum value
-    explanationLength: profile.explanationLength && ['Concise', 'Balanced', 'Detailed'].includes(profile.explanationLength)
-      ? profile.explanationLength
-      : 'Balanced', // Must be valid enum value
-    examplesPreference: profile.examplesPreference && ['Few', 'Many'].includes(profile.examplesPreference)
-      ? profile.examplesPreference
-      : 'Many', // Must be valid enum value
-    language: profile.language || 'English',
-    codeLanguagePreference: profile.codeLanguagePreference && ['Python', 'JavaScript', 'C++', 'None'].includes(profile.codeLanguagePreference)
-      ? profile.codeLanguagePreference
-      : 'None' // Must be valid enum value
-  };
-}
 
 // GET /v1/sessions - List all sessions for authenticated user
 // Only returns sessions that have a plan and chatTitle (saved chats)
@@ -737,6 +689,7 @@ router.post('/v1/sessions/:id/resume', requireAuth, addRequestId, requireOwnersh
         gems: session.gems,
         isViewOnly: session.isViewOnly,
         progressPct: session.progressPct,
+        meta: session.meta || {},
         lastMessages,
         totalMessageCount,
         hasMoreMessages,

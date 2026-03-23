@@ -52,7 +52,10 @@ describe('Chat Routes', () => {
             title: 'Variables and Data Types',
             description: 'Learn about variables and data types',
             status: 'in_progress',
-            milestones: ['Understand variables', 'Practice data types'],
+            milestones: [
+              { text: 'Understand variables', completed: false },
+              { text: 'Practice data types', completed: false }
+            ],
             completedMilestones: [],
             points: 30,
             difficulty: 'intro'
@@ -62,7 +65,10 @@ describe('Chat Routes', () => {
             title: 'Functions and Scope',
             description: 'Learn about functions and scope',
             status: 'locked',
-            milestones: ['Understand functions', 'Practice scope'],
+            milestones: [
+              { text: 'Understand functions', completed: false },
+              { text: 'Practice scope', completed: false }
+            ],
             completedMilestones: [],
             points: 40,
             difficulty: 'core'

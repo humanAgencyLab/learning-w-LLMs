@@ -106,7 +106,14 @@ router.post('/check-username', async (req, res) => {
  */
 router.post('/signup', async (req, res) => {
   try {
-    const { password, name, username, autoGenerateUsername } = req.body;
+    const {
+      password,
+      name,
+      username,
+      autoGenerateUsername,
+      role: requestedRole,
+      instructorSignupSecret
+    } = req.body;
     
     logger.info({
       requestId: req.requestId,
@@ -190,6 +197,33 @@ router.post('/signup', async (req, res) => {
     
     // Normalize username for storage (lowercase for uniqueness, but preserve original case in display)
     const normalizedUsername = finalUsername.toLowerCase();
+
+    // Role: default student; instructor only with env-backed secret (no self-escalation)
+    let role = 'student';
+    if (requestedRole === 'instructor') {
+      const expected = process.env.INSTRUCTOR_SIGNUP_SECRET;
+      if (!expected || typeof expected !== 'string' || expected.length < 8) {
+        return res.status(403).json({
+          success: false,
+          error: 'Instructor registration is not enabled',
+          code: 'INSTRUCTOR_SIGNUP_DISABLED'
+        });
+      }
+      if (!instructorSignupSecret || instructorSignupSecret !== expected) {
+        return res.status(403).json({
+          success: false,
+          error: 'Invalid instructor registration credentials',
+          code: 'INSTRUCTOR_SIGNUP_FORBIDDEN'
+        });
+      }
+      role = 'instructor';
+    } else if (requestedRole != null && requestedRole !== '' && requestedRole !== 'student') {
+      return res.status(400).json({
+        success: false,
+        error: 'role must be "student" or "instructor"',
+        code: 'VALIDATION_ERROR'
+      });
+    }
     
     // Hash password
     const passwordHash = await hashPassword(password);
@@ -211,6 +245,9 @@ router.post('/signup', async (req, res) => {
         username: normalizedUsername,
         passwordHash: passwordHash,
         name: name.trim(),
+        role,
+        // Legacy DBs may still have a unique index on `email`; use a synthetic unique value per user.
+        email: `${normalizedUsername}@users.studyassist.invalid`,
         avatarUrl: null,
         emailVerificationToken: null,
         passwordResetToken: null,
@@ -258,16 +295,10 @@ router.post('/signup', async (req, res) => {
         updatedAt: new Date()
       };
       
-      // Verify email is NOT in document
-      if ('email' in userDoc || userDoc.email !== undefined) {
-        throw new Error('CRITICAL: Email field detected in user document!');
-      }
-      
       logger.info({
         requestId: req.requestId,
-        documentKeys: Object.keys(userDoc),
-        hasEmail: 'email' in userDoc
-      }, 'Document ready for insert (email-free)');
+        documentKeys: Object.keys(userDoc)
+      }, 'Document ready for insert');
       
       // Insert directly into MongoDB collection - bypass Mongoose completely
       const result = await User.collection.insertOne(userDoc);

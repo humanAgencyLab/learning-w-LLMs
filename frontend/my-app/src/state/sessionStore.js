@@ -4,6 +4,7 @@ import * as sessionApi from '../lib/sessionApi';
 import * as assessmentApi from '../lib/assessmentApi';
 import * as chatApi from '../lib/chatApi';
 import * as quizApi from '../lib/quizApi';
+import * as courseApi from '../lib/courseApi';
 import useAuthStore from './authStore';
 
 // Types (for reference - not enforced at runtime)
@@ -184,6 +185,29 @@ const useSessionStore = create(
         }));
       },
 
+      /** Append content to the last assistant message (for streaming). Creates one if needed. */
+      appendToLastMessage: (chunk) => {
+        set(state => {
+          const messages = Array.isArray(state.messages) ? [...state.messages] : [];
+          const last = messages[messages.length - 1];
+          if (last?.role === 'assistant') {
+            messages[messages.length - 1] = {
+              ...last,
+              content: (last.content || '') + chunk
+            };
+          } else {
+            messages.push({
+              id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+              role: 'assistant',
+              content: chunk,
+              ts: new Date().toISOString(),
+              tokens: 0
+            });
+          }
+          return { messages };
+        });
+      },
+
       /** Remove the last message if it is from assistant (for retry flow). */
       removeLastAssistantMessage: () => {
         set(state => {
@@ -327,14 +351,19 @@ const useSessionStore = create(
         const updatedPlan = Array.isArray(payload.plan) ? payload.plan : get().plan;
         
         // Map backend 'reviewing' to frontend 'revision'
-        const mappedMode = payload.mode === 'reviewing' ? 'revision' : (payload.mode || prev.mode || 'studying');
+        const mappedMode = payload.mode === 'reviewing' ? 'revision' : (payload.mode || get().mode || 'studying');
         
         const prevMessages = get().messages;
         const messagesWithIds = Array.isArray(lastMessages)
           ? lastMessages.map((m, i) => ({ ...m, id: m.id || m._id || `msg-resumed-${i}-${m.ts || ''}-${String(m.content || '').slice(0, 40)}` }))
           : (Array.isArray(prevMessages) ? prevMessages : []);
 
-        set(prev => ({
+        set(prev => {
+          // Merge meta from backend so StudyPanelNav shows correct active milestone (currentMilestoneIndex)
+          const mergedMeta = payload.meta && typeof payload.meta === 'object'
+            ? { ...prev.meta, ...payload.meta }
+            : prev.meta;
+          return {
           sessionId: resolvedSessionId,
           phase: payload.phase || prev.phase || 'pre',
           mode: mappedMode,
@@ -347,6 +376,7 @@ const useSessionStore = create(
           gems: payload.gems !== undefined ? payload.gems : prev.gems ?? 0,
           progressPct: payload.progressPct !== undefined ? payload.progressPct : prev.progressPct ?? 0,
           isViewOnly: payload.isViewOnly ?? prev.isViewOnly ?? false,
+          meta: mergedMeta,
           messages: messagesWithIds,
           totalMessageCount: totalMessageCount !== undefined ? totalMessageCount : prev.totalMessageCount,
           hasMoreMessages: hasMoreMessages ?? prev.hasMoreMessages ?? false,
@@ -360,7 +390,8 @@ const useSessionStore = create(
           quizResult: prev.quizResult,
           isQuizSubmitting: false,
           pendingQuizModuleId: payload.phase === 'quizzing' ? prev.pendingQuizModuleId : prev.pendingQuizModuleId
-        }));
+        };
+        });
 
         const latest = get();
         if (
@@ -676,11 +707,49 @@ const useSessionStore = create(
 
         try {
           const backendMode = state.mode === 'revision' ? 'reviewing' : (state.mode || 'studying');
-          const response = await chatApi.sendMessage({
-            sessionId: state.sessionId,
-            userMessage,
-            mode: backendMode
-          });
+          let response;
+          let hadStreamChunks = false;
+
+          try {
+            response = await chatApi.sendMessageStream({
+              sessionId: state.sessionId,
+              userMessage,
+              mode: backendMode,
+              onChunk: (chunk) => {
+                hadStreamChunks = true;
+                get().appendToLastMessage(chunk);
+              }
+            });
+          } catch (streamError) {
+            console.warn('Streaming failed, falling back to non-streaming', streamError.message);
+            if (hadStreamChunks) {
+              get().removeLastAssistantMessage();
+            }
+            hadStreamChunks = false;
+            response = await chatApi.sendMessage({
+              sessionId: state.sessionId,
+              userMessage,
+              mode: backendMode
+            });
+          }
+
+              if (!hadStreamChunks && response.data?.message) {
+                get().appendMessage({
+                  role: 'assistant',
+                  content: response.data.message,
+                  ts: new Date().toISOString(),
+                  tokens: response.data.tokensOut
+                });
+              } else if (hadStreamChunks && response.data?.message) {
+                set(s => {
+                  const messages = [...(s.messages || [])];
+                  const last = messages[messages.length - 1];
+                  if (last?.role === 'assistant') {
+                    messages[messages.length - 1] = { ...last, content: response.data.message };
+                  }
+                  return { messages };
+                });
+              }
 
               // Check if we should trigger assessment
               if (response.data?.shouldTriggerAssessment) {
@@ -704,9 +773,17 @@ const useSessionStore = create(
                 tokens: response.data.tokensOut
               });
 
-              // Update meta if provided
-              if (response.data?.meta || response.meta) {
-                set({ meta: { ...state.meta, ...(response.data?.meta || response.meta) } });
+              // Always sync meta from chat response so StudyPanelNav shows correct active milestone
+              const metaFromResponse = response.data?.meta || response.meta;
+              const currentIdx = response.data?.currentMilestoneIndex;
+              if (metaFromResponse || typeof currentIdx === 'number') {
+                set(s => ({
+                  meta: {
+                    ...s.meta,
+                    ...(metaFromResponse || {}),
+                    ...(typeof currentIdx === 'number' ? { currentMilestoneIndex: currentIdx } : {})
+                  }
+                }));
               }
 
               if (response.data?.phase && response.data.phase !== state.phase) {
@@ -1140,6 +1217,23 @@ const useSessionStore = create(
             error: error.message, 
             loading: false 
           });
+          throw error;
+        }
+      },
+
+      /** Start an instructor-published course topic (backend seeds learning-phase session). */
+      startCourseTopicSession: async (courseId, topicId) => {
+        set({ loading: true, error: null });
+        try {
+          const response = await courseApi.startCourseTopic(courseId, topicId);
+          if (!response.success || !response.data?.sessionId) {
+            throw new Error(response.error || 'Failed to start course topic');
+          }
+          await get().resumeSessionFromServer(response.data.sessionId);
+          set({ loading: false });
+          return response.data.sessionId;
+        } catch (error) {
+          set({ error: error.message, loading: false });
           throw error;
         }
       },

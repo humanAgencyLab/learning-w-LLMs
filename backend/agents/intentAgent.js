@@ -57,30 +57,50 @@ async function runIntentAgent({ session, userMessage }) {
 
   // Heuristic: message looks like a topic (run for both valid and !valid so we catch validation failures)
   const lower = (userMessage || '').toLowerCase().trim();
-  const matchLearn = /^i\s+(want\s+to\s+)?learn\s+/i.test(lower);
-  const matchTeach = /^teach\s+me\s+/i.test(lower);
-  const matchLearnAbout = /^i\s+(want\s+to\s+)?learn\s+about\s+/i.test(lower);
-  const matchCommon = ['python', 'javascript', 'react', 'java', 'c', 'guitar', 'piano', 'data', 'structure', 'algorithm', 'machine learning', 'web development', 'swift'].some(t => lower.includes(t));
-  const matchShort = lower.split(/\s+/).length <= 3 && !lower.includes('?');
-  const isTopicLike =
-    lower.length > 0 &&
-    lower.length < 80 &&
-    !/^(hello|hi|hey|what|how|why|thanks|thank you|bye|bye bye)\b/i.test(lower) &&
-    (matchLearn || matchTeach || matchLearnAbout || matchCommon || matchShort);
 
-  if (isTopicLike) {
-    return {
-      type: 'intent',
-      payload: {
-        intent: 'learning',
-        action: 'trigger_assessment',
-        topic: userMessage.trim(),
-        confidence: 'medium',
-        response: '',
-        isFollowUpToOutstanding: false,
-      },
-      uiMessage: '',
-    };
+  const NON_TOPIC_RE = /^(hello|hi|hey|yo|sup|what|how|why|when|where|who|thanks|thank you|bye|goodbye|ok|okay|sure|yes|no|nah|nope|yep|yeah|help|please|sorry|good morning|good afternoon|good evening|good night)\b/i;
+  if (NON_TOPIC_RE.test(lower) && !/learn|teach|study|about/i.test(lower)) {
+    // Definitely not a topic – skip heuristic entirely
+  } else {
+    const matchLearn = /^i\s+(want\s+to\s+|wanna\s+|need\s+to\s+|'?d\s+like\s+to\s+)?learn\s+/i.test(lower);
+    const matchTeach = /^teach\s+me\s+/i.test(lower);
+    const matchStudy = /^(i\s+(want\s+to\s+|wanna\s+)?study|show\s+me|explain|help\s+me\s+(understand|learn|with))\s+/i.test(lower);
+    const COMMON_TOPICS = [
+      'python', 'javascript', 'typescript', 'react', 'angular', 'vue', 'node',
+      'java', 'kotlin', 'swift', 'rust', 'go', 'golang', 'ruby', 'php', 'sql',
+      'html', 'css', 'c++', 'c#', 'c programming',
+      'guitar', 'piano', 'violin', 'drums', 'music theory',
+      'data structure', 'algorithm', 'machine learning', 'deep learning', 'ai',
+      'web development', 'mobile development', 'devops', 'docker', 'kubernetes',
+      'math', 'calculus', 'algebra', 'statistics', 'probability', 'linear algebra',
+      'physics', 'chemistry', 'biology', 'economics', 'psychology',
+      'photoshop', 'figma', 'design', 'ux', 'ui',
+      'writing', 'essay', 'grammar', 'spanish', 'french', 'german', 'japanese',
+      'cooking', 'baking', 'nutrition', 'fitness',
+    ];
+    const matchCommon = COMMON_TOPICS.some(t => lower.includes(t));
+    const words = lower.split(/\s+/);
+    const matchShort = words.length <= 3 && words.length >= 1 && !lower.includes('?') && !lower.includes('!') && !/^\d+$/.test(lower);
+
+    const isTopicLike =
+      lower.length > 1 &&
+      lower.length < 120 &&
+      (matchLearn || matchTeach || matchStudy || matchCommon || matchShort);
+
+    if (isTopicLike) {
+      return {
+        type: 'intent',
+        payload: {
+          intent: 'learning',
+          action: 'trigger_assessment',
+          topic: userMessage.trim(),
+          confidence: 'medium',
+          response: '',
+          isFollowUpToOutstanding: false,
+        },
+        uiMessage: '',
+      };
+    }
   }
 
   if (!valid) {

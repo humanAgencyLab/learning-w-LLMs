@@ -81,6 +81,7 @@ const contextControl = async (req, res, next) => {
           version: session.meta.summaryVersion
         };
 
+        session.markModified('meta');
         await session.save();
         console.log('Context summary stored in meta; session.messages unchanged (length=%d)', (session.messages || []).length);
 

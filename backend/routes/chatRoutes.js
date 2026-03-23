@@ -14,10 +14,13 @@ const { buildAssessmentAnalysisPrompt } = require('../prompts/assessment_analyze
 const { buildConversationDecisionPrompt } = require('../prompts/conversation_manager');
 const { updateContextSummary } = require('../prompts/context_summarizer');
 const { updateProgress } = require('../services/progressService');
-const { callTeacherAPI } = require('../services/teacherService');
+const { callTeacherAPI, callTeacherAPIStream } = require('../services/teacherService');
 const { requireAuth, requireOwnership } = require('../middleware/auth');
-const { useMultiAgent } = require('../agents/framework/featureFlag');
+const { useMultiAgent, useStreaming } = require('../agents/framework/featureFlag');
 const { runIntentAgent } = require('../agents/intentAgent');
+const { runStudyGraph } = require('../agents/graph/runGraph');
+const { runEngagementAgent } = require('../agents/engagementAgent');
+const { runTeachingAgent } = require('../agents/teachingAgent');
 
 // Extract question from assistant response
 const extractQuestion = (response) => {
@@ -26,6 +29,63 @@ const extractQuestion = (response) => {
     return questionMatch[1].trim();
   }
   return null;
+};
+
+// Safety: override obviously-correct short answers to prevent LLM misgrading.
+// This is intentionally narrow (high precision) to avoid false positives.
+const overrideAssessmentIfObviouslyCorrect = (question, answer, assessmentPayload) => {
+  const q = String(question || '').toLowerCase();
+  const a = String(answer || '').toLowerCase();
+
+  // Swift/JS-style var vs let (mutable vs constant/immutable)
+  const asksVarLet =
+    (q.includes('difference') && q.includes('var') && q.includes('let')) ||
+    (q.includes('main difference') && q.includes('var') && q.includes('let'));
+  const mentionsVar = /\bvar\b/.test(a);
+  const mentionsLet = /\blet\b/.test(a);
+  const mentionsMutable = a.includes('change') || a.includes('mutable') || a.includes('modify') || a.includes('reassign');
+  const mentionsConstant = a.includes('constant') || a.includes('immutable') || a.includes('fixed') || a.includes('cannot change') || a.includes("can't change");
+
+  if (asksVarLet && mentionsVar && mentionsLet && (mentionsMutable || mentionsConstant)) {
+    return {
+      ...assessmentPayload,
+      responseType: 'correct_answer',
+      understood: true,
+      confidence: 'high',
+      recommendation: 'move_forward',
+      reasoning: 'Heuristic override: correct var vs let distinction.',
+    };
+  }
+
+  return assessmentPayload;
+};
+
+const buildAssessmentFeedback = ({ responseType, understood, recommendation, retryCount }) => {
+  // Always return a short feedback line (1 sentence) for assessment follow-ups.
+  const rt = responseType || 'wrong_answer';
+  if (rt === 'clarification_request') {
+    return `Good catch — let’s clarify that first.`;
+  }
+  if (understood) {
+    if (recommendation === 'clarify_again') {
+      return `You’re on the right track — let’s tighten it up with one more quick clarification.`;
+    }
+    return `Nice work — that’s correct.`;
+  }
+  if ((retryCount || 0) >= 1) {
+    return `Not quite — I’ll show a clearer way to think about it, then we’ll keep moving.`;
+  }
+  return `Close, but not quite — let’s correct it together.`;
+};
+
+/** Build meta object for chat responses so frontend StudyPanelNav can show correct active milestone. */
+const buildChatMeta = (session) => {
+  const meta = session.meta || {};
+  return {
+    currentMilestoneIndex: meta.currentMilestoneIndex ?? 0,
+    outstandingCheck: meta.outstandingCheck ?? null,
+    milestoneBeingTaught: meta.milestoneBeingTaught ?? false,
+  };
 };
 
 // POST /v1/chat - Teacher chat endpoint (requires authentication)
@@ -249,63 +309,50 @@ Return ONLY valid JSON in this format:
       }
     }
 
-    // Handle 'pre' phase - LLM analyzes intent and decides action
+    // Handle 'pre' phase - LangGraph orchestrated intent classification
         if (session.phase === 'pre' && useMultiAgent()) {
-      // ── Multi-agent path (behind USE_MULTI_AGENT flag) ──
       try {
-        const intentResult = await runIntentAgent({ session, userMessage });
-        const { payload } = intentResult;
+        const graphResult = await runStudyGraph({ session, userMessage, requestType: 'chat' });
+        if (graphResult.success && graphResult.state?.intentResult) {
+          const { payload } = graphResult.state.intentResult;
 
-        if (payload.intent === 'learning' && payload.action === 'trigger_assessment') {
-          const userMsg = {
-            id: `msg_${Date.now()}`,
-            role: 'user',
-            content: userMessage,
-            timestamp: new Date(),
-            metadata: { intent: 'learning', phaseAtSend: 'pre', agentPath: true },
-          };
-          session.messages.push(userMsg);
-          session.phase = 'assessing';
-          await session.save();
+          if (payload.intent === 'learning' && payload.action === 'trigger_assessment') {
+            session.messages.push({
+              id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(),
+              metadata: { intent: 'learning', phaseAtSend: 'pre', agentPath: true, graphPath: true },
+            });
+            session.phase = 'assessing';
+            await session.save();
+            return res.json({
+              success: true,
+              data: {
+                message: "I'll create a personalized learning plan for you right away!",
+                intent: 'triggers_assessment', phase: 'assessing',
+                shouldTriggerAssessment: true, originalMessage: payload.topic || userMessage,
+              },
+            });
+          }
 
-          return res.json({
-            success: true,
-            data: {
-              message: "I'll create a personalized learning plan for you right away!",
-              intent: 'triggers_assessment',
-              phase: 'assessing',
-              shouldTriggerAssessment: true,
-              originalMessage: payload.topic || userMessage,
-            },
+          const assistantText = payload.response || "Hi! I'm here to help you learn. What would you like to learn about today?";
+          const engagement = await runEngagementAgent({
+            session,
+            baseMessage: assistantText,
+            context: { action: payload.action, phase: 'pre' },
           });
+          const decorated =
+            engagement?.payload?.include && engagement.payload.prefix
+              ? `${engagement.payload.prefix}\n\n${assistantText}`
+              : assistantText;
+          session.messages.push(
+            { id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: payload.intent, phaseAtSend: 'pre', agentPath: true, graphPath: true } },
+            { id: `msg_${Date.now() + 1}`, role: 'assistant', content: decorated, timestamp: new Date(), metadata: { intent: payload.action, phaseAtSend: 'pre', agentPath: true, graphPath: true } },
+          );
+          await session.save();
+          return res.json({ success: true, data: { message: decorated, intent: payload.action, phase: 'pre' } });
         }
-
-        // Non-learning intents
-        const assistantText = payload.response || "Hi! I'm here to help you learn. What would you like to learn about today?";
-        const userMsg = {
-          id: `msg_${Date.now()}`,
-          role: 'user',
-          content: userMessage,
-          timestamp: new Date(),
-          metadata: { intent: payload.intent, phaseAtSend: 'pre', agentPath: true },
-        };
-        const assistantMsg = {
-          id: `msg_${Date.now() + 1}`,
-          role: 'assistant',
-          content: assistantText,
-          timestamp: new Date(),
-          metadata: { intent: payload.action, phaseAtSend: 'pre', agentPath: true },
-        };
-        session.messages.push(userMsg, assistantMsg);
-        await session.save();
-
-        return res.json({
-          success: true,
-          data: { message: assistantText, intent: payload.action, phase: 'pre' },
-        });
+        console.warn('Graph pre-phase returned no intent, falling through to legacy');
       } catch (agentErr) {
-        console.error('Multi-agent intent path failed, falling back to legacy', agentErr.message);
-        // Fall through to legacy handler below
+        console.error('Graph intent path failed, falling back to legacy', agentErr.message);
       }
     }
 
@@ -802,7 +849,9 @@ Return ONLY valid JSON in this format:
                 activeModuleId: session.activeModuleId,
                 points: session.points,
                 gems: session.gems,
-                progressPct: session.progressPct
+                progressPct: session.progressPct,
+                currentMilestoneIndex: session.meta?.currentMilestoneIndex ?? 0,
+                meta: buildChatMeta(session),
               }
             });
           } catch (teachingError) {
@@ -823,7 +872,9 @@ Return ONLY valid JSON in this format:
                 activeModuleId: session.activeModuleId,
                 points: session.points,
                 gems: session.gems,
-                progressPct: session.progressPct
+                progressPct: session.progressPct,
+                currentMilestoneIndex: session.meta?.currentMilestoneIndex ?? 0,
+                meta: buildChatMeta(session),
               }
             });
           }
@@ -1032,7 +1083,9 @@ Return ONLY valid JSON in this format:
                   followedUpOutstanding: false,
                   phase: session.phase,
                   plan: session.plan,
-                  activeModuleId: session.activeModuleId
+                  activeModuleId: session.activeModuleId,
+                  currentMilestoneIndex: session.meta?.currentMilestoneIndex ?? 0,
+                  meta: buildChatMeta(session),
                 }
               });
             } catch (teachingError) {
@@ -1049,7 +1102,9 @@ Return ONLY valid JSON in this format:
                   tokensOut: 0,
                   phase: session.phase,
                   plan: session.plan,
-                  activeModuleId: session.activeModuleId
+                  activeModuleId: session.activeModuleId,
+                  currentMilestoneIndex: session.meta?.currentMilestoneIndex ?? 0,
+                  meta: buildChatMeta(session),
                 }
               });
             }
@@ -1060,6 +1115,247 @@ Return ONLY valid JSON in this format:
       // Initialize milestone tracking if not exists
       if (!session.meta.currentMilestoneIndex && session.activeModuleId) {
         session.meta.currentMilestoneIndex = 0;
+      }
+
+      // ── LangGraph orchestrated learning path ──
+      if (useMultiAgent()) {
+        try {
+          const graphResult = await runStudyGraph({ session, userMessage, requestType: 'chat' });
+          if (graphResult.success) {
+            const gs = graphResult.state;
+            const cm = gs.convManagerResult?.payload;
+            const assessment = gs.assessmentResult?.payload;
+            const teaching = gs.teachingResult;
+
+            const activeModule = session.plan?.find(m => m.id === session.activeModuleId);
+            const milestoneIdx = session.meta?.currentMilestoneIndex ?? 0;
+            const currentMilestone = activeModule?.milestones?.[milestoneIdx];
+
+            if (cm?.shouldStartQuiz || cm?.action === 'start_quiz') {
+              session.messages.push({ id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: cm.intent, phaseAtSend: session.phase, graphPath: true } });
+              await session.save();
+              return res.json({
+                success: true,
+                data: {
+                  message: cm.response || "Great — when you're ready, click Start Quiz or type “start quiz”.",
+                  phase: session.phase,
+                },
+              });
+            }
+
+            if (assessment) {
+              // If the LLM misgraded an obvious concept check, fix it deterministically.
+              if (session?.meta?.outstandingCheck) {
+                const overridden = overrideAssessmentIfObviouslyCorrect(
+                  session.meta.outstandingCheck,
+                  userMessage,
+                  assessment
+                );
+                // Mutate local variable (used for progression + teacher regeneration)
+                if (overridden !== assessment) {
+                  gs.assessmentResult = gs.assessmentResult || {};
+                  gs.assessmentResult.payload = overridden;
+                }
+              }
+
+              const effectiveAssessment = gs.assessmentResult?.payload || assessment;
+              const retryCount = session.meta?.milestoneRetryCount?.[milestoneIdx] || 0;
+              const assessmentFeedback = buildAssessmentFeedback({
+                responseType: effectiveAssessment.responseType,
+                understood: effectiveAssessment.understood,
+                recommendation: effectiveAssessment.recommendation,
+                retryCount,
+              });
+              if (effectiveAssessment.understood) {
+                if (effectiveAssessment.recommendation !== 'clarify_again') {
+                  if (currentMilestone) currentMilestone.completed = true;
+                  if (activeModule) {
+                    if (!activeModule.completedMilestones) activeModule.completedMilestones = [];
+                    if (!activeModule.completedMilestones.includes(milestoneIdx)) activeModule.completedMilestones.push(milestoneIdx);
+                  }
+                  const nextIdx = milestoneIdx + 1;
+                  if (nextIdx < (activeModule?.milestones?.length || 0)) {
+                    session.meta.currentMilestoneIndex = nextIdx;
+                    session.meta.milestoneBeingTaught = false;
+                    session.meta.outstandingCheck = null;
+                  } else {
+                    session.meta.milestoneBeingTaught = false;
+                    session.meta.outstandingCheck = null;
+                    // IMPORTANT: Do NOT auto-enter quizzing; user must explicitly start quiz.
+                    session.phase = 'learning';
+                  }
+                }
+              } else if (effectiveAssessment.responseType !== 'clarification_request') {
+                if (!session.meta.milestoneRetryCount) session.meta.milestoneRetryCount = {};
+                if (retryCount < 1) {
+                  session.meta.milestoneRetryCount[milestoneIdx] = retryCount + 1;
+                } else {
+                  if (currentMilestone) currentMilestone.completed = true;
+                  if (activeModule && !activeModule.completedMilestones?.includes(milestoneIdx)) {
+                    if (!activeModule.completedMilestones) activeModule.completedMilestones = [];
+                    activeModule.completedMilestones.push(milestoneIdx);
+                  }
+                  const nextIdx = milestoneIdx + 1;
+                  if (nextIdx < (activeModule?.milestones?.length || 0)) {
+                    session.meta.currentMilestoneIndex = nextIdx;
+                    session.meta.milestoneBeingTaught = false;
+                    session.meta.outstandingCheck = null;
+                  } else {
+                    session.meta.milestoneBeingTaught = false;
+                    session.meta.outstandingCheck = null;
+                    // IMPORTANT: Do NOT auto-enter quizzing; user must explicitly start quiz.
+                    session.phase = 'learning';
+                  }
+                }
+              }
+
+              // Attach feedback to state for later composition (teaching, re-teach, or module completion).
+              gs.__assessmentFeedback = assessmentFeedback;
+            }
+
+            // If we've completed the last milestone (or moved past it), force the quiz transition.
+            // This prevents getting stuck on the final milestone with no quiz handoff.
+            const allMilestonesDone = !!activeModule?.milestones?.length && activeModule.milestones.every(m => m.completed === true);
+            const moduleJustCompleted = allMilestonesDone;
+            const advancedToNextMilestone =
+              session.phase === 'learning' &&
+              typeof session.meta?.currentMilestoneIndex === 'number' &&
+              session.meta.currentMilestoneIndex !== milestoneIdx;
+
+            let assistantResponse = '';
+            if (moduleJustCompleted) {
+              const modulePoints = activeModule?.points || 0;
+              assistantResponse =
+                `Amazing work — you’ve completed every milestone in **${activeModule?.title || 'this module'}**. ` +
+                `That’s a big step forward. You’ve earned progress toward the **${modulePoints} points** for this module, ` +
+                `and you’re at **${session.points || 0}/100 points** with **💎 ${session.gems || 0}** gems so far.\n\n` +
+                `When you’re ready, click **Start Quiz** or type **“start quiz”** to launch a quick mastery check.`;
+              // Clear teaching/assessment loop state when transitioning to quiz
+              if (session.meta) {
+                session.meta.outstandingCheck = null;
+                session.meta.milestoneBeingTaught = false;
+                session.meta.countSinceLastCheck = 0;
+              }
+            } else if (advancedToNextMilestone) {
+              // IMPORTANT: The graph's teaching result was generated BEFORE we advanced the milestone.
+              // Re-generate teaching for the NEW milestone so UI + teaching stay aligned.
+              const milestoneInfo = { moveToNextMilestone: true, markMilestoneComplete: true };
+              const assessmentForTeacher = assessment ? {
+                understood: assessment.understood,
+                isClarificationRequest: assessment.responseType === 'clarification_request',
+                isFirstIncorrect: false,
+                isSecondIncorrect: false,
+                needsMoreClarification: assessment.recommendation === 'clarify_again',
+                responseType: assessment.responseType,
+                recommendation: assessment.recommendation,
+              } : null;
+
+              const reTeach = await runTeachingAgent({
+                session,
+                userMessage,
+                isFollowUp: true,
+                assessmentResult: assessmentForTeacher,
+                milestoneInfo,
+              });
+
+              assistantResponse = reTeach?.uiMessage || reTeach?.payload?.content || '';
+              if (!assistantResponse) {
+                assistantResponse = 'Nice work — let’s continue to the next milestone.';
+              }
+            } else if (teaching?.uiMessage) {
+              assistantResponse = teaching.uiMessage;
+            } else if (cm?.response) {
+              assistantResponse = cm.response;
+            } else {
+              assistantResponse = 'Thanks for your update! Let me think about the best next step.';
+            }
+
+            // Ensure assessment follow-ups ALWAYS include explicit feedback.
+            if (gs.__assessmentFeedback && typeof gs.__assessmentFeedback === 'string') {
+              const fb = gs.__assessmentFeedback.trim();
+              if (fb) {
+                assistantResponse = `${fb}\n\n${assistantResponse}`;
+              }
+            }
+
+            const extractedQ = extractQuestion(assistantResponse);
+            if (extractedQ && !moduleJustCompleted) {
+              session.meta.outstandingCheck = extractedQ;
+              session.meta.countSinceLastCheck = 0;
+              session.meta.milestoneBeingTaught = true;
+            }
+
+            // Recalculate progress
+            let calculatedPoints = 0;
+            (session.plan || []).forEach(mod => {
+              if (mod.milestones?.length) {
+                const done = mod.milestones.filter(m => m.completed).length;
+                calculatedPoints += Math.round((mod.points || 0) * (done / mod.milestones.length));
+              }
+            });
+            session.points = Math.min(100, Math.max(0, calculatedPoints));
+            session.gems = Math.floor(session.points / 20);
+            session.progressPct = session.points;
+
+            session.messages.push(
+              { id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: cm?.intent || 'learning', phaseAtSend: session.phase, graphPath: true } },
+              { id: `msg_${Date.now() + 1}`, role: 'assistant', content: assistantResponse, timestamp: new Date(), metadata: { intent: cm?.action || 'teach', phaseAtSend: session.phase, graphPath: true, hadCheckInReply: !!extractedQ } },
+            );
+            await session.save();
+
+            // Engagement decoration (wisely, optional)
+            const engagement = await runEngagementAgent({
+              session,
+              baseMessage: assistantResponse,
+              context: {
+                action: cm?.action || 'teach',
+                milestoneCompleted: !!(assessment?.understood && assessment?.recommendation !== 'clarify_again'),
+                moduleCompleted: !!moduleJustCompleted,
+                phase: session.phase,
+              },
+            });
+            if (engagement?.payload?.include) {
+              const prefix = engagement.payload.prefix ? `${engagement.payload.prefix}\n\n` : '';
+              const suffix = engagement.payload.suffix ? `\n\n${engagement.payload.suffix}` : '';
+              assistantResponse = `${prefix}${assistantResponse}${suffix}`;
+              // Update last assistant message content in session for consistency
+              const last = session.messages[session.messages.length - 1];
+              if (last?.role === 'assistant') last.content = assistantResponse;
+              await session.save();
+            }
+
+            const data = {
+              message: assistantResponse,
+              tokensIn: Math.ceil(userMessage.length / 4),
+              tokensOut: Math.ceil(assistantResponse.length / 4),
+              hadCheckInReply: !!extractedQ,
+              followedUpOutstanding: cm?.isFollowUpToOutstanding || false,
+              phase: session.phase,
+              milestoneCompleted: assessment?.understood && assessment?.recommendation !== 'clarify_again',
+              moduleCompleted: moduleJustCompleted,
+              shouldGenerateQuiz: moduleJustCompleted,
+              // Intentionally do NOT return nextAction START_QUIZ; quiz starts only on explicit user intent.
+              currentMilestoneIndex: session.meta.currentMilestoneIndex ?? 0,
+              totalMilestones: activeModule?.milestones?.length || 0,
+              plan: session.plan,
+              activeModuleId: session.activeModuleId,
+              progressPct: session.progressPct || 0,
+              points: session.points || 0,
+              meta: buildChatMeta(session),
+            };
+            if (req.body.stream) {
+              res.setHeader('Content-Type', 'text/event-stream');
+              res.setHeader('Cache-Control', 'no-cache');
+              res.setHeader('Connection', 'keep-alive');
+              res.write(`data: ${JSON.stringify({ done: true, ...data })}\n\n`);
+              return res.end();
+            }
+            return res.json({ success: true, data });
+          }
+          console.warn('[Graph] Learning path returned !success, falling to legacy');
+        } catch (graphErr) {
+          console.error('[Graph] Learning path failed, falling to legacy', graphErr.message);
+        }
       }
       
       // Capture state at turn start for safety checks later
@@ -1660,7 +1956,28 @@ Return ONLY valid JSON in this format:
             }
           }
           
-          assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1500, session, validationContext);
+          const wantStream = req.body.stream && useStreaming();
+          if (wantStream) {
+            res.setHeader('Content-Type', 'text/event-stream');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Connection', 'keep-alive');
+            res.setHeader('X-Accel-Buffering', 'no');
+            res.flushHeaders();
+            const writeChunk = (chunk) => {
+              res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+              if (typeof res.flush === 'function') res.flush();
+            };
+            try {
+              assistantResponse = await callTeacherAPIStream(teacherPrompt, req.maxTokens || 1500, session, { onChunk: writeChunk });
+            } catch (streamErr) {
+              console.error('Streaming failed, sending error event', { error: streamErr.message });
+              res.write(`data: ${JSON.stringify({ error: 'Stream interrupted. Please retry.' })}\n\n`);
+              res.end();
+              return;
+            }
+          } else {
+            assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1500, session, validationContext);
+          }
           
           // Extract question if LLM asked one
           if (llmDecision.shouldAskQuestion && llmDecision.questionToAsk) {
@@ -1813,27 +2130,29 @@ Return ONLY valid JSON in this format:
         
         const tokensIn = Math.ceil(userMessage.length / 4);
         const tokensOut = Math.ceil(assistantResponse.length / 4);
-        
-        return res.json({
-          success: true,
-          data: {
-            message: assistantResponse,
-            tokensIn,
-            tokensOut,
-            hadCheckInReply: !!extractedQuestion,
-            followedUpOutstanding: llmDecision.isFollowUpToOutstanding || false,
-            phase: session.phase,
-            milestoneCompleted: llmDecision.markMilestoneComplete || false,
-            moduleCompleted: llmDecision.shouldStartQuiz || false,
-            shouldGenerateQuiz: llmDecision.shouldStartQuiz || false,
-            currentMilestoneIndex: session.meta.currentMilestoneIndex ?? 0,
-            totalMilestones: activeModule?.milestones?.length || 0,
-            plan: session.plan,
-            activeModuleId: session.activeModuleId,
-            progressPct: session.progressPct || 0,
-            points: session.points || 0
-          }
-        });
+        const data = {
+          message: assistantResponse,
+          tokensIn,
+          tokensOut,
+          hadCheckInReply: !!extractedQuestion,
+          followedUpOutstanding: llmDecision.isFollowUpToOutstanding || false,
+          phase: session.phase,
+          milestoneCompleted: llmDecision.markMilestoneComplete || false,
+          moduleCompleted: llmDecision.shouldStartQuiz || false,
+          shouldGenerateQuiz: llmDecision.shouldStartQuiz || false,
+          currentMilestoneIndex: session.meta.currentMilestoneIndex ?? 0,
+          totalMilestones: activeModule?.milestones?.length || 0,
+          plan: session.plan,
+          activeModuleId: session.activeModuleId,
+          progressPct: session.progressPct || 0,
+          points: session.points || 0,
+          meta: buildChatMeta(session),
+        };
+        if (req.body.stream) {
+          res.write(`data: ${JSON.stringify({ done: true, ...data })}\n\n`);
+          return res.end();
+        }
+        return res.json({ success: true, data });
         
       } catch (error) {
         console.error('LLM conversation decision failed', { sessionId, error: error.message, stack: error.stack });
@@ -1869,6 +2188,7 @@ Return ONLY valid JSON in this format:
         
         await session.save();
         
+        const activeMod = (session.plan || []).find(m => m.id === session.activeModuleId);
         return res.json({
           success: true,
           data: {
@@ -1877,7 +2197,14 @@ Return ONLY valid JSON in this format:
             tokensOut: Math.ceil(assistantResponse.length / 4),
             hadCheckInReply: false,
             followedUpOutstanding: false,
-            phase: session.phase
+            phase: session.phase,
+            plan: session.plan,
+            activeModuleId: session.activeModuleId,
+            currentMilestoneIndex: session.meta?.currentMilestoneIndex ?? 0,
+            totalMilestones: activeMod?.milestones?.length || 0,
+            progressPct: session.progressPct || 0,
+            points: session.points || 0,
+            meta: buildChatMeta(session),
           }
         });
       }
