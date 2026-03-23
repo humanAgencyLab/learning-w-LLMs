@@ -40,8 +40,10 @@ function ChatInterface() {
     appendMessage,
     removeLastAssistantMessage,
     startRevisionQuiz,
-    startQuizFromChat
+    startQuizFromChat,
+    courseId
   } = useSessionStore();
+  const isCourseSession = !!courseId;
   const sessionMessages = Array.isArray(sessionMessagesRaw) ? sessionMessagesRaw : [];
   const mightHaveMoreMessages = hasMoreMessages || (sessionMessages.length === 20 && totalMessageCount == null);
   const [inputValue, setInputValue] = useState('');
@@ -739,8 +741,8 @@ function ChatInterface() {
                 </div>
               </div>
 
-              {/* Studying / Revision toggle below card */}
-              <div className="flex gap-4 items-center justify-center">
+              {/* Studying / Revision toggle — hidden for instructor-seeded course sessions */}
+              {!isCourseSession && <div className="flex gap-4 items-center justify-center">
                 <button
                   type="button"
                   onClick={async () => {
@@ -810,7 +812,7 @@ function ChatInterface() {
                     Revision
                   </p>
                 </button>
-              </div>
+              </div>}
             </div>
           </div>
         )}

@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import useSessionStore from '../../state/sessionStore';
 
 function TopBar({ onStartNewChat }) {
-  const { phase, chatTitle, sessionId, mode, topic, messages } = useSessionStore();
+  const { phase, chatTitle, sessionId, mode, topic, messages, courseId } = useSessionStore();
   const location = useLocation();
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   
@@ -54,10 +54,21 @@ function TopBar({ onStartNewChat }) {
     // Use chatTitle if available, otherwise fallback to topic
     const displayTitle = chatTitle || topic;
     if (!displayTitle) return null;
-    
+
     const isRevision = mode === 'reviewing' || mode === 'revision';
     const titleCaseTitle = toTitleCase(displayTitle);
-    
+
+    if (courseId) {
+      return (
+        <span className="flex items-center gap-2">
+          You are <strong>Studying</strong>: {titleCaseTitle}
+          <span className="text-xs font-semibold bg-[#eef3fd] text-[#4e81ee] px-2 py-0.5 rounded-full">
+            Course
+          </span>
+        </span>
+      );
+    }
+
     if (isRevision) {
       return (
         <span>

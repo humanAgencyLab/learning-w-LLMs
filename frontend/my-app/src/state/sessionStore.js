@@ -43,7 +43,10 @@ const initial = {
   // Quiz state (transient)
   quizDraft: null,
   quizResult: null,
-  isQuizSubmitting: false
+  isQuizSubmitting: false,
+  // Course session fields (null for self-directed sessions)
+  courseId: null,
+  courseTopicId: null
 };
 
 const useSessionStore = create(
@@ -376,6 +379,8 @@ const useSessionStore = create(
           gems: payload.gems !== undefined ? payload.gems : prev.gems ?? 0,
           progressPct: payload.progressPct !== undefined ? payload.progressPct : prev.progressPct ?? 0,
           isViewOnly: payload.isViewOnly ?? prev.isViewOnly ?? false,
+          courseId: payload.courseId ?? prev.courseId ?? null,
+          courseTopicId: payload.courseTopicId ?? prev.courseTopicId ?? null,
           meta: mergedMeta,
           messages: messagesWithIds,
           totalMessageCount: totalMessageCount !== undefined ? totalMessageCount : prev.totalMessageCount,
