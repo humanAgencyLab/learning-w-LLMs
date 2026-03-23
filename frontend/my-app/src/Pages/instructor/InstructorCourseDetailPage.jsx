@@ -267,6 +267,22 @@ export default function InstructorCourseDetailPage() {
         </div>
       )}
 
+      {/* Student progress link */}
+      {analytics && analytics.enrollmentCount > 0 && (
+        <Link
+          to={`/instructor/courses/${courseId}/students`}
+          className="mb-6 flex items-center justify-between border border-gray-200 rounded-xl bg-white px-5 py-4 hover:border-blue-300 hover:shadow-sm transition-all group"
+        >
+          <div>
+            <h3 className="font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Student Progress</h3>
+            <p className="text-xs text-gray-500 mt-0.5">View per-student progress, quiz results, and identify struggling students.</p>
+          </div>
+          <svg className="w-5 h-5 text-gray-300 group-hover:text-blue-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
+      )}
+
       {/* Global Instructions */}
       <section className="mb-6 border border-gray-200 rounded-xl bg-white p-5">
         <h2 className="font-semibold text-gray-800 mb-2">AI Teaching Instructions</h2>

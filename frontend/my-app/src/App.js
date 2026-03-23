@@ -10,14 +10,17 @@ import Performance from './Pages/Performance';
 import ChatHistory from './Pages/ChatHistory';
 import Favorites from './Pages/Favorites';
 import AppShell from './layouts/AppShell';
+import InstructorShell from './layouts/InstructorShell';
 import ProtectedRoute from './components/ProtectedRoute';
 import useAuthStore from './state/authStore';
 import Onboarding from './Pages/Onboarding';
 import { ToastContainer } from './components/ui/toast';
 import InstructorRoute from './components/InstructorRoute';
+import InstructorDashboardPage from './Pages/instructor/InstructorDashboardPage';
 import InstructorCoursesPage from './Pages/instructor/InstructorCoursesPage';
 import InstructorCourseDetailPage from './Pages/instructor/InstructorCourseDetailPage';
 import InstructorTopicEditorPage from './Pages/instructor/InstructorTopicEditorPage';
+import InstructorStudentsPage from './Pages/instructor/InstructorStudentsPage';
 import StudentCoursesPage from './Pages/student/StudentCoursesPage';
 import StudentCourseTopicsPage from './Pages/student/StudentCourseTopicsPage';
 
@@ -45,6 +48,8 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Student app shell */}
         <Route element={<AppShell />}>
           <Route
             path="/chat"
@@ -103,6 +108,26 @@ function App() {
             }
           />
           <Route
+            index
+            element={
+              <ProtectedRoute>
+                <Navigate to="/chat" />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
+
+        {/* Instructor dashboard shell */}
+        <Route element={<InstructorShell />}>
+          <Route
+            path="/instructor/dashboard"
+            element={
+              <InstructorRoute>
+                <InstructorDashboardPage />
+              </InstructorRoute>
+            }
+          />
+          <Route
             path="/instructor/courses"
             element={
               <InstructorRoute>
@@ -127,11 +152,11 @@ function App() {
             }
           />
           <Route
-            index
+            path="/instructor/courses/:courseId/students"
             element={
-              <ProtectedRoute>
-                <Navigate to="/chat" />
-              </ProtectedRoute>
+              <InstructorRoute>
+                <InstructorStudentsPage />
+              </InstructorRoute>
             }
           />
         </Route>

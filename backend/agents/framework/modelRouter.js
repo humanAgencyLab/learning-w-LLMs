@@ -13,6 +13,7 @@ const TASK_MODEL_MAP = {
   teaching: 'expensive',
   quiz: 'expensive',
   topic_plan: 'expensive',
+  struggle_summary: 'cheap',
 };
 
 function getModelForTask(taskName) {

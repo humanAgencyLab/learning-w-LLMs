@@ -46,7 +46,9 @@ const initial = {
   isQuizSubmitting: false,
   // Course session fields (null for self-directed sessions)
   courseId: null,
-  courseTopicId: null
+  courseTopicId: null,
+  courseName: null,
+  courseTopicTitle: null
 };
 
 const useSessionStore = create(
@@ -381,6 +383,8 @@ const useSessionStore = create(
           isViewOnly: payload.isViewOnly ?? prev.isViewOnly ?? false,
           courseId: payload.courseId ?? prev.courseId ?? null,
           courseTopicId: payload.courseTopicId ?? prev.courseTopicId ?? null,
+          courseName: payload.courseName ?? prev.courseName ?? null,
+          courseTopicTitle: payload.courseTopicTitle ?? prev.courseTopicTitle ?? null,
           meta: mergedMeta,
           messages: messagesWithIds,
           totalMessageCount: totalMessageCount !== undefined ? totalMessageCount : prev.totalMessageCount,

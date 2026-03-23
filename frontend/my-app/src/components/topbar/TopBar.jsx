@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import useSessionStore from '../../state/sessionStore';
 
 function TopBar({ onStartNewChat }) {
-  const { phase, chatTitle, sessionId, mode, topic, messages, courseId } = useSessionStore();
+  const { phase, chatTitle, sessionId, mode, topic, messages, courseId, courseName, courseTopicTitle } = useSessionStore();
   const location = useLocation();
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   
@@ -61,10 +61,12 @@ function TopBar({ onStartNewChat }) {
     if (courseId) {
       return (
         <span className="flex items-center gap-2">
-          You are <strong>Studying</strong>: {titleCaseTitle}
-          <span className="text-xs font-semibold bg-[#eef3fd] text-[#4e81ee] px-2 py-0.5 rounded-full">
-            Course
-          </span>
+          {courseName && (
+            <span className="text-xs font-semibold bg-[#eef3fd] text-[#4e81ee] px-2 py-0.5 rounded-full">
+              {courseName}
+            </span>
+          )}
+          <strong>Studying</strong>: {courseTopicTitle ? toTitleCase(courseTopicTitle) : titleCaseTitle}
         </span>
       );
     }

@@ -57,4 +57,83 @@ async function getCourseAnalytics(courseId) {
   };
 }
 
-module.exports = { getCourseAnalytics };
+/**
+ * Per-student progress for a course.
+ * Returns one row per enrolled student with their session stats.
+ */
+async function getStudentProgress(courseId) {
+  const User = require('../models/User');
+
+  const enrollments = await Enrollment.find({ courseId, status: 'active' })
+    .select('userId joinedAt priorKnowledge')
+    .lean();
+
+  const userIds = enrollments.map((e) => e.userId);
+  const [users, sessions, topics] = await Promise.all([
+    User.find({ _id: { $in: userIds } }).select('name username avatarUrl').lean(),
+    Session.find({ courseId: new mongoose.Types.ObjectId(courseId), userId: { $in: userIds } })
+      .select('userId courseTopicId phase progressPct quizAttempts points')
+      .lean(),
+    CourseTopic.find({ courseId }).select('_id title').lean(),
+  ]);
+
+  const userMap = {};
+  for (const u of users) userMap[u._id.toString()] = u;
+
+  const topicMap = {};
+  for (const t of topics) topicMap[t._id.toString()] = t.title;
+
+  const rows = enrollments.map((en) => {
+    const uid = en.userId.toString();
+    const user = userMap[uid] || {};
+    const studentSessions = sessions.filter((s) => s.userId?.toString() === uid);
+
+    let totalPoints = 0;
+    let completedTopics = 0;
+    let quizAttempts = 0;
+    let quizPasses = 0;
+    const topicProgress = {};
+
+    for (const s of studentSessions) {
+      totalPoints += s.points || 0;
+      const tid = s.courseTopicId?.toString();
+      if (tid) {
+        const isComplete = s.phase === 'completed' || (s.progressPct != null && s.progressPct >= 100);
+        topicProgress[tid] = {
+          topicId: tid,
+          topicTitle: topicMap[tid] || 'Unknown',
+          progressPct: s.progressPct || 0,
+          phase: s.phase,
+          completed: isComplete,
+        };
+        if (isComplete) completedTopics++;
+      }
+      for (const a of s.quizAttempts || []) {
+        if (a.status === 'submitted') {
+          quizAttempts++;
+          if (a.passed) quizPasses++;
+        }
+      }
+    }
+
+    return {
+      userId: uid,
+      name: user.name || user.username || 'Student',
+      avatarUrl: user.avatarUrl || null,
+      joinedAt: en.joinedAt,
+      priorKnowledge: en.priorKnowledge || null,
+      sessionsStarted: studentSessions.length,
+      completedTopics,
+      totalTopics: topics.length,
+      totalPoints,
+      quizAttempts,
+      quizPasses,
+      quizPassRate: quizAttempts > 0 ? Math.round((quizPasses / quizAttempts) * 100) : null,
+      topicProgress: Object.values(topicProgress),
+    };
+  });
+
+  return { courseId, students: rows };
+}
+
+module.exports = { getCourseAnalytics, getStudentProgress };

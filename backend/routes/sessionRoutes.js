@@ -8,6 +8,8 @@ const User = require('../models/User');
 const { createSessionSchema, resumeSessionSchema } = require('../validation/sessionValidation');
 const { requireAuth, requireOwnership } = require('../middleware/auth');
 const { userProfileToSessionProfile } = require('../utils/userProfileToSessionProfile');
+const Course = require('../models/Course');
+const CourseTopic = require('../models/CourseTopic');
 
 // Initialize Pino logger (no transport in production - pino-pretty is dev-only)
 const logger = pino({
@@ -591,6 +593,18 @@ router.get('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(async
       duration: Date.now() - startTime 
     });
     
+    // Resolve course/topic names if this is a course session
+    let courseName = null;
+    let courseTopicTitle = null;
+    if (session.courseId) {
+      const [course, courseTopic] = await Promise.all([
+        Course.findById(session.courseId).select('title').lean(),
+        session.courseTopicId ? CourseTopic.findById(session.courseTopicId).select('title').lean() : null,
+      ]);
+      courseName = course?.title || null;
+      courseTopicTitle = courseTopic?.title || null;
+    }
+
     res.json({
       success: true,
       data: {
@@ -613,6 +627,8 @@ router.get('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(async
         meta: session.meta,
         courseId: session.courseId || null,
         courseTopicId: session.courseTopicId || null,
+        courseName,
+        courseTopicTitle,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt
       }
@@ -678,6 +694,18 @@ router.post('/v1/sessions/:id/resume', requireAuth, addRequestId, requireOwnersh
       duration: Date.now() - startTime 
     });
     
+    // Resolve course/topic names if this is a course session
+    let courseName = null;
+    let courseTopicTitle = null;
+    if (session.courseId) {
+      const [course, courseTopic] = await Promise.all([
+        Course.findById(session.courseId).select('title').lean(),
+        session.courseTopicId ? CourseTopic.findById(session.courseTopicId).select('title').lean() : null,
+      ]);
+      courseName = course?.title || null;
+      courseTopicTitle = courseTopic?.title || null;
+    }
+
     res.json({
       success: true,
       data: {
@@ -697,7 +725,9 @@ router.post('/v1/sessions/:id/resume', requireAuth, addRequestId, requireOwnersh
         hasMoreMessages,
         profile: session.profile,
         courseId: session.courseId || null,
-        courseTopicId: session.courseTopicId || null
+        courseTopicId: session.courseTopicId || null,
+        courseName,
+        courseTopicTitle
       }
     });
 

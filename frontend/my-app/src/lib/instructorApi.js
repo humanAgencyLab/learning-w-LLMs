@@ -179,3 +179,23 @@ export async function getCourseAnalytics(courseId) {
     })
   );
 }
+
+export async function getCourseInsights(courseId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/insights`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function getStudentProgress(courseId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/students`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
