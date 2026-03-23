@@ -128,6 +128,116 @@ describe('Instructor / course / enrollment routes', () => {
     expect(sess.courseTopicId.toString()).toBe(draftId);
   });
 
+  it('topic status transitions: invalid transitions return 400', async () => {
+    const instructor = await signupUser('instructor');
+    const cRes = await request(app)
+      .post('/v1/instructor/courses')
+      .set('Authorization', `Bearer ${instructor.token}`)
+      .send({ title: 'Jest Status Transitions' })
+      .expect(201);
+    const courseId = cRes.body.data.course._id;
+    courseIds.push(courseId);
+
+    const tRes = await request(app)
+      .post(`/v1/instructor/courses/${courseId}/topics`)
+      .set('Authorization', `Bearer ${instructor.token}`)
+      .send({ title: 'Transition Topic' })
+      .expect(201);
+    const topicId = tRes.body.data.topic._id;
+    topicIds.push(topicId);
+
+    // draft -> publish should fail (must approve first) — returns 409
+    await request(app)
+      .post(`/v1/instructor/courses/${courseId}/topics/${topicId}/publish`)
+      .set('Authorization', `Bearer ${instructor.token}`)
+      .expect(409);
+
+    // draft -> unpublish should fail — returns 409
+    await request(app)
+      .post(`/v1/instructor/courses/${courseId}/topics/${topicId}/unpublish`)
+      .set('Authorization', `Bearer ${instructor.token}`)
+      .expect(409);
+
+    // draft -> approve should succeed
+    await request(app)
+      .post(`/v1/instructor/courses/${courseId}/topics/${topicId}/approve`)
+      .set('Authorization', `Bearer ${instructor.token}`)
+      .expect(200);
+
+    // approved -> publish should succeed
+    await request(app)
+      .post(`/v1/instructor/courses/${courseId}/topics/${topicId}/publish`)
+      .set('Authorization', `Bearer ${instructor.token}`)
+      .expect(200);
+
+    // published -> unpublish should succeed
+    await request(app)
+      .post(`/v1/instructor/courses/${courseId}/topics/${topicId}/unpublish`)
+      .set('Authorization', `Bearer ${instructor.token}`)
+      .expect(200);
+  });
+
+  it('session resume returns courseId and courseTopicId for course-seeded sessions', async () => {
+    const instructor = await signupUser('instructor');
+    const student = await signupUser('student');
+
+    const cRes = await request(app)
+      .post('/v1/instructor/courses')
+      .set('Authorization', `Bearer ${instructor.token}`)
+      .send({ title: 'Jest Resume Course' })
+      .expect(201);
+    const courseId = cRes.body.data.course._id;
+    courseIds.push(courseId);
+
+    const tRes = await request(app)
+      .post(`/v1/instructor/courses/${courseId}/topics`)
+      .set('Authorization', `Bearer ${instructor.token}`)
+      .send({ title: 'Resume Topic' })
+      .expect(201);
+    const topicId = tRes.body.data.topic._id;
+    topicIds.push(topicId);
+
+    await request(app)
+      .post(`/v1/instructor/courses/${courseId}/topics/${topicId}/approve`)
+      .set('Authorization', `Bearer ${instructor.token}`)
+      .expect(200);
+    await request(app)
+      .post(`/v1/instructor/courses/${courseId}/topics/${topicId}/publish`)
+      .set('Authorization', `Bearer ${instructor.token}`)
+      .expect(200);
+
+    const join = await request(app)
+      .post('/v1/courses/join')
+      .set('Authorization', `Bearer ${student.token}`)
+      .send({ accessCode: cRes.body.data.course.accessCode })
+      .expect(201);
+    enrollmentIds.push(join.body.data.enrollment._id);
+
+    const start = await request(app)
+      .post(`/v1/courses/${courseId}/topics/${topicId}/start`)
+      .set('Authorization', `Bearer ${student.token}`)
+      .expect(201);
+    const sessionId = start.body.data.sessionId;
+    sessionIds.push(sessionId);
+
+    // Resume and verify courseId/courseTopicId are present
+    const resume = await request(app)
+      .post(`/v1/sessions/${sessionId}/resume`)
+      .set('Authorization', `Bearer ${student.token}`)
+      .expect(200);
+    expect(resume.body.data.courseId).toBe(courseId);
+    expect(resume.body.data.courseTopicId).toBe(topicId);
+    expect(resume.body.data.phase).toBe('learning');
+
+    // GET session should also return them
+    const get = await request(app)
+      .get(`/v1/sessions/${sessionId}`)
+      .set('Authorization', `Bearer ${student.token}`)
+      .expect(200);
+    expect(get.body.data.courseId).toBe(courseId);
+    expect(get.body.data.courseTopicId).toBe(topicId);
+  });
+
   it('student cannot access another instructor analytics or course mutate', async () => {
     const a = await signupUser('instructor');
     const b = await signupUser('instructor');
