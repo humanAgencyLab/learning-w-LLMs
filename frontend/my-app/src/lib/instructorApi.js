@@ -62,10 +62,34 @@ export async function archiveCourse(courseId) {
   );
 }
 
-export async function uploadCourseSource(courseId, file) {
+export async function deleteCourse(courseId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+const MAX_COURSE_FILES = 10;
+const MAX_COURSE_UPLOAD_BYTES = 15 * 1024 * 1024;
+
+/** Batch upload: files + parallel roles ['syllabus'|'reference'] (default: first syllabus, rest reference). */
+export async function uploadCourseSources(courseId, files, roles) {
+  if (!files?.length) throw new Error('Select at least one file');
+  if (files.length > MAX_COURSE_FILES) {
+    throw new Error(`At most ${MAX_COURSE_FILES} files per upload`);
+  }
+  const total = files.reduce((s, f) => s + (f.size || 0), 0);
+  if (total > MAX_COURSE_UPLOAD_BYTES) {
+    throw new Error('Total size must be 15MB or less');
+  }
   const token = localStorage.getItem('accessToken');
   const form = new FormData();
-  form.append('file', file);
+  files.forEach((f) => form.append('files', f));
+  const r = roles && roles.length === files.length ? roles : null;
+  form.append('roles', JSON.stringify(r || []));
   const response = await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/sources`, {
     method: 'POST',
     headers: {
@@ -75,6 +99,32 @@ export async function uploadCourseSource(courseId, file) {
     body: form,
   });
   return parse(response);
+}
+
+/** Single-file upload (first file = syllabus unless roles provided). */
+export async function uploadCourseSource(courseId, file, role = 'syllabus') {
+  return uploadCourseSources(courseId, [file], [role]);
+}
+
+export async function deleteCourseSource(courseId, sourceId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/sources/${sourceId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function updateCourseSourceRole(courseId, sourceId, role) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/sources/${sourceId}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify({ role }),
+    })
+  );
 }
 
 export async function listTopics(courseId) {
@@ -159,13 +209,50 @@ export async function unpublishTopic(courseId, topicId) {
   );
 }
 
-export async function generateTopics(courseId, topicCount) {
+export async function generateTopicPlan(courseId, message, topicCount) {
+  const payload = {};
+  if (message) payload.message = message;
+  if (topicCount != null && topicCount !== '') payload.topicCount = Number(topicCount);
   return parse(
-    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/generate-topics`, {
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/topic-plan/generate`, {
       method: 'POST',
       headers: getAuthHeaders(),
       credentials: 'include',
-      body: JSON.stringify(topicCount != null ? { topicCount } : {}),
+      body: JSON.stringify(payload),
+    })
+  );
+}
+
+export async function modifyTopicPlan(courseId, message, topicCount) {
+  const payload = { message };
+  if (topicCount != null && topicCount !== '') payload.topicCount = Number(topicCount);
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/topic-plan/modify`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    })
+  );
+}
+
+export async function getTopicPlanChat(courseId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/topic-plan/chat`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function aiModifyTopic(courseId, topicId, message) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/topics/${topicId}/ai-modify`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify({ message }),
     })
   );
 }

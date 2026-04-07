@@ -79,9 +79,8 @@ export async function modifyPlan({ sessionId, modificationRequest }) {
 export async function answerClarify(sessionId, answers) {
   const response = await fetch(`${API_BASE}/v1/assessment`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
+    credentials: 'include',
     body: JSON.stringify({
       sessionId,
       userMessage: answers, // Send answers as userMessage
@@ -102,101 +101,3 @@ export async function answerClarify(sessionId, answers) {
   return data;
 }
 
-// Legacy methods for backward compatibility
-export async function assessStage(
-  message,
-  topic = 'General Learning',
-  historySessionId = null,
-) {
-  const response = await fetch(`${API_BASE}/assess`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ message, topic, historySessionId }),
-  });
-
-  const data = await safeReadResponse(response);
-  
-  if (!response.ok) {
-    const errorMessage = extractErrorMessage(response, 'Assessment failed', data);
-    throw new Error(errorMessage);
-  }
-
-  return data;
-}
-
-export async function getSessionDetails(sessionId) {
-  const response = await fetch(`${API_BASE}/session/${sessionId}`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  const data = await safeReadResponse(response);
-  
-  if (!response.ok) {
-    const errorMessage = extractErrorMessage(response, 'Failed to load session details', data);
-    throw new Error(errorMessage);
-  }
-
-  return data;
-}
-
-export async function updateSessionStage(sessionId, stage) {
-  const response = await fetch(`${API_BASE}/session/${sessionId}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ stage }),
-  });
-
-  const data = await safeReadResponse(response);
-  
-  if (!response.ok) {
-    const errorMessage = extractErrorMessage(response, 'Failed to update session stage', data);
-    throw new Error(errorMessage);
-  }
-
-  return data;
-}
-
-export async function startQuiz(sessionId, stage) {
-  const response = await fetch(`${API_BASE}/quiz/start`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ sessionId, stage }),
-  });
-
-  const data = await safeReadResponse(response);
-  
-  if (!response.ok) {
-    const errorMessage = extractErrorMessage(response, 'Failed to start quiz', data);
-    throw new Error(errorMessage);
-  }
-
-  return data;
-}
-
-export async function submitQuiz(quizId, sessionId, answers) {
-  const response = await fetch(`${API_BASE}/quiz/submit`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ quizId, sessionId, answers }),
-  });
-
-  const data = await safeReadResponse(response);
-  
-  if (!response.ok) {
-    const errorMessage = extractErrorMessage(response, 'Failed to submit quiz', data);
-    throw new Error(errorMessage);
-  }
-
-  return data;
-}

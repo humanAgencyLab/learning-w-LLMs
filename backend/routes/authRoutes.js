@@ -763,7 +763,14 @@ router.post('/forgot-password', async (req, res) => {
       }
 
       const resetLink = `${frontendUrl.replace(/\/$/, '')}/resetpassword?token=${encodeURIComponent(resetToken)}`;
-      // MVP: Return token + link in response (no email in MVP)
+      if (process.env.NODE_ENV === 'production') {
+        // In production, never expose token in response — send via email (not yet implemented)
+        return res.json({
+          success: true,
+          message: 'If username exists, password reset link has been sent'
+        });
+      }
+      // Dev/MVP: Return token + link in response (no email in MVP)
       return res.json({
         success: true,
         message: 'Password reset token generated',

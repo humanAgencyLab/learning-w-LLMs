@@ -227,6 +227,108 @@ router.post('/v1/sessions', requireAuth, addRequestId, async (req, res) => {
   }
 });
 
+// NOTE: /search must be defined BEFORE any /:id routes to avoid Express matching "search" as an :id parameter
+// GET /v1/sessions/search - Search sessions (with enhanced search across messages)
+router.get('/v1/sessions/search', requireAuth, addRequestId, async (req, res) => {
+  const startTime = Date.now();
+
+  try {
+    const searchQuery = req.query.q || req.query.query || '';
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = parseInt(req.query.offset) || 0;
+
+    if (!searchQuery.trim()) {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Search query is required'
+      });
+    }
+
+    req.logger.info('Searching sessions', {
+      userId: req.userId,
+      searchQuery,
+      limit,
+      offset
+    });
+
+    // Build search query - search in topic, chatTitle, and message content
+    const searchRegex = { $regex: searchQuery.trim(), $options: 'i' };
+
+    const query = {
+      userId: req.userId,
+      chatTitle: { $ne: '', $exists: true },
+      $and: [
+        {
+          $or: [
+            { 'plan.0': { $exists: true } }, // Study sessions must have a plan
+            { mode: 'reviewing' } // Revision sessions don't need a plan
+          ]
+        },
+        {
+          $or: [
+            { topic: searchRegex },
+            { chatTitle: searchRegex },
+            { 'messages.content': searchRegex }
+          ]
+        }
+      ]
+    };
+
+    // Fetch sessions
+    const sessions = await Session.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(offset)
+      .select('phase mode topic chatTitle points gems progressPct isFavorite createdAt updatedAt plan');
+
+    const total = await Session.countDocuments(query);
+
+    req.logger.info('Search completed', {
+      userId: req.userId,
+      count: sessions.length,
+      total,
+      duration: Date.now() - startTime
+    });
+
+    res.json({
+      success: true,
+      data: {
+        sessions: sessions.map(session => ({
+          id: session._id,
+          mode: session.mode,
+          topic: session.topic,
+          chatTitle: session.chatTitle,
+          phase: session.phase,
+          progressPct: session.progressPct,
+          points: session.points,
+          gems: session.gems,
+          isFavorite: session.isFavorite || false,
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt
+        })),
+        total,
+        limit,
+        offset,
+        query: searchQuery
+      }
+    });
+
+  } catch (error) {
+    req.logger.error('Search failed', {
+      userId: req.userId,
+      error: error.message,
+      stack: error.stack,
+      duration: Date.now() - startTime
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
 /**
  * POST /v1/sessions/:id/summarize
  * Generate a summary of the completed learning session
@@ -945,107 +1047,6 @@ router.delete('/v1/sessions/:id', requireAuth, addRequestId, requireOwnership(as
   } catch (error) {
     req.logger.error('Failed to delete session', { 
       sessionId: req.params.id,
-      error: error.message,
-      stack: error.stack,
-      duration: Date.now() - startTime 
-    });
-    
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error'
-    });
-  }
-});
-
-// GET /v1/sessions/search - Search sessions (with enhanced search across messages)
-router.get('/v1/sessions/search', requireAuth, addRequestId, async (req, res) => {
-  const startTime = Date.now();
-  
-  try {
-    const searchQuery = req.query.q || req.query.query || '';
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = parseInt(req.query.offset) || 0;
-    
-    if (!searchQuery.trim()) {
-      return res.status(400).json({
-        success: false,
-        code: 'VALIDATION_ERROR',
-        message: 'Search query is required'
-      });
-    }
-    
-    req.logger.info('Searching sessions', { 
-      userId: req.userId,
-      searchQuery,
-      limit,
-      offset 
-    });
-    
-    // Build search query - search in topic, chatTitle, and message content
-    const searchRegex = { $regex: searchQuery.trim(), $options: 'i' };
-    
-    const query = { 
-      userId: req.userId,
-      chatTitle: { $ne: '', $exists: true },
-      $and: [
-        {
-          $or: [
-            { 'plan.0': { $exists: true } }, // Study sessions must have a plan
-            { mode: 'reviewing' } // Revision sessions don't need a plan
-          ]
-        },
-        {
-          $or: [
-            { topic: searchRegex },
-            { chatTitle: searchRegex },
-            { 'messages.content': searchRegex }
-          ]
-        }
-      ]
-    };
-    
-    // Fetch sessions
-    const sessions = await Session.find(query)
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .skip(offset)
-      .select('phase mode topic chatTitle points gems progressPct isFavorite createdAt updatedAt plan');
-    
-    const total = await Session.countDocuments(query);
-    
-    req.logger.info('Search completed', { 
-      userId: req.userId,
-      count: sessions.length,
-      total,
-      duration: Date.now() - startTime 
-    });
-    
-    res.json({
-      success: true,
-      data: {
-        sessions: sessions.map(session => ({
-          id: session._id,
-          mode: session.mode,
-          topic: session.topic,
-          chatTitle: session.chatTitle,
-          phase: session.phase,
-          progressPct: session.progressPct,
-          points: session.points,
-          gems: session.gems,
-          isFavorite: session.isFavorite || false,
-          createdAt: session.createdAt,
-          updatedAt: session.updatedAt
-        })),
-        total,
-        limit,
-        offset,
-        query: searchQuery
-      }
-    });
-    
-  } catch (error) {
-    req.logger.error('Search failed', { 
-      userId: req.userId,
       error: error.message,
       stack: error.stack,
       duration: Date.now() - startTime 

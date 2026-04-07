@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
 
 const STATUS_STYLES = {
@@ -60,6 +60,12 @@ function TopicCard({ topic, courseId, busy, onAction }) {
         {topic.objective && (
           <p className="text-sm text-gray-500 line-clamp-1">{topic.objective}</p>
         )}
+        {topic.syllabusAnchors?.length > 0 && (
+          <p className="text-xs text-indigo-700/90 mt-1 line-clamp-2" title={topic.syllabusAnchors.join(' · ')}>
+            <span className="font-medium text-indigo-900">Syllabus: </span>
+            {topic.syllabusAnchors.join(' · ')}
+          </p>
+        )}
         <p className="text-xs text-gray-400 mt-1">
           {moduleCount} module{moduleCount !== 1 ? 's' : ''} · {milestoneCount} milestones
         </p>
@@ -75,16 +81,37 @@ function TopicCard({ topic, courseId, busy, onAction }) {
             >
               Approve
             </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onAction(() => instructorApi.deleteTopic(courseId, topic._id))}
-              className="text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
-            >
-              Delete
-            </button>
           </>
         )}
+
+        {status !== 'draft' && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm('Delete this topic? Students will no longer be able to access it.')) return;
+              onAction(() => instructorApi.deleteTopic(courseId, topic._id));
+            }}
+            className="text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
+          >
+            Delete
+          </button>
+        )}
+
+        {status === 'draft' && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm('Delete this topic? Students will no longer be able to access it.')) return;
+              onAction(() => instructorApi.deleteTopic(courseId, topic._id));
+            }}
+            className="text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
+          >
+            Delete
+          </button>
+        )}
+
         {status === 'approved' && (
           <button
             type="button"
@@ -126,8 +153,35 @@ function TopicCard({ topic, courseId, busy, onAction }) {
   );
 }
 
+function Spinner({ className = 'h-3.5 w-3.5' }) {
+  return (
+    <svg className={`animate-spin ${className}`} viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+    </svg>
+  );
+}
+
+function ChatBubble({ role, content }) {
+  const isInstructor = role === 'instructor';
+  return (
+    <div className={`flex ${isInstructor ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className={`max-w-[85%] rounded-xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words ${
+          isInstructor
+            ? 'bg-blue-600 text-white rounded-br-sm'
+            : 'bg-gray-100 text-gray-800 rounded-bl-sm border border-gray-200'
+        }`}
+      >
+        {content}
+      </div>
+    </div>
+  );
+}
+
 export default function InstructorCourseDetailPage() {
   const { courseId } = useParams();
+  const navigate = useNavigate();
   const [course, setCourse] = useState(null);
   const [topics, setTopics] = useState([]);
   const [analytics, setAnalytics] = useState(null);
@@ -136,19 +190,27 @@ export default function InstructorCourseDetailPage() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [instrSaved, setInstrSaved] = useState(false);
-  const [generating, setGenerating] = useState(false);
+
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatBusy, setChatBusy] = useState(false);
+  const chatEndRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [cRes, tRes] = await Promise.all([
+      const [cRes, tRes, chatRes] = await Promise.all([
         instructorApi.getCourse(courseId),
         instructorApi.listTopics(courseId),
+        instructorApi.getTopicPlanChat(courseId).catch(() => null),
       ]);
       setCourse(cRes.data?.course);
       setTopics(tRes.data?.topics || []);
       setGlobalInstructions(cRes.data?.course?.globalInstructions || '');
+      if (chatRes?.data?.messages) {
+        setChatMessages(chatRes.data.messages);
+      }
       try {
         const aRes = await instructorApi.getCourseAnalytics(courseId);
         setAnalytics(aRes.data);
@@ -163,6 +225,9 @@ export default function InstructorCourseDetailPage() {
   }, [courseId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   const saveInstructions = async () => {
     setBusy(true);
@@ -178,13 +243,22 @@ export default function InstructorCourseDetailPage() {
     }
   };
 
-  const onUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const sourceSlotsLeft = Math.max(0, 10 - (course?.sources?.length || 0));
+
+  const onUploadFiles = async (e) => {
+    const picked = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (picked.length === 0) return;
     setBusy(true);
     try {
-      await instructorApi.uploadCourseSource(courseId, file);
-      e.target.value = '';
+      if (picked.length > sourceSlotsLeft) {
+        setError(
+          `This course allows at most 10 files. You can add ${sourceSlotsLeft} more (this selection has ${picked.length}).`
+        );
+        return;
+      }
+      const roles = picked.map((_, i) => (i === 0 ? 'syllabus' : 'reference'));
+      await instructorApi.uploadCourseSources(courseId, picked, roles);
       await load();
     } catch (err) {
       setError(err.message);
@@ -193,15 +267,39 @@ export default function InstructorCourseDetailPage() {
     }
   };
 
-  const onGenerate = async () => {
-    setGenerating(true);
+  const hasDrafts = topics.some((t) => t.status === 'draft');
+  const isModify = hasDrafts || chatMessages.length > 0;
+
+  const onSendChat = async () => {
+    const message = chatInput.trim();
+    if (!message || chatBusy) return;
+    setChatInput('');
+    setChatBusy(true);
+    setError(null);
+
+    setChatMessages((prev) => [...prev, { role: 'instructor', content: message }]);
+
     try {
-      await instructorApi.generateTopics(courseId);
+      const res = isModify
+        ? await instructorApi.modifyTopicPlan(courseId, message)
+        : await instructorApi.generateTopicPlan(courseId, message);
+
+      const assistantMsg = res?.data?.assistantMessage || 'Done.';
+      const warnings = res?.data?.warnings;
+      const fullMsg = warnings?.length
+        ? `${assistantMsg}\n\n${warnings.join('\n')}`
+        : assistantMsg;
+
+      setChatMessages((prev) => [...prev, { role: 'assistant', content: fullMsg }]);
       await load();
     } catch (e) {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: `Error: ${e.message}` }
+      ]);
       setError(e.message);
     } finally {
-      setGenerating(false);
+      setChatBusy(false);
     }
   };
 
@@ -210,6 +308,20 @@ export default function InstructorCourseDetailPage() {
     try {
       await fn();
       await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDeleteCourse = async () => {
+    if (!window.confirm('Delete this course? Students will immediately lose access to the course and its topics.')) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await instructorApi.deleteCourse(courseId);
+      navigate('/instructor/courses');
     } catch (e) {
       setError(e.message);
     } finally {
@@ -247,6 +359,14 @@ export default function InstructorCourseDetailPage() {
           <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${course?.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
             {course?.status}
           </span>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onDeleteCourse}
+            className="text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
+          >
+            Delete course
+          </button>
         </div>
       </div>
 
@@ -306,38 +426,117 @@ export default function InstructorCourseDetailPage() {
         </div>
       </section>
 
-      {/* Sources & Generation */}
+      {/* Sources */}
       <section className="mb-6 border border-gray-200 rounded-xl bg-white p-5">
         <h2 className="font-semibold text-gray-800 mb-2">Course Materials</h2>
-        <p className="text-xs text-gray-500 mb-3">Upload materials and generate topic structures from them.</p>
-        <div className="flex items-center gap-3 flex-wrap">
-          <label className="cursor-pointer bg-white border border-gray-300 hover:border-gray-400 text-gray-700 text-sm px-4 py-1.5 rounded-lg transition-colors">
-            Upload file
-            <input type="file" onChange={onUpload} disabled={busy} className="hidden" />
-          </label>
-          <button
-            type="button"
-            disabled={generating || busy}
-            onClick={onGenerate}
-            className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2"
-          >
-            {generating && (
-              <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
-            )}
-            {generating ? 'Generating...' : 'Generate topic drafts'}
-          </button>
-        </div>
+        <p className="text-xs text-gray-500 mb-3">
+          Upload up to <strong>10 files</strong> per course (<strong>{sourceSlotsLeft}</strong> slot{sourceSlotsLeft === 1 ? '' : 's'} left).
+          Mark one or more files as <strong>Syllabus</strong> (defines what topics must cover); others are optional <strong>Reference</strong> for the AI.
+        </p>
+        <label className={`cursor-pointer inline-block bg-white border border-gray-300 hover:border-gray-400 text-gray-700 text-sm px-4 py-1.5 rounded-lg transition-colors ${sourceSlotsLeft === 0 || busy ? 'opacity-50 pointer-events-none' : ''}`}>
+          Upload files
+          <input
+            type="file"
+            multiple
+            onChange={onUploadFiles}
+            disabled={busy || sourceSlotsLeft === 0}
+            className="hidden"
+            accept=".pdf,.txt,.md,.doc,.docx,application/pdf,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          />
+        </label>
         {(course?.sources?.length > 0) && (
-          <ul className="mt-3 space-y-1">
-            {course.sources.map((s) => (
-              <li key={s._id} className="flex items-center gap-2 text-sm text-gray-600">
-                <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                <span>{s.originalName}</span>
-                <span className="text-xs text-gray-400">{s.wordCount?.toLocaleString() || 0} words</span>
-              </li>
-            ))}
+          <ul className="mt-3 space-y-2">
+            {course.sources.map((s) => {
+              const total = course.sources.length;
+              const effective =
+                s.role === 'syllabus' || s.role === 'reference'
+                  ? s.role
+                  : total <= 1 ? 'syllabus' : 'reference';
+              return (
+                <li key={s._id} className="flex flex-wrap items-center gap-2 text-sm text-gray-700 border border-gray-100 rounded-lg px-3 py-2 bg-gray-50/80">
+                  <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                  <span className="flex-1 min-w-[120px] truncate" title={s.originalName}>{s.originalName}</span>
+                  <span className="text-xs text-gray-400">{s.wordCount?.toLocaleString() || 0} words</span>
+                  <select
+                    value={effective}
+                    disabled={busy}
+                    onChange={(ev) =>
+                      action(() => instructorApi.updateCourseSourceRole(courseId, s._id, ev.target.value))
+                    }
+                    className="text-xs border border-gray-200 rounded-md px-2 py-1 bg-white"
+                  >
+                    <option value="syllabus">Syllabus (primary)</option>
+                    <option value="reference">Reference</option>
+                  </select>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => action(() => instructorApi.deleteCourseSource(courseId, s._id))}
+                    className="text-xs text-red-600 hover:text-red-800 font-medium px-2 py-1 rounded-md hover:bg-red-50"
+                  >
+                    Remove
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
+      </section>
+
+      {/* Plan Chat Panel */}
+      <section className="mb-6 border border-gray-200 rounded-xl bg-white p-5">
+        <h2 className="font-semibold text-gray-800 mb-1">Topic Plan Chat</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          Describe how you want topics structured, then click <strong>{isModify ? 'Modify' : 'Generate'}</strong>.
+          After generation, continue chatting to refine. Drafts are replaced; approved/published topics stay.
+          The app decides the topic count based on your syllabus and your request.
+        </p>
+
+        {chatMessages.length > 0 && (
+          <div className="max-h-72 overflow-y-auto space-y-2 mb-3 border border-gray-100 rounded-xl p-3 bg-gray-50/50">
+            {chatMessages.map((m, i) => (
+              <ChatBubble key={i} role={m.role} content={m.content} />
+            ))}
+            {chatBusy && (
+              <div className="flex justify-start">
+                <div className="bg-gray-100 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-500 flex items-center gap-2 rounded-bl-sm">
+                  <Spinner /> Thinking...
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <input
+            className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+            placeholder={isModify ? 'e.g. "Add a topic on neural networks"' : 'e.g. "Create 5 topics covering the full syllabus"'}
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSendChat(); } }}
+            disabled={chatBusy}
+          />
+          <button
+            type="button"
+            disabled={chatBusy || (!chatInput.trim() && !isModify)}
+            onClick={onSendChat}
+            className={`px-5 py-2 rounded-xl text-sm font-medium transition-colors inline-flex items-center gap-2 disabled:opacity-50 ${
+              isModify
+                ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                : 'bg-purple-600 hover:bg-purple-700 text-white'
+            }`}
+          >
+            {chatBusy && <Spinner />}
+            {isModify ? 'Modify' : 'Generate'}
+          </button>
+        </div>
+
+        <p className="text-xs text-gray-400 mt-2">
+          {isModify
+            ? 'Modify replaces all draft topics based on your instructions. Approved/published topics are never changed.'
+            : 'Generate creates new draft topics from your materials and instructions.'}
+        </p>
       </section>
 
       {/* Topics */}
