@@ -21,6 +21,7 @@ import InstructorCoursesPage from './Pages/instructor/InstructorCoursesPage';
 import InstructorCourseDetailPage from './Pages/instructor/InstructorCourseDetailPage';
 import InstructorTopicEditorPage from './Pages/instructor/InstructorTopicEditorPage';
 import InstructorStudentsPage from './Pages/instructor/InstructorStudentsPage';
+import InstructorOnboarding from './Pages/instructor/InstructorOnboarding';
 import StudentCoursesPage from './Pages/student/StudentCoursesPage';
 import StudentCourseTopicsPage from './Pages/student/StudentCourseTopicsPage';
 
@@ -45,6 +46,14 @@ function App() {
           element={
             <ProtectedRoute requireOnboarding={false}>
               <Onboarding />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/instructor/onboarding"
+          element={
+            <ProtectedRoute requireOnboarding={false}>
+              <InstructorOnboarding />
             </ProtectedRoute>
           }
         />

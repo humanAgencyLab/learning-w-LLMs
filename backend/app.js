@@ -1,4 +1,6 @@
-require('dotenv').config();
+const path = require('path');
+// Load .env from this package directory so instructor secrets work even if `node server.js` is run from repo root
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const express = require('express');
 const cors = require('cors');
@@ -26,7 +28,6 @@ const adminRoutes = require('./routes/adminRoutes');
 const instructorRoutes = require('./routes/instructorRoutes');
 const enrollmentRoutes = require('./routes/enrollmentRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
-const path = require('path');
 
 // Import middleware
 const { requestLogger, errorLogger, metricsTracker, securityHeaders } = require('./middleware/logging');

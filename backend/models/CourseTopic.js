@@ -13,7 +13,8 @@ const QuizPatternSchema = new mongoose.Schema({
   },
   cognitiveLevel: {
     type: String,
-    enum: ['remember', 'understand', 'apply', 'analyze'],
+    // Revised Bloom's taxonomy (LLMs often return "evaluate" / "create")
+    enum: ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'],
     default: 'understand'
   },
   constraints: { type: String, trim: true, maxlength: 1000, default: '' }
@@ -50,6 +51,16 @@ const CourseTopicSchema = new mongoose.Schema({
   },
   title: { type: String, required: true, trim: true, minlength: 1, maxlength: 300 },
   objective: { type: String, trim: true, maxlength: 2000, default: '' },
+  /** Short phrases tying the topic to instructor syllabus/source material (AI drafts). */
+  syllabusAnchors: {
+    type: [{ type: String, trim: true, maxlength: 400 }],
+    validate: {
+      validator: function (v) {
+        return !Array.isArray(v) || v.length <= 12;
+      },
+      message: 'At most 12 syllabus anchor strings'
+    }
+  },
   orderIndex: { type: Number, default: 0, min: 0 },
   status: {
     type: String,

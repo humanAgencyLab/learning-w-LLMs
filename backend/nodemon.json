@@ -1,0 +1,15 @@
+{
+  "watch": ["."],
+  "ext": "js,cjs,mjs,json",
+  "ignore": [
+    "node_modules/**",
+    "uploads/**",
+    "coverage/**",
+    "tests/**",
+    "**/*.test.js",
+    "**/*export*.csv",
+    "*.log"
+  ],
+  "delay": 400,
+  "exec": "node server.js"
+}

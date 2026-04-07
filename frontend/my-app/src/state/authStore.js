@@ -19,10 +19,17 @@ const useAuthStore = create(
       /**
        * Sign up a new user
        */
-      signup: async ({ password, name, username, autoGenerateUsername }) => {
+      signup: async ({ password, name, username, autoGenerateUsername, role, instructorSignupSecret }) => {
         set({ isLoading: true, error: null });
         try {
-          const { user, accessToken } = await authApi.signup({ password, name, username, autoGenerateUsername });
+          const { user, accessToken } = await authApi.signup({
+            password,
+            name,
+            username,
+            autoGenerateUsername,
+            role,
+            instructorSignupSecret,
+          });
           set({
             user,
             accessToken,

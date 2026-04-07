@@ -11,6 +11,11 @@ const DIFFICULTY_COLORS = {
 };
 const COGNITIVE_LEVELS = ['remember', 'understand', 'apply', 'analyze'];
 const QUESTION_TYPES = ['conceptual', 'applied', 'recall', 'analytical'];
+// Keep these aligned with backend validators (topicPlanValidator.js).
+// These are used for enabling/disabling "Add" controls (not displayed as "x/y",
+// because that UI reads like course progress rather than per-topic limits).
+const MAX_MODULES_PER_TOPIC = 8;
+const MAX_MILESTONES_PER_MODULE = 8;
 
 function generateModuleId() {
   return 'mod_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
@@ -55,7 +60,7 @@ function MilestoneRow({ milestone, index, total, onChange, onRemove, onAdd }) {
           &times;
         </button>
       )}
-      {index === total - 1 && total < 8 && (
+      {index === total - 1 && total < MAX_MILESTONES_PER_MODULE && (
         <button
           type="button"
           onClick={onAdd}
@@ -241,7 +246,9 @@ function ModuleCard({ module, index, total, onUpdate, onRemove, onMoveUp, onMove
           </div>
 
           <div>
-            <label className="block text-xs text-gray-500 mb-1.5">Milestones ({module.milestones?.length || 0}/8)</label>
+            <label className="block text-xs text-gray-500 mb-1.5">
+              Milestones ({module.milestones?.length || 0})
+            </label>
             <div className="space-y-1.5">
               {(module.milestones || []).map((m, i) => (
                 <MilestoneRow
@@ -274,6 +281,67 @@ function ModuleCard({ module, index, total, onUpdate, onRemove, onMoveUp, onMove
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── AI Edit Panel (draft only) ─────────────────────────────────────────────
+function AiEditPanel({ courseId, topicId, isDraft, onApplied }) {
+  const [prompt, setPrompt] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  if (!isDraft) return null;
+
+  const submit = async () => {
+    if (!prompt.trim() || busy) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      await instructorApi.aiModifyTopic(courseId, topicId, prompt.trim());
+      setResult({ ok: true, msg: 'Applied successfully.' });
+      setPrompt('');
+      onApplied();
+    } catch (e) {
+      setResult({ ok: false, msg: e.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-6 border border-indigo-200 rounded-xl bg-indigo-50/40 p-4">
+      <h3 className="text-sm font-semibold text-indigo-900 mb-1">AI Edit</h3>
+      <p className="text-xs text-indigo-700/80 mb-2">
+        Describe changes and AI will update this draft topic in-place (add/remove modules, adjust milestones, change quiz patterns, etc.).
+      </p>
+      <div className="flex gap-2">
+        <input
+          className="flex-1 border border-indigo-200 rounded-lg px-3 py-2 text-sm bg-white focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 outline-none"
+          placeholder='e.g. "Add a module on recursion" or "Reduce to 3 milestones per module"'
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
+          disabled={busy}
+        />
+        <button
+          type="button"
+          disabled={busy || !prompt.trim()}
+          onClick={submit}
+          className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2"
+        >
+          {busy && (
+            <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+          )}
+          Apply
+        </button>
+      </div>
+      {result && (
+        <p className={`text-xs mt-2 ${result.ok ? 'text-green-700' : 'text-red-700'}`}>{result.msg}</p>
       )}
     </div>
   );
@@ -383,6 +451,14 @@ export default function InstructorTopicEditorPage() {
         </div>
       )}
 
+      {/* AI Edit Panel — draft topics only */}
+      <AiEditPanel
+        courseId={courseId}
+        topicId={topicId}
+        isDraft={topic?.status === 'draft'}
+        onApplied={load}
+      />
+
       {/* Title + Objective */}
       <div className="space-y-3 mb-6">
         <div>
@@ -408,8 +484,10 @@ export default function InstructorTopicEditorPage() {
       {/* Modules */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-700">Modules ({modules.length}/8)</h2>
-          {modules.length < 8 && (
+          <h2 className="text-sm font-semibold text-gray-700">
+            Modules ({modules.length})
+          </h2>
+          {modules.length < MAX_MODULES_PER_TOPIC && (
             <button
               type="button"
               onClick={addModule}

@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const Course = require('../models/Course');
 const CourseTopic = require('../models/CourseTopic');
 const Enrollment = require('../models/Enrollment');
+const Session = require('../models/Session');
 const { requireAuth } = require('../middleware/auth');
 const { requireEnrolledStudent } = require('../middleware/enrollmentAccess');
 const { seedSessionForCourseTopic } = require('../services/sessionSeedingService');
@@ -68,10 +69,15 @@ router.post('/join', requireAuth, async (req, res, next) => {
 router.get('/mine', requireAuth, async (req, res, next) => {
   try {
     const enrollments = await Enrollment.find({ studentId: req.userId, status: 'active' })
-      .populate('courseId', 'title description status accessCode')
+      .populate({
+        path: 'courseId',
+        match: { status: { $ne: 'archived' } },
+        select: 'title description status accessCode'
+      })
       .sort({ joinedAt: -1 })
       .lean();
-    res.json({ success: true, data: { enrollments } });
+    // When a course is archived/deleted, populated `courseId` becomes null. Hide those entries.
+    res.json({ success: true, data: { enrollments: enrollments.filter((e) => e.courseId) } });
   } catch (e) {
     next(e);
   }
@@ -111,6 +117,31 @@ router.post('/:courseId/topics/:topicId/start', requireAuth, requireEnrolledStud
         code: 'TOPIC_NOT_PUBLISHED'
       });
     }
+
+    // Reuse existing session for this enrollment/topic so "Start learning" resumes the same thread.
+    // This prevents creating a new chat thread every time the student clicks the button.
+    const existing = await Session.findOne({
+      userId: req.userId,
+      courseId: new mongoose.Types.ObjectId(courseId),
+      courseTopicId: topic._id,
+      enrollmentId: req.enrollment._id,
+    })
+      .sort({ updatedAt: -1 })
+      .select('_id phase activeModuleId')
+      .lean();
+
+    if (existing?._id) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          sessionId: existing._id.toString(),
+          phase: existing.phase,
+          activeModuleId: existing.activeModuleId,
+          reused: true,
+        },
+      });
+    }
+
     const session = await seedSessionForCourseTopic({
       userId: req.userId,
       topic,
@@ -122,7 +153,8 @@ router.post('/:courseId/topics/:topicId/start', requireAuth, requireEnrolledStud
       data: {
         sessionId: session._id.toString(),
         phase: session.phase,
-        activeModuleId: session.activeModuleId
+        activeModuleId: session.activeModuleId,
+        reused: false,
       }
     });
   } catch (e) {

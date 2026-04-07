@@ -78,18 +78,34 @@ export default function StudentCourseTopicsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      setLoading(true);
+    const fetchTopics = async ({ silent } = {}) => {
+      if (!silent) setLoading(true);
       try {
         const res = await courseApi.listPublishedTopics(courseId);
-        if (!cancelled) setTopics(res.data?.topics || []);
+        const list = (res.data?.topics || []).filter((t) => t?.status === 'published');
+        if (!cancelled) setTopics(list);
       } catch (e) {
         if (!cancelled) setError(e.message);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !silent) setLoading(false);
       }
-    })();
-    return () => { cancelled = true; };
+    };
+
+    fetchTopics();
+
+    // If instructor unpublishes while student is on the page, refresh on focus/visibility.
+    const onFocus = () => fetchTopics({ silent: true });
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') fetchTopics({ silent: true });
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [courseId]);
 
   const start = async (topicId) => {

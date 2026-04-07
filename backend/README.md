@@ -14,10 +14,11 @@ A robust Express.js backend API for the Study Assist learning platform, featurin
    npm install
    ```
 
-3. Start the development server:
+3. Start the development server (auto-restarts when you save `.js` / `.json` changes):
    ```bash
    npm run dev
    ```
+   Uses [nodemon](https://nodemon.io/) (`nodemon.json` ignores `uploads/`, `tests/`, etc. so uploads don’t bounce the server).
 
 4. Start the production server:
    ```bash

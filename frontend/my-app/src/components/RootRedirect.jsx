@@ -24,7 +24,10 @@ function RootRedirect() {
   // Redirect based on auth status
   if (isAuthenticated) {
     if (user?.role === 'instructor') {
-      return <Navigate to="/instructor/courses" replace />;
+      if (user.profile?.onboardingCompleted !== true) {
+        return <Navigate to="/instructor/onboarding" replace />;
+      }
+      return <Navigate to="/instructor/dashboard" replace />;
     }
     return <Navigate to="/chat" replace />;
   }

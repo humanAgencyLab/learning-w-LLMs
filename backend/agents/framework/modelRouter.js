@@ -13,6 +13,8 @@ const TASK_MODEL_MAP = {
   teaching: 'expensive',
   quiz: 'expensive',
   topic_plan: 'expensive',
+  topic_plan_modify: 'expensive',
+  topic_draft_modify: 'expensive',
   struggle_summary: 'cheap',
 };
 

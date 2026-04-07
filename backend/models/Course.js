@@ -50,7 +50,13 @@ const CourseSchema = new mongoose.Schema({
     extractedText: { type: String, default: '' },
     chunkCount: { type: Number, default: 0 },
     wordCount: { type: Number, default: 0 },
-    uploadedAt: { type: Date, default: Date.now }
+    uploadedAt: { type: Date, default: Date.now },
+    /** Primary syllabus drives topic coverage; reference = optional context for the agent. */
+    role: {
+      type: String,
+      enum: ['syllabus', 'reference'],
+      default: 'reference'
+    }
   }],
   globalInstructions: {
     type: String,
@@ -65,9 +71,24 @@ const CourseSchema = new mongoose.Schema({
       default: 'module_based'
     },
     topicCount: { type: Number, min: 1, max: 20, default: 4 },
+    /** Optional ceiling for AI topic-plan target (≥ topicCount when set). */
+    topicCountMax: { type: Number, min: 1, max: 20, required: false },
     weekCount: { type: Number, min: 1, max: 16, default: null },
     customNotes: { type: String, trim: true, maxlength: 2000, default: '' }
-  }
+  },
+  /** Persisted instructor chat for generate/modify flows (newest last). */
+  instructorChat: [{
+    _id: false,
+    role: { type: String, enum: ['instructor', 'assistant'], required: true },
+    content: { type: String, required: true, maxlength: 8000 },
+    createdAt: { type: Date, default: Date.now },
+    metadata: {
+      kind: { type: String, enum: ['generate', 'modify'] },
+      topicCount: { type: Number },
+      _id: false
+    }
+  }],
+  latestCoverageOverview: { type: String, trim: true, maxlength: 5000, default: '' }
 }, { timestamps: true });
 
 CourseSchema.index({ instructorId: 1, createdAt: -1 });
