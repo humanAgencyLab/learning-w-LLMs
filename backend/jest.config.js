@@ -1,3 +1,11 @@
+/** @type {import('jest').Config} */
+module.exports = {
+  testEnvironment: 'node',
+  // Keep default testMatch; repo already uses backend/tests/**.test.js
+  setupFilesAfterEnv: ['<rootDir>/tests/jest.setup.js'],
+  globalTeardown: '<rootDir>/tests/jest.teardown.js',
+};
+
 module.exports = {
   testEnvironment: 'node',
   testMatch: ['**/tests/**/*.test.js'],

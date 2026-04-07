@@ -1264,6 +1264,41 @@ Return ONLY valid JSON in this format:
               }
             } else if (teaching?.uiMessage) {
               assistantResponse = teaching.uiMessage;
+            } else if (session.phase === 'learning' && !moduleJustCompleted && !advancedToNextMilestone) {
+              // Teaching agent skipped or failed validation; still return full teaching via unified prompt.
+              try {
+                const isFollowUp = !!assessment;
+                const assessmentForTeacher = assessment
+                  ? {
+                      understood: assessment.understood,
+                      isClarificationRequest: assessment.responseType === 'clarification_request',
+                      isFirstIncorrect:
+                        assessment.responseType === 'wrong_answer' && assessment.recommendation === 'clarify_again',
+                      isSecondIncorrect:
+                        assessment.responseType === 'wrong_answer' && assessment.recommendation === 'move_forward_anyway',
+                      needsMoreClarification: assessment.responseType === 'clarification_request',
+                      responseType: assessment.responseType,
+                      recommendation: assessment.recommendation,
+                    }
+                  : null;
+                const milestoneInfo = cm
+                  ? {
+                      moveToNextMilestone: cm.moveToNextMilestone,
+                      markMilestoneComplete: cm.markMilestoneComplete,
+                    }
+                  : null;
+                const teacherPrompt = buildTeacherPrompt(
+                  session,
+                  userMessage,
+                  isFollowUp,
+                  assessmentForTeacher,
+                  milestoneInfo
+                );
+                assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1500, session);
+              } catch (fallbackErr) {
+                req.logger?.error?.('Graph path teacher fallback failed', { error: fallbackErr.message, sessionId });
+                assistantResponse = cm?.response || 'Thanks for your update! Let me think about the best next step.';
+              }
             } else if (cm?.response) {
               assistantResponse = cm.response;
             } else {

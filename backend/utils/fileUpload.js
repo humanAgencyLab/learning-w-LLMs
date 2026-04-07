@@ -48,7 +48,19 @@ const upload = multer({
 /**
  * Middleware for single avatar upload
  */
-const uploadAvatar = upload.single('avatar');
+function uploadAvatar(req, res, next) {
+  return upload.single('avatar')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') return next(err);
+
+    // Multer fileFilter errors come through as plain Error objects.
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'Invalid file upload',
+      code: 'INVALID_FILE_TYPE'
+    });
+  });
+}
 
 /**
  * Get the URL/path for an avatar file

@@ -153,6 +153,111 @@ describe('StudyGraph routing', () => {
     expect(require('../../agents/assessmentAgent').runAssessmentAgent).not.toHaveBeenCalled();
   });
 
+  it('routes respond_naturally to teaching when learning and no outstanding question', async () => {
+    require('../../agents/conversationManagerAgent').runConversationManagerAgent.mockResolvedValue({
+      type: 'conversation_manager',
+      payload: {
+        intent: 'general',
+        action: 'respond_naturally',
+        isFollowUpToOutstanding: false,
+        shouldAskQuestion: true,
+        questionToAsk: 'What interests you most?',
+        shouldStartQuiz: false,
+        markMilestoneComplete: false,
+        moveToNextMilestone: false,
+        phaseChange: null,
+        response: 'Hi! What would you like to focus on?',
+      },
+    });
+
+    require('../../agents/teachingAgent').runTeachingAgent.mockResolvedValue({
+      type: 'teaching',
+      payload: { content: 'Full milestone teaching...' },
+      uiMessage: 'Full milestone teaching...',
+      valid: true,
+      errors: [],
+    });
+
+    const learningSession = {
+      ...baseSession,
+      phase: 'learning',
+      activeModuleId: '1',
+      plan: [{ id: '1', title: 'Basics', milestones: [{ text: 'Variables', completed: false }] }],
+      meta: { currentMilestoneIndex: 0 },
+    };
+
+    const graph = compileStudyGraph();
+    const result = await graph.invoke({
+      session: learningSession,
+      userMessage: 'hi',
+      phase: 'learning',
+      requestType: 'chat',
+    });
+
+    expect(result.teachingResult).toBeDefined();
+    expect(result.teachingResult.uiMessage).toBe('Full milestone teaching...');
+    expect(require('../../agents/teachingAgent').runTeachingAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes respond_naturally to assessment when outstanding question exists', async () => {
+    require('../../agents/conversationManagerAgent').runConversationManagerAgent.mockResolvedValue({
+      type: 'conversation_manager',
+      payload: {
+        intent: 'general',
+        action: 'respond_naturally',
+        isFollowUpToOutstanding: false,
+        shouldAskQuestion: false,
+        shouldStartQuiz: false,
+        markMilestoneComplete: false,
+        moveToNextMilestone: false,
+        phaseChange: null,
+        response: 'Ok',
+      },
+    });
+
+    require('../../agents/assessmentAgent').runAssessmentAgent.mockResolvedValue({
+      type: 'assessment',
+      payload: {
+        responseType: 'wrong_answer',
+        understood: false,
+        confidence: 'high',
+        recommendation: 'clarify_again',
+        reasoning: 'Incomplete',
+      },
+      valid: true,
+      errors: [],
+    });
+
+    require('../../agents/teachingAgent').runTeachingAgent.mockResolvedValue({
+      type: 'teaching',
+      payload: { content: 'Let me explain again...' },
+      uiMessage: 'Let me explain again...',
+      valid: true,
+      errors: [],
+    });
+
+    const learningSession = {
+      ...baseSession,
+      phase: 'learning',
+      activeModuleId: '1',
+      plan: [{ id: '1', title: 'Basics', milestones: [{ text: 'Variables', completed: false }] }],
+      meta: { currentMilestoneIndex: 0, outstandingCheck: 'What is a variable?' },
+    };
+
+    const graph = compileStudyGraph();
+    const result = await graph.invoke({
+      session: learningSession,
+      userMessage: 'maybe',
+      phase: 'learning',
+      requestType: 'chat',
+    });
+
+    expect(result.assessmentResult).toBeDefined();
+    expect(result.teachingResult).toBeDefined();
+    expect(require('../../agents/assessmentAgent').runAssessmentAgent).toHaveBeenCalledTimes(1);
+    expect(require('../../agents/teachingAgent').runTeachingAgent).toHaveBeenCalledTimes(1);
+  });
+
   it('routes learning phase through convManager → assessment → teaching', async () => {
     require('../../agents/conversationManagerAgent').runConversationManagerAgent.mockResolvedValue({
       type: 'conversation_manager',

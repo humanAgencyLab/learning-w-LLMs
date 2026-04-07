@@ -18,7 +18,9 @@ Rules:
 - If there's an outstanding question and the user responds → action="assess", isFollowUpToOutstanding=true
 - If the user asks for help/clarification → action="clarify"
 - If all milestones are done → action="start_quiz", shouldStartQuiz=true
-- Never skip milestone assessment; always verify understanding before moving forward`;
+- Never skip milestone assessment; always verify understanding before moving forward
+- ⚠️ Learning phase (course or approved plan): If phase is "learning" and there is NO outstanding question, you MUST use action="teach" (not "respond_naturally"). The student needs full milestone teaching + exactly one question — never only a short greeting or a bare question without teaching content.
+- ⚠️ Do NOT use "respond_naturally" or "provide_guidance" when a milestone is waiting to be taught (no outstandingCheck). Use "teach" first.`;
 
 function buildUserPrompt(session, userMessage) {
   const activeModule = session.plan?.find(m => m.id === session.activeModuleId);

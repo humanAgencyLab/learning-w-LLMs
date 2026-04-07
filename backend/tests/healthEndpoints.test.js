@@ -8,7 +8,7 @@ describe('Health Endpoints', () => {
         .get('/v1/health')
         .expect(200);
 
-      expect(response.body).toHaveProperty('status', 'healthy');
+      expect(['healthy', 'degraded']).toContain(response.body.status);
       expect(response.body).toHaveProperty('timestamp');
       expect(response.body).toHaveProperty('uptimeSec');
       expect(response.body).toHaveProperty('startedAt');

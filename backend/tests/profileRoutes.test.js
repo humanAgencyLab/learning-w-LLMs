@@ -16,20 +16,20 @@ describe('Profile Routes', () => {
 
   afterAll(async () => {
     // Cleanup
-    await User.deleteMany({ email: /^test.*@example\.com$/ });
-    await mongoose.connection.close();
+    await User.deleteMany({ username: /^testuser/i });
+    // Don't close the shared mongoose connection here; other Jest suites may still be running.
   });
 
   beforeEach(async () => {
     // Create user and login before each test
-    await User.deleteMany({ email: /^test.*@example\.com$/ });
+    await User.deleteMany({ username: /^testuser/i });
     
     const signupResponse = await request(app)
       .post('/v1/auth/signup')
       .send({
-        email: 'test@example.com',
         password: 'TestPassword123!',
-        name: 'Test User'
+        name: 'Test User',
+        username: 'testuser_profile'
       });
     
     accessToken = signupResponse.body.data.accessToken;

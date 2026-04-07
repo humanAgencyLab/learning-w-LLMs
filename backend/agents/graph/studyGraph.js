@@ -88,8 +88,24 @@ async function convManagerNode(state) {
 
 function routeAfterConvManager(state) {
   const action = state.convManagerResult?.payload?.action;
-  if (action === 'assess')  return 'assessment';
+  if (action === 'assess') return 'assessment';
   if (action === 'teach' || action === 'clarify') return 'teaching';
+  // Conversation manager may return respond_naturally/provide_guidance while a milestone is active.
+  // Those must still run the teaching agent so the student gets full content + one check-in question.
+  if (action === 'start_quiz') return END;
+
+  const session = state.session;
+  const outstanding = session?.meta?.outstandingCheck;
+  const phase = session?.phase;
+
+  if (
+    phase === 'learning' &&
+    (action === 'respond_naturally' || action === 'provide_guidance' || action === 'continue_learning')
+  ) {
+    if (outstanding) return 'assessment';
+    return 'teaching';
+  }
+
   return END;
 }
 

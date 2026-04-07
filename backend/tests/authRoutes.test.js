@@ -18,14 +18,14 @@ describe('Authentication Routes', () => {
 
   afterAll(async () => {
     // Cleanup
-    await User.deleteMany({ email: /^test.*@example\.com$/ });
+    await User.deleteMany({ username: /^testuser/i });
     await Session.deleteMany({});
-    await mongoose.connection.close();
+    // Don't close the shared mongoose connection here; other Jest suites may still be running.
   });
 
   beforeEach(async () => {
     // Clean up test users before each test
-    await User.deleteMany({ email: /^test.*@example\.com$/ });
+    await User.deleteMany({ username: /^testuser/i });
   });
 
   describe('POST /v1/auth/signup', () => {
@@ -33,41 +33,27 @@ describe('Authentication Routes', () => {
       const response = await request(app)
         .post('/v1/auth/signup')
         .send({
-          email: 'test@example.com',
           password: 'TestPassword123!',
-          name: 'Test User'
+          name: 'Test User',
+          username: 'testuser1'
         })
         .expect(201);
 
       expect(response.body.success).toBe(true);
       expect(response.body.data.user).toBeDefined();
-      expect(response.body.data.user.email).toBe('test@example.com');
+      expect(response.body.data.user.username).toBe('testuser1');
       expect(response.body.data.user.name).toBe('Test User');
       expect(response.body.data.user.passwordHash).toBeUndefined();
       expect(response.body.data.accessToken).toBeDefined();
-    });
-
-    it('should reject signup with invalid email', async () => {
-      const response = await request(app)
-        .post('/v1/auth/signup')
-        .send({
-          email: 'invalid-email',
-          password: 'TestPassword123!',
-          name: 'Test User'
-        })
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
-      expect(response.body.code).toBe('VALIDATION_ERROR');
     });
 
     it('should reject signup with weak password', async () => {
       const response = await request(app)
         .post('/v1/auth/signup')
         .send({
-          email: 'test@example.com',
           password: 'weak',
-          name: 'Test User'
+          name: 'Test User',
+          username: 'testuser2'
         })
         .expect(400);
 
@@ -75,35 +61,34 @@ describe('Authentication Routes', () => {
       expect(response.body.code).toBe('VALIDATION_ERROR');
     });
 
-    it('should reject signup with duplicate email', async () => {
+    it('should reject signup with duplicate username', async () => {
       // Create first user
       await request(app)
         .post('/v1/auth/signup')
         .send({
-          email: 'test@example.com',
           password: 'TestPassword123!',
-          name: 'Test User'
+          name: 'Test User',
+          username: 'testuser_dup'
         });
 
       // Try to create duplicate
       const response = await request(app)
         .post('/v1/auth/signup')
         .send({
-          email: 'test@example.com',
           password: 'TestPassword123!',
-          name: 'Test User 2'
+          name: 'Test User 2',
+          username: 'testuser_dup'
         })
         .expect(409);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.code).toBe('EMAIL_EXISTS');
+      expect(response.body.code).toBe('USERNAME_EXISTS');
     });
 
     it('should reject signup with missing fields', async () => {
       const response = await request(app)
         .post('/v1/auth/signup')
         .send({
-          email: 'test@example.com'
           // Missing password and name
         })
         .expect(400);
@@ -119,9 +104,9 @@ describe('Authentication Routes', () => {
       await request(app)
         .post('/v1/auth/signup')
         .send({
-          email: 'test@example.com',
           password: 'TestPassword123!',
-          name: 'Test User'
+          name: 'Test User',
+          username: 'testuser_login'
         });
     });
 
@@ -129,7 +114,7 @@ describe('Authentication Routes', () => {
       const response = await request(app)
         .post('/v1/auth/login')
         .send({
-          email: 'test@example.com',
+          username: 'testuser_login',
           password: 'TestPassword123!'
         })
         .expect(200);
@@ -150,7 +135,7 @@ describe('Authentication Routes', () => {
       const response = await request(app)
         .post('/v1/auth/login')
         .send({
-          email: 'test@example.com',
+          username: 'testuser_login',
           password: 'WrongPassword123!'
         })
         .expect(401);
@@ -159,11 +144,11 @@ describe('Authentication Routes', () => {
       expect(response.body.code).toBe('INVALID_CREDENTIALS');
     });
 
-    it('should reject login with non-existent email', async () => {
+    it('should reject login with non-existent username', async () => {
       const response = await request(app)
         .post('/v1/auth/login')
         .send({
-          email: 'nonexistent@example.com',
+          username: 'no_such_user_123',
           password: 'TestPassword123!'
         })
         .expect(401);
@@ -176,7 +161,6 @@ describe('Authentication Routes', () => {
       const response = await request(app)
         .post('/v1/auth/login')
         .send({
-          email: 'test@example.com'
           // Missing password
         })
         .expect(400);
@@ -192,9 +176,9 @@ describe('Authentication Routes', () => {
       const signupResponse = await request(app)
         .post('/v1/auth/signup')
         .send({
-          email: 'test@example.com',
           password: 'TestPassword123!',
-          name: 'Test User'
+          name: 'Test User',
+          username: 'testuser_me'
         });
       
       accessToken = signupResponse.body.data.accessToken;
@@ -208,7 +192,7 @@ describe('Authentication Routes', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data.user).toBeDefined();
-      expect(response.body.data.user.email).toBe('test@example.com');
+      expect(response.body.data.user.username).toBe('testuser_me');
       expect(response.body.data.user.name).toBe('Test User');
     });
 
@@ -238,9 +222,9 @@ describe('Authentication Routes', () => {
       const signupResponse = await request(app)
         .post('/v1/auth/signup')
         .send({
-          email: 'test@example.com',
           password: 'TestPassword123!',
-          name: 'Test User'
+          name: 'Test User',
+          username: 'testuser_logout'
         });
       
       accessToken = signupResponse.body.data.accessToken;
@@ -268,10 +252,15 @@ describe('Authentication Routes', () => {
   describe('POST /v1/auth/refresh', () => {
     beforeEach(async () => {
       // Create user and login to get refresh token cookie
+      await request(app)
+        .post('/v1/auth/signup')
+        .send({ password: 'TestPassword123!', name: 'Test User', username: 'testuser_refresh' })
+        .expect(201);
+
       const loginResponse = await request(app)
         .post('/v1/auth/login')
         .send({
-          email: 'test@example.com',
+          username: 'testuser_refresh',
           password: 'TestPassword123!'
         });
       
@@ -295,7 +284,7 @@ describe('Authentication Routes', () => {
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.code).toBe('AUTH_REQUIRED');
+      expect(response.body.code).toBe('REFRESH_TOKEN_REQUIRED');
     });
   });
 });
