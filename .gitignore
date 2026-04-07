@@ -153,3 +153,18 @@ dist
 .yarn/install-state.gz
 .pnp.*
 .DS_Store
+
+# Cursor / editor
+.cursor/
+.vscode/
+.claude/
+
+# Frontend build output (CRA lives under frontend/my-app)
+frontend/my-app/build/
+
+# Backend generated artifacts
+backend/uploads/
+backend/quiz-attempts-export-*.csv
+
+# Local docs editor artifacts
+docs/.Rhistory
