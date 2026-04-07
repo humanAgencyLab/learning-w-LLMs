@@ -37,9 +37,10 @@ function Onboarding() {
     // Only redirect if authenticated AND no pending signup AND not currently loading/submitting
     // AND we're not on step 2 (which means we're in the middle of onboarding)
     if (isAuthenticated && !pendingSignup && currentStep !== 2) {
-      navigate('/chat', { replace: true });
+      const role = user?.role;
+      navigate(role === 'instructor' ? '/instructor/courses' : '/chat', { replace: true });
     }
-  }, [isAuthenticated, navigate, isLoading, isSubmitting, currentStep]);
+  }, [isAuthenticated, user, navigate, isLoading, isSubmitting, currentStep]);
 
   const handleNext = () => {
     if (currentStep < 2) {
@@ -74,6 +75,10 @@ function Onboarding() {
           signupData = JSON.parse(pendingSignupStr);
           // Validate that signupData has required fields
           if (signupData && signupData.password && signupData.name && signupData.username) {
+            if (signupData.role === 'instructor' && !String(signupData.instructorSignupSecret || '').trim()) {
+              sessionStorage.removeItem('pendingSignup');
+              throw new Error('Instructor registration code is missing. Please start sign up again.');
+            }
             shouldCreateAccount = true;
           } else {
             // Invalid pending signup data - clear it
@@ -99,7 +104,7 @@ function Onboarding() {
             setIsLoading(false);
             setIsSubmitting(false);
             // Ensure we stay on step 4 to show the error
-            setCurrentStep(4);
+            setCurrentStep(2);
             // DON'T clear pendingSignup here - let user see the error
             // Only clear it if they navigate away or successfully complete onboarding
             return;
@@ -109,7 +114,10 @@ function Onboarding() {
             name: signupData.name,
             password: signupData.password,
             username: signupData.username,
-            autoGenerateUsername: signupData.autoGenerateUsername || false
+            autoGenerateUsername: signupData.autoGenerateUsername || false,
+            role: signupData.role === 'instructor' ? 'instructor' : undefined,
+            instructorSignupSecret:
+              signupData.role === 'instructor' ? signupData.instructorSignupSecret : undefined,
           });
           // Clear pending signup data immediately after signup succeeds
           sessionStorage.removeItem('pendingSignup');
@@ -119,7 +127,7 @@ function Onboarding() {
             setError('This username is already taken. Please choose a different username or enable auto-generate in signup.');
             setIsLoading(false);
             setIsSubmitting(false);
-            setCurrentStep(4);
+            setCurrentStep(2);
             return;
           }
           // Re-throw other errors to be caught by outer catch
@@ -156,11 +164,13 @@ function Onboarding() {
       
       // Navigate immediately - don't wait, and use replace to prevent back navigation
       // Use window.location as a fallback if navigate doesn't work
+      const roleAfter = useAuthStore.getState().user?.role;
+      const dest = roleAfter === 'instructor' ? '/instructor/courses' : '/chat';
       try {
-        navigate('/chat', { replace: true });
+        navigate(dest, { replace: true });
       } catch (navError) {
         console.error('Navigation error, using window.location:', navError);
-        window.location.href = '/chat';
+        window.location.href = dest;
       }
     } catch (err) {
       console.error('Onboarding submission error:', err);

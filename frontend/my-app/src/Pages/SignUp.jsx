@@ -9,22 +9,31 @@ import * as authApi from '../lib/authApi';
 
 function SignUp() {
   const navigate = useNavigate();
-  const { signup, isLoading, error, isAuthenticated, clearError } = useAuthStore();
-  
+  const { signup, isLoading, error, isAuthenticated, clearError, user } = useAuthStore();
+
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [autoGenerateUsername, setAutoGenerateUsername] = useState(false);
+  /** 'student' | 'instructor' */
+  const [accountRole, setAccountRole] = useState('student');
+  const [instructorSignupSecret, setInstructorSignupSecret] = useState('');
   const [localError, setLocalError] = useState('');
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [isGeneratingUsername, setIsGeneratingUsername] = useState(false);
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated (instructors need profile onboarding first)
   useEffect(() => {
-    if (isAuthenticated) {
+    if (!isAuthenticated || !user) return;
+    if (user.role === 'instructor') {
+      navigate(
+        user.profile?.onboardingCompleted === true ? '/instructor/dashboard' : '/instructor/onboarding',
+        { replace: true }
+      );
+    } else {
       navigate('/chat', { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, user, navigate]);
 
   // Clear errors when component mounts
   useEffect(() => {
@@ -65,6 +74,13 @@ function SignUp() {
       return;
     }
 
+    if (accountRole === 'instructor') {
+      if (!instructorSignupSecret.trim()) {
+        setLocalError('Instructor registration code is required to create an instructor account.');
+        return;
+      }
+    }
+
     // Check for at least 1 letter and 1 number
     const hasLetter = /[a-zA-Z]/.test(password);
     const hasNumber = /[0-9]/.test(password);
@@ -100,18 +116,39 @@ function SignUp() {
         }
       }
 
-      // Username is available - store signup data temporarily in sessionStorage
+      // Instructors: create account now, then short instructor onboarding (not student flow)
+      if (accountRole === 'instructor') {
+        try {
+          await signup({
+            name: name.trim(),
+            password,
+            username,
+            autoGenerateUsername: false,
+            role: 'instructor',
+            instructorSignupSecret: instructorSignupSecret.trim(),
+          });
+          sessionStorage.removeItem('pendingSignup');
+          setIsCheckingUsername(false);
+          navigate('/instructor/onboarding', { replace: true });
+          return;
+        } catch (signUpErr) {
+          setLocalError(signUpErr.message || 'Could not create instructor account. Check your registration code.');
+          setIsCheckingUsername(false);
+          return;
+        }
+      }
+
+      // Students: defer account creation until after student onboarding
       const signupData = {
         name: name.trim(),
         password: password,
         username: username,
-        autoGenerateUsername: false // User provided username manually
+        autoGenerateUsername: false,
+        role: 'student',
       };
       sessionStorage.setItem('pendingSignup', JSON.stringify(signupData));
-      
+
       setIsCheckingUsername(false);
-      
-      // Redirect to onboarding - account will be created after onboarding is complete
       navigate('/onboarding', { replace: true });
     } catch (err) {
       // Provide more specific error messages
@@ -136,6 +173,9 @@ function SignUp() {
 
   return (
     <div className="signup-overlay">
+      {(isLoading || isCheckingUsername) && (
+        <Loader overlay message={isLoading ? 'Creating your account…' : 'Checking username…'} />
+      )}
       <div className="signup-modal">
         {/* Logo and Title */}
         <div className="signup-header">
@@ -280,13 +320,58 @@ function SignUp() {
               <p className="password-requirements">≥8 chars, 1 letter, 1 number</p>
             </div>
 
+            {/* Account type */}
+            <div className="input-field">
+              <label className="input-label">Account type</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+                  <input
+                    type="radio"
+                    name="accountRole"
+                    checked={accountRole === 'student'}
+                    onChange={() => setAccountRole('student')}
+                    disabled={isLoading || isCheckingUsername}
+                  />
+                  Student — learn with AI tutoring
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+                  <input
+                    type="radio"
+                    name="accountRole"
+                    checked={accountRole === 'instructor'}
+                    onChange={() => setAccountRole('instructor')}
+                    disabled={isLoading || isCheckingUsername}
+                  />
+                  Instructor — create courses and topics
+                </label>
+              </div>
+              {accountRole === 'instructor' && (
+                <div style={{ marginTop: '12px' }}>
+                  <label className="input-label">Instructor registration code</label>
+                  <div className="input-group input-group-no-icon">
+                    <input
+                      type="password"
+                      placeholder="Provided by your organization"
+                      value={instructorSignupSecret}
+                      onChange={(e) => setInstructorSignupSecret(e.target.value)}
+                      autoComplete="off"
+                      disabled={isLoading || isCheckingUsername}
+                    />
+                  </div>
+                  <p className="password-requirements" style={{ marginTop: '4px' }}>
+                    Your server admin sets <code style={{ fontSize: '11px' }}>INSTRUCTOR_SIGNUP_SECRET</code> in the backend environment.
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Submit Button */}
             <button 
               type="submit" 
               className="signup-button"
               disabled={isLoading || isCheckingUsername}
             >
-              {isCheckingUsername ? 'Checking...' : 'Continue to Onboarding'}
+              {isCheckingUsername ? 'Checking...' : accountRole === 'instructor' ? 'Create instructor account' : 'Continue to Onboarding'}
               {!isCheckingUsername && (
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '12px' }}>
                   <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>

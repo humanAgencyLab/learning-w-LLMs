@@ -10,7 +10,7 @@ import Loader from '../components/Loader';
 function SignIn() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, isLoading, error, isAuthenticated, clearError } = useAuthStore();
+  const { login, isLoading, error, isAuthenticated, clearError, user } = useAuthStore();
   
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -22,12 +22,18 @@ function SignIn() {
   // Ensure we never redirect to onboarding from signin
   const redirectPath = from === '/onboarding' ? '/chat' : from;
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated (instructor onboarding if needed)
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate(redirectPath, { replace: true });
+    if (!isAuthenticated || !user) return;
+    if (user.role === 'instructor') {
+      navigate(
+        user.profile?.onboardingCompleted === true ? '/instructor/dashboard' : '/instructor/onboarding',
+        { replace: true }
+      );
+      return;
     }
-  }, [isAuthenticated, navigate, redirectPath]);
+    navigate(redirectPath, { replace: true });
+  }, [isAuthenticated, user, navigate, redirectPath]);
 
   // Clear errors when component mounts
   useEffect(() => {
@@ -44,9 +50,14 @@ function SignIn() {
     }
 
     try {
-      await login({ username, password });
-      // Always redirect to /chat after successful signin (never to onboarding)
-      navigate('/chat', { replace: true });
+      const { user: loggedIn } = await login({ username, password });
+      let dest = '/chat';
+      if (loggedIn?.role === 'instructor') {
+        dest = loggedIn.profile?.onboardingCompleted === true ? '/instructor/dashboard' : '/instructor/onboarding';
+      } else if (redirectPath && redirectPath !== '/onboarding') {
+        dest = redirectPath;
+      }
+      navigate(dest, { replace: true });
     } catch (err) {
       setLocalError(err.message || 'Login failed. Please try again.');
     }

@@ -64,6 +64,7 @@ function ChatInterface() {
   const topSentinelRef = useRef(null);
   const isSubmittingRef = useRef(false);
   const prevLoadingRef = useRef(loading);
+  const didAutoStartRef = useRef({ sessionId: null, did: false });
   
   // Detect predefined messages in last assistant response and generate chips
   const getActionChips = useCallback(() => {
@@ -414,7 +415,7 @@ function ChatInterface() {
   // Determine placeholder text based on mode and phase
   // Show appropriate placeholder for initial state or learning phase
   const isInitialState = phase === 'pre' && sessionMessages.length === 0;
-  const isLearningPhase = ['learning', 'quizzing', 'feedback', 'completed'].includes(phase) && sessionMessages.length > 0;
+  const isLearningPhase = ['learning', 'quizzing', 'feedback', 'completed'].includes(phase);
   
   let chatPlaceholder = '';
   if (isInitialState) {
@@ -424,6 +425,27 @@ function ChatInterface() {
   } else if (isLearningPhase) {
     chatPlaceholder = 'Reply...';
   }
+
+  // Course sessions are seeded directly into learning phase, but may have 0 messages.
+  // Auto-trigger the first teaching message once per session so the student sees content immediately.
+  useEffect(() => {
+    if (!isCourseSession) return;
+    if (!sessionId) return;
+    if (loading) return;
+    if (phase !== 'learning') return;
+    if (sessionMessages.length > 0) return;
+
+    const marker = didAutoStartRef.current;
+    if (marker.sessionId === sessionId && marker.did) return;
+
+    didAutoStartRef.current = { sessionId, did: true };
+    // "start" is a safe seed message that should kick off first milestone teaching.
+    sendChatMessage('start').catch((err) => {
+      console.error('Auto-start course session failed:', err);
+      // Allow a retry if it failed
+      didAutoStartRef.current = { sessionId, did: false };
+    });
+  }, [isCourseSession, sessionId, phase, loading, sessionMessages.length, sendChatMessage]);
   
   // Handle Revision button click
   const handleRevision = async () => {
@@ -1021,9 +1043,9 @@ function ChatInterface() {
                   </div>
                 </div>
               </div>
-            ) : hasMessages ? (
+            ) : (
               <>
-                {/* Thread (scrolls) - Only show when there are messages and not in planning phase */}
+                {/* Thread (scrolls) - Show even if empty so composer is visible */}
                 <div 
                   ref={messageListRef}
                   id="message-list" 
@@ -1035,6 +1057,13 @@ function ChatInterface() {
                       {/* Sentinel for load-older: when this enters viewport we fetch more (smooth, works with fast scroll) */}
                       {mightHaveMoreMessages && (
                         <div ref={topSentinelRef} className="w-full flex-shrink-0" style={{ height: 1 }} aria-hidden="true" />
+                      )}
+                      {!hasMessages && (
+                        <div className="text-center py-10 text-sm text-[#686d77]">
+                          {isCourseSession
+                            ? 'Starting your lesson…'
+                            : 'Send a message to begin.'}
+                        </div>
                       )}
                       {sessionMessages.map((message, index) => (
                         <div
@@ -1252,7 +1281,7 @@ message.role === 'user' ? 'text-sm' : 'text-base'
                   </div>
                 </div>
               </>
-            ) : null}
+            )}
           </>
         ) : null}
         </div>
