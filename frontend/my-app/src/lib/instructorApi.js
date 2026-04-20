@@ -267,6 +267,16 @@ export async function getCourseAnalytics(courseId) {
   );
 }
 
+export async function getCoursePerformanceSummary(courseId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/analytics/performance`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
 export async function getCourseInsights(courseId) {
   return parse(
     await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/insights`, {
@@ -280,6 +290,121 @@ export async function getCourseInsights(courseId) {
 export async function getStudentProgress(courseId) {
   return parse(
     await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/students`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function getStudentDetail(courseId, studentId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/students/${studentId}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function getInstructorSession(courseId, sessionId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/sessions/${sessionId}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function getInstructorSessionMessages(courseId, sessionId, { fromEnd = 0, limit = 20 } = {}) {
+  const params = new URLSearchParams();
+  params.set('fromEnd', String(fromEnd));
+  params.set('limit', String(limit));
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/sessions/${sessionId}/messages?${params.toString()}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function getStudentNotes(courseId, studentId, { courseTopicId = null } = {}) {
+  const params = new URLSearchParams();
+  if (courseTopicId) params.set('courseTopicId', String(courseTopicId));
+  const qs = params.toString();
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/students/${studentId}/notes${qs ? `?${qs}` : ''}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function upsertStudentNotes(courseId, studentId, { courseTopicId = null, tags = [], note = '' } = {}) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/students/${studentId}/notes`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify({ courseTopicId, tags, note }),
+    })
+  );
+}
+
+function buildSyntheticQS(includeSynthetic) {
+  return includeSynthetic ? `?includeSynthetic=1` : '';
+}
+
+export async function getCourseTree(courseId, { includeSynthetic = false } = {}) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/tree${buildSyntheticQS(includeSynthetic)}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function getMilestoneStats(courseId, { includeSynthetic = false } = {}) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/milestones${buildSyntheticQS(includeSynthetic)}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function getAtRiskStudents(courseId, { includeSynthetic = false, passRateThreshold } = {}) {
+  const params = new URLSearchParams();
+  if (includeSynthetic) params.set('includeSynthetic', '1');
+  if (passRateThreshold != null) params.set('passRateThreshold', String(passRateThreshold));
+  const qs = params.toString();
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/at-risk${qs ? `?${qs}` : ''}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function getTopicStudentHeatmap(courseId, { includeSynthetic = false } = {}) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/heatmap${buildSyntheticQS(includeSynthetic)}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function getInstructorOverview({ includeSynthetic = false } = {}) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/overview${buildSyntheticQS(includeSynthetic)}`, {
       method: 'GET',
       headers: getAuthHeaders(),
       credentials: 'include',

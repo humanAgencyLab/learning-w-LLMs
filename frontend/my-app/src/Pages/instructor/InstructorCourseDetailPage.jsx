@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
+import CoursePerformanceSummary from '../../components/instructor/CoursePerformanceSummary';
 
 const STATUS_STYLES = {
   draft: 'bg-gray-100 text-gray-600 border-gray-200',
@@ -185,6 +186,9 @@ export default function InstructorCourseDetailPage() {
   const [course, setCourse] = useState(null);
   const [topics, setTopics] = useState([]);
   const [analytics, setAnalytics] = useState(null);
+  const [performanceSummary, setPerformanceSummary] = useState(null);
+  const [performanceLoading, setPerformanceLoading] = useState(true);
+  const [performanceError, setPerformanceError] = useState(null);
   const [globalInstructions, setGlobalInstructions] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -211,16 +215,32 @@ export default function InstructorCourseDetailPage() {
       if (chatRes?.data?.messages) {
         setChatMessages(chatRes.data.messages);
       }
+      setPerformanceLoading(true);
+      setPerformanceError(null);
       try {
-        const aRes = await instructorApi.getCourseAnalytics(courseId);
-        setAnalytics(aRes.data);
+        const [aRes, perfRes] = await Promise.all([
+          instructorApi.getCourseAnalytics(courseId).catch(() => null),
+          instructorApi.getCoursePerformanceSummary(courseId).catch((e) => ({ __error: e?.message || 'Failed to load' })),
+        ]);
+        if (aRes?.data) setAnalytics(aRes.data);
+        else setAnalytics(null);
+        if (perfRes?.__error) {
+          setPerformanceSummary(null);
+          setPerformanceError(perfRes.__error);
+        } else {
+          setPerformanceSummary(perfRes?.data ?? null);
+          setPerformanceError(null);
+        }
       } catch {
         setAnalytics(null);
+        setPerformanceSummary(null);
+        setPerformanceError('Failed to load analytics');
       }
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
+      setPerformanceLoading(false);
     }
   }, [courseId]);
 
@@ -359,6 +379,12 @@ export default function InstructorCourseDetailPage() {
           <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${course?.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
             {course?.status}
           </span>
+          <Link
+            to={`/instructor/courses/${courseId}/insights`}
+            className="text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg transition-colors"
+          >
+            View insights →
+          </Link>
           <button
             type="button"
             disabled={busy}
@@ -386,6 +412,12 @@ export default function InstructorCourseDetailPage() {
           <StatCard label="Topics" value={topics.length} sub={`${publishedCount} published`} />
         </div>
       )}
+
+      <CoursePerformanceSummary
+        performanceSummary={performanceSummary}
+        loading={performanceLoading}
+        error={performanceError}
+      />
 
       {/* Student progress link */}
       {analytics && analytics.enrollmentCount > 0 && (

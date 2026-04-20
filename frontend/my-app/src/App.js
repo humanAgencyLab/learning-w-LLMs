@@ -24,6 +24,8 @@ import InstructorStudentsPage from './Pages/instructor/InstructorStudentsPage';
 import InstructorOnboarding from './Pages/instructor/InstructorOnboarding';
 import StudentCoursesPage from './Pages/student/StudentCoursesPage';
 import StudentCourseTopicsPage from './Pages/student/StudentCourseTopicsPage';
+import InstructorStudentDetailPage from './Pages/instructor/InstructorStudentDetailPage';
+import InstructorInsightsPage from './Pages/instructor/InstructorInsightsPage';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
@@ -165,6 +167,22 @@ function App() {
             element={
               <InstructorRoute>
                 <InstructorStudentsPage />
+              </InstructorRoute>
+            }
+          />
+          <Route
+            path="/instructor/courses/:courseId/students/:studentId"
+            element={
+              <InstructorRoute>
+                <InstructorStudentDetailPage />
+              </InstructorRoute>
+            }
+          />
+          <Route
+            path="/instructor/courses/:courseId/insights"
+            element={
+              <InstructorRoute>
+                <InstructorInsightsPage />
               </InstructorRoute>
             }
           />

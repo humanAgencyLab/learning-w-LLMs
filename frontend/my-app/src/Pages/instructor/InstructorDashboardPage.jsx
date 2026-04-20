@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
+import OverviewKPIs from '../../components/instructor/OverviewKPIs';
 
 function StatCard({ label, value, icon, color = 'blue' }) {
   const colors = {
@@ -78,10 +79,26 @@ export default function InstructorDashboardPage() {
   const [courses, setCourses] = useState([]);
   const [analyticsMap, setAnalyticsMap] = useState({});
   const [allTopicStats, setAllTopicStats] = useState([]);
+  const [attentionStudents, setAttentionStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [aiInsights, setAiInsights] = useState(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
+  const [overview, setOverview] = useState(null);
+  const [includeSynthetic, setIncludeSynthetic] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const oRes = await instructorApi.getInstructorOverview({ includeSynthetic });
+        if (!cancelled) setOverview(oRes.data || null);
+      } catch {
+        /* non-fatal */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [includeSynthetic]);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,6 +132,46 @@ export default function InstructorDashboardPage() {
           if (a?.topics) topics.push(...a.topics);
         }
         setAllTopicStats(topics);
+
+        // Fetch student progress per course to surface "needs attention" signals.
+        const studentEntries = await Promise.all(
+          courseList.map(async (c) => {
+            try {
+              const sRes = await instructorApi.getStudentProgress(c._id);
+              return [c._id, sRes.data?.students || []];
+            } catch {
+              return [c._id, []];
+            }
+          })
+        );
+        if (cancelled) return;
+        const flat = [];
+        for (const [cid, students] of studentEntries) {
+          for (const s of students) {
+            const passRate = s.quizPassRate;
+            const struggling = passRate !== null && passRate < 60;
+            const noSessions = (s.sessionsStarted || 0) === 0;
+            if (struggling || noSessions) {
+              flat.push({
+                courseId: cid,
+                userId: s.userId,
+                name: s.name,
+                quizPassRate: passRate,
+                sessionsStarted: s.sessionsStarted || 0,
+                completedTopics: s.completedTopics || 0,
+                totalTopics: s.totalTopics || 0,
+                totalPoints: s.totalPoints || 0,
+              });
+            }
+          }
+        }
+        flat.sort((a, b) => {
+          const aScore = a.quizPassRate == null ? 101 : a.quizPassRate;
+          const bScore = b.quizPassRate == null ? 101 : b.quizPassRate;
+          if (aScore !== bScore) return aScore - bScore;
+          return (a.sessionsStarted || 0) - (b.sessionsStarted || 0);
+        });
+        setAttentionStudents(flat.slice(0, 8));
       } catch (e) {
         if (!cancelled) setError(e.message);
       } finally {
@@ -146,14 +203,30 @@ export default function InstructorDashboardPage() {
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Instructor Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">Overview of your courses and student progress.</p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Instructor Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-1">Overview of your courses and student progress.</p>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-gray-600 shrink-0">
+          <input
+            type="checkbox"
+            checked={includeSynthetic}
+            onChange={(e) => setIncludeSynthetic(e.target.checked)}
+          />
+          Include synthetic cohort
+        </label>
       </div>
 
       {error && (
         <div className="mb-6 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
           {error}
+        </div>
+      )}
+
+      {overview && (
+        <div className="mb-8">
+          <OverviewKPIs overview={overview} />
         </div>
       )}
 
@@ -229,6 +302,42 @@ export default function InstructorDashboardPage() {
             <h2 className="font-semibold text-gray-800">AI Insights</h2>
             <p className="text-xs text-gray-400 mt-0.5">AI-powered analysis of student performance</p>
           </div>
+
+          {/* Students needing attention */}
+          {attentionStudents.length > 0 && (
+            <div className="py-2 border-b border-gray-100">
+              <div className="px-4 py-2">
+                <p className="text-xs text-amber-700 font-medium">Students needing attention</p>
+              </div>
+              <div className="px-4 pb-2 space-y-2">
+                {attentionStudents.map((s) => (
+                  <Link
+                    key={`${s.courseId}-${s.userId}`}
+                    to={`/instructor/courses/${s.courseId}/students/${s.userId}`}
+                    className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-gray-100 hover:bg-gray-50"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-800 truncate">{s.name}</p>
+                      <p className="text-xs text-gray-400">
+                        {s.completedTopics}/{s.totalTopics} topics · {s.totalPoints} pts
+                      </p>
+                    </div>
+                    {s.sessionsStarted === 0 ? (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">No sessions</span>
+                    ) : s.quizPassRate != null ? (
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        s.quizPassRate < 60 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                      }`}>
+                        {s.quizPassRate}% pass
+                      </span>
+                    ) : (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Low data</span>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Static topic stats */}
           {strugglingTopics.length > 0 && (
