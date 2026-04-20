@@ -182,13 +182,21 @@ NEXT Milestone: "${nextMilestoneText}" ${nextMilestoneText !== 'N/A' ? '(do NOT 
 - Do NOT teach topics from other modules
 ` : '';
   
+  const programmingExposure = profile.programmingExposure && profile.programmingExposure !== 'unknown'
+    ? profile.programmingExposure
+    : null;
+  const motivationType = profile.motivationType && profile.motivationType !== 'unknown'
+    ? profile.motivationType
+    : null;
+  const selfConfidence = (typeof profile.selfConfidence === 'number') ? profile.selfConfidence : null;
+
   const profileContext = `
 Student Profile:
 - Background: ${profile.background || 'Not specified'}
 - Skill Level: ${profile.skillLevel || 'Not specified'}
 - Goals: ${profile.goals?.join(', ') || 'Not specified'}
 - Preferred Style: ${profile.preferredStyle || 'Not specified'}
-- Time Available: ${profile.timePerDayMins || 'Not specified'} minutes/day
+- Time Available: ${profile.timePerDayMins || 'Not specified'} minutes/day${programmingExposure ? `\n- Programming Exposure: ${programmingExposure}` : ''}${motivationType ? `\n- Motivation: ${motivationType}` : ''}${selfConfidence !== null ? `\n- Self-Confidence: ${selfConfidence}/5` : ''}
 
 Progress Tracking:
 - Current Points: ${points}/100

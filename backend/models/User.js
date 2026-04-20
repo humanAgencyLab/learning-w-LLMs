@@ -178,6 +178,32 @@ const UserSchema = new mongoose.Schema({
     onboardingCompleted: {
       type: Boolean,
       default: false
+    },
+    // Persona-aligned fields (Phase 2). Shared schema for real and synthetic students.
+    programmingExposure: {
+      type: String,
+      enum: ['none', 'some', 'lots', 'unknown'],
+      default: 'unknown'
+    },
+    motivationType: {
+      type: String,
+      enum: ['grade', 'curiosity', 'career', 'requirement', 'unknown'],
+      default: 'unknown'
+    },
+    selfConfidence: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: null
+    },
+    // Marks simulation-generated accounts so analytics can filter them out.
+    isSynthetic: {
+      type: Boolean,
+      default: false
+    },
+    personaTag: {
+      type: String,
+      default: null
     }
   },
   certificates: [{
@@ -244,6 +270,8 @@ const UserSchema = new mongoose.Schema({
 UserSchema.index({ username: 1 }, { unique: true });
 UserSchema.index({ emailVerificationToken: 1 }, { sparse: true });
 UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
+UserSchema.index({ 'profile.isSynthetic': 1 });
+UserSchema.index({ 'profile.personaTag': 1 }, { sparse: true });
 // Note: certificateId uniqueness is handled at application level, not via index
 // to avoid issues with null values in the certificates array
 
