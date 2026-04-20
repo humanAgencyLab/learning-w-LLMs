@@ -14,6 +14,7 @@ const { buildAssessmentAnalysisPrompt } = require('../prompts/assessment_analyze
 const { buildConversationDecisionPrompt } = require('../prompts/conversation_manager');
 const { updateContextSummary } = require('../prompts/context_summarizer');
 const { updateProgress } = require('../services/progressService');
+const { recordMilestoneAttempt } = require('../services/milestoneAttemptService');
 const { callTeacherAPI, callTeacherAPIStream } = require('../services/teacherService');
 const { requireAuth, requireOwnership } = require('../middleware/auth');
 const { useMultiAgent, useStreaming } = require('../agents/framework/featureFlag');
@@ -1173,6 +1174,14 @@ Return ONLY valid JSON in this format:
                     if (!activeModule.completedMilestones) activeModule.completedMilestones = [];
                     if (!activeModule.completedMilestones.includes(milestoneIdx)) activeModule.completedMilestones.push(milestoneIdx);
                   }
+                  recordMilestoneAttempt({
+                    session,
+                    milestoneIndex: milestoneIdx,
+                    milestoneText: currentMilestone?.text || '',
+                    passed: true,
+                    autoAdvanced: false,
+                    attemptNumber: retryCount + 1,
+                  });
                   const nextIdx = milestoneIdx + 1;
                   if (nextIdx < (activeModule?.milestones?.length || 0)) {
                     session.meta.currentMilestoneIndex = nextIdx;
@@ -1189,12 +1198,28 @@ Return ONLY valid JSON in this format:
                 if (!session.meta.milestoneRetryCount) session.meta.milestoneRetryCount = {};
                 if (retryCount < 1) {
                   session.meta.milestoneRetryCount[milestoneIdx] = retryCount + 1;
+                  recordMilestoneAttempt({
+                    session,
+                    milestoneIndex: milestoneIdx,
+                    milestoneText: currentMilestone?.text || '',
+                    passed: false,
+                    autoAdvanced: false,
+                    attemptNumber: retryCount + 1,
+                  });
                 } else {
                   if (currentMilestone) currentMilestone.completed = true;
                   if (activeModule && !activeModule.completedMilestones?.includes(milestoneIdx)) {
                     if (!activeModule.completedMilestones) activeModule.completedMilestones = [];
                     activeModule.completedMilestones.push(milestoneIdx);
                   }
+                  recordMilestoneAttempt({
+                    session,
+                    milestoneIndex: milestoneIdx,
+                    milestoneText: currentMilestone?.text || '',
+                    passed: false,
+                    autoAdvanced: true,
+                    attemptNumber: retryCount + 1,
+                  });
                   const nextIdx = milestoneIdx + 1;
                   if (nextIdx < (activeModule?.milestones?.length || 0)) {
                     session.meta.currentMilestoneIndex = nextIdx;
@@ -1744,6 +1769,33 @@ Return ONLY valid JSON in this format:
           }
         }
         
+        // Emit a MilestoneAttempt event for analytics, unless this was a pure
+        // clarification request (not an answer). Fire-and-forget — recordMilestoneAttempt
+        // swallows its own errors so the chat flow can't be broken by analytics.
+        {
+          const a = llmDecision.assessmentResult || {};
+          const answered = !a.isClarificationRequest && (
+            llmDecision.markMilestoneComplete ||
+            a.isFirstIncorrect ||
+            a.isSecondIncorrect ||
+            a.understood === true ||
+            a.understood === false
+          );
+          if (answered && typeof validMilestoneIndex === 'number' && validMilestoneIndex >= 0) {
+            const retryCount = session.meta?.milestoneRetryCount?.[validMilestoneIndex] || 0;
+            const passed = !!llmDecision.markMilestoneComplete && !a.isSecondIncorrect;
+            const autoAdvanced = !!a.isSecondIncorrect;
+            recordMilestoneAttempt({
+              session,
+              milestoneIndex: validMilestoneIndex,
+              milestoneText: currentMilestone?.text || '',
+              passed,
+              autoAdvanced,
+              attemptNumber: retryCount + 1,
+            });
+          }
+        }
+
         // CRITICAL: Handle milestone completion AFTER assessment analysis
         // (Assessment analysis sets markMilestoneComplete)
         // ONLY move milestone AFTER we've confirmed it should be marked complete
