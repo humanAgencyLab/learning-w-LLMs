@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import useAuthStore from '../state/authStore';
+import InstructorChatPanel from '../components/instructor/InstructorChatPanel';
 
 const NAV_ITEMS = [
   {
@@ -111,6 +112,9 @@ export default function InstructorShell() {
       <main className="flex-1 min-h-0 overflow-auto">
         <Outlet />
       </main>
+
+      {/* Floating insights chatbot — scope from route params */}
+      <InstructorChatPanel />
     </div>
   );
 }

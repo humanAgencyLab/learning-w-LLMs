@@ -28,6 +28,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const instructorRoutes = require('./routes/instructorRoutes');
 const enrollmentRoutes = require('./routes/enrollmentRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const instructorChatRoutes = require('./routes/instructorChatRoutes');
 
 // Import middleware
 const { requestLogger, errorLogger, metricsTracker, securityHeaders } = require('./middleware/logging');
@@ -141,6 +142,7 @@ if (process.env.NODE_ENV === 'production') {
 app.use('/v1/auth', authRoutes);
 app.use('/v1/instructor', instructorRoutes);
 app.use('/v1/instructor', analyticsRoutes);
+app.use('/v1/instructor/chat', instructorChatRoutes);
 app.use('/v1/courses', enrollmentRoutes);
 app.use('/v1/profile', profileRoutes);
 app.use('/', performanceRoutes);
