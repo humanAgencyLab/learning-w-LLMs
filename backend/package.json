@@ -11,7 +11,13 @@
     "test:coverage": "jest --coverage",
     "lint": "eslint .",
     "export:quiz-attempts": "node scripts/exportUsersPerformance.js --format=quiz_attempts all",
-    "export:performance": "node scripts/exportUsersPerformance.js all"
+    "export:performance": "node scripts/exportUsersPerformance.js all",
+    "simulate": "node simulation/cli.js",
+    "simulate:backdate": "node simulation/backdate.js",
+    "simulate:clean": "node simulation/clean.js",
+    "simulate:clean:dry": "node simulation/clean.js --dry-run",
+    "simulate:snapshot": "node simulation/snapshot.js",
+    "simulate:restore": "node simulation/snapshot.js --restore"
   },
   "keywords": [],
   "author": "",
