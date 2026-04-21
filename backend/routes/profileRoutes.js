@@ -157,7 +157,10 @@ router.put('/', requireAuth, async (req, res) => {
       explanationLength,
       examplesPreference,
       language,
-      onboardingCompleted
+      onboardingCompleted,
+      programmingExposure,
+      motivationType,
+      selfConfidence,
     } = req.body;
     
     // Update name if provided
@@ -285,7 +288,43 @@ router.put('/', requireAuth, async (req, res) => {
       user.profile.examplesPreference = examplesPreference;
     }
     if (language !== undefined) user.profile.language = language;
-    
+
+    if (programmingExposure !== undefined) {
+      if (!['none', 'some', 'lots', 'unknown'].includes(programmingExposure)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid programmingExposure',
+          code: 'VALIDATION_ERROR',
+        });
+      }
+      user.profile.programmingExposure = programmingExposure;
+    }
+    if (motivationType !== undefined) {
+      if (!['grade', 'curiosity', 'career', 'requirement', 'unknown'].includes(motivationType)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid motivationType',
+          code: 'VALIDATION_ERROR',
+        });
+      }
+      user.profile.motivationType = motivationType;
+    }
+    if (selfConfidence !== undefined) {
+      if (selfConfidence === null) {
+        user.profile.selfConfidence = null;
+      } else {
+        const n = Number(selfConfidence);
+        if (!Number.isInteger(n) || n < 1 || n > 5) {
+          return res.status(400).json({
+            success: false,
+            error: 'selfConfidence must be 1–5 or null',
+            code: 'VALIDATION_ERROR',
+          });
+        }
+        user.profile.selfConfidence = n;
+      }
+    }
+
     // Update onboardingCompleted (inside profile object)
     if (onboardingCompleted !== undefined) {
       user.profile.onboardingCompleted = onboardingCompleted === true;

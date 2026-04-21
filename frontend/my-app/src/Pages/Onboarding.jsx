@@ -5,6 +5,10 @@ import * as profileApi from '../lib/profileApi';
 import * as authApi from '../lib/authApi';
 import { getRandomAvatar } from '../utils/avatars';
 import '../styles/Onboarding.css';
+import PersonaFieldsGroup, {
+  DEFAULT_PERSONA_FIELDS,
+  personaFieldsToPayload,
+} from '../components/onboarding/PersonaFieldsGroup';
 
 function Onboarding() {
   const navigate = useNavigate();
@@ -15,11 +19,14 @@ function Onboarding() {
     major: 'Computer Science',
     recentTopics: [], // Limited to 1 topic
     selfRating: 'Intermediate',
-    
+
     // Step 2: Goal & Schedule
     primaryGoal: 'Master Basics',
     daysPerWeek: 3,
     minutesPerSession: 40,
+
+    // Phase D1 persona fields — shared with course-join modal.
+    persona: { ...DEFAULT_PERSONA_FIELDS },
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -152,6 +159,7 @@ function Onboarding() {
         goals: ['Improve knowledge'],
         strengths: ['Quick learner'],
         gaps: ['No specific gaps'],
+        ...personaFieldsToPayload(formData.persona),
         onboardingCompleted: true, // Mark onboarding as completed
       });
       
@@ -400,6 +408,15 @@ function Onboarding() {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <div className="input-field">
+                <PersonaFieldsGroup
+                  values={formData.persona}
+                  onChange={(next) => setFormData(prev => ({ ...prev, persona: next }))}
+                  heading="A bit more about how you learn"
+                  helper="Optional — helps the AI tutor adapt to you."
+                />
               </div>
             </div>
           </div>

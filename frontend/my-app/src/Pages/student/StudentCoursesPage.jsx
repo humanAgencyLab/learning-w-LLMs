@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as courseApi from '../../lib/courseApi';
+import PersonaFieldsGroup, {
+  DEFAULT_PERSONA_FIELDS,
+  personaFieldsToPayload,
+} from '../../components/onboarding/PersonaFieldsGroup';
 
 function CourseOnboardingModal({ accessCode, onComplete, onSkip }) {
   const [selfRating, setSelfRating] = useState('');
   const [relevantExperience, setRelevantExperience] = useState('');
   const [specificGoals, setSpecificGoals] = useState('');
+  const [persona, setPersona] = useState({ ...DEFAULT_PERSONA_FIELDS });
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(null);
 
@@ -20,7 +25,7 @@ function CourseOnboardingModal({ accessCode, onComplete, onSkip }) {
     setJoining(true);
     setError(null);
     try {
-      const priorKnowledge = {};
+      const priorKnowledge = { ...personaFieldsToPayload(persona) };
       if (selfRating) priorKnowledge.selfRating = selfRating;
       if (relevantExperience.trim()) priorKnowledge.relevantExperience = relevantExperience.trim();
       if (specificGoals.trim()) priorKnowledge.specificGoals = specificGoals.trim();
@@ -101,6 +106,11 @@ function CourseOnboardingModal({ accessCode, onComplete, onSkip }) {
               value={specificGoals}
               onChange={(e) => setSpecificGoals(e.target.value)}
             />
+          </div>
+
+          {/* Persona fields — shared with signup onboarding */}
+          <div className="mb-6">
+            <PersonaFieldsGroup values={persona} onChange={setPersona} compact />
           </div>
 
           {/* Actions */}
