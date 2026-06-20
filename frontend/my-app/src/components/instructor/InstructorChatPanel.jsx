@@ -201,10 +201,10 @@ export default function InstructorChatPanel() {
           <div className="text-xs text-gray-500 text-center p-4">
             <p className="text-gray-700 font-medium">Hi — I'm your Insights Assistant.</p>
             <p className="mt-1">
-              I only cite numbers from this course's data. Ask me to list strugglers, compare topics, or summarize a student.
+              I only cite numbers from this course's data. Ask me to list at-risk students, compare topics, or summarize a student.
             </p>
             <ul className="mt-3 text-left space-y-1 text-gray-500">
-              <li>• "Which students are struggling in this course?"</li>
+              <li>• "Which students are at-risk in this course?"</li>
               <li>• "What's the hardest milestone?"</li>
               <li>• "Who is most at risk right now?"</li>
               <li>• "Break down topic difficulty by persona"</li>

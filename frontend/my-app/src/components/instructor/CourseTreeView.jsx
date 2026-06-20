@@ -62,8 +62,11 @@ function ModuleBadges({ quiz }) {
   const ratio = fmtRatio(totalAttempts, studentsAttempted);
   return (
     <span className="inline-flex items-center gap-2 flex-wrap justify-end">
-      <Pill className={`font-semibold ${passRateColor(passRate)}`}>
-        {passRate != null ? `${passRate}% quiz pass` : 'no data'}
+      <Pill
+        className={`font-semibold ${passRateColor(passRate)}`}
+        title="Percentage of all quiz attempts on this module that scored at or above the passing threshold"
+      >
+        {passRate != null ? `${passRate}% attempt pass` : 'no data'}
       </Pill>
       {maxAttemptsByOne > 0 && (
         <Pill className="bg-slate-100 text-slate-600" title="Highest quiz attempts by any single student on this module">
