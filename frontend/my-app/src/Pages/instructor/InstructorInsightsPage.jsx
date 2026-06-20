@@ -87,12 +87,17 @@ function AtRiskPanel({ rows, courseId }) {
               )}
               <span className="text-xs text-gray-500">@{r.username}</span>
             </div>
-            <div className="text-xs text-gray-600 mt-0.5">
+            <div
+              className="text-xs text-gray-600 mt-0.5"
+              title="Attempt pass rate = percentage of submitted quiz attempts that scored at or above the passing threshold. (Distinct from the topic pass rate on Student Progress, which counts topics whose final quiz was passed.)"
+            >
               {/* Quiz numbers only — all from the same submitted, non-revision
                   attempt set so avg and pass rate are always consistent. (Was
-                  mixing the quiz avg with the milestone pass rate.) */}
+                  mixing the quiz avg with the milestone pass rate.) "Attempt
+                  pass rate" is named explicitly to disambiguate from Student
+                  Progress's topic-level "topic pass rate" (B9). */}
               {r.quizAttemptCount > 0
-                ? `${r.quizScore != null ? `${r.quizScore}% quiz avg · ` : ''}${r.quizPassRate}% quiz pass · ${r.quizAttemptCount} quiz attempt${r.quizAttemptCount === 1 ? '' : 's'}`
+                ? `${r.quizScore != null ? `${r.quizScore}% quiz avg · ` : ''}${r.quizPassRate}% attempt pass rate · ${r.quizAttemptCount} quiz attempt${r.quizAttemptCount === 1 ? '' : 's'}`
                 : 'No quiz data'}
               {r.autoAdvanced > 0 && ` · ${r.autoAdvanced} auto-advance`}
             </div>

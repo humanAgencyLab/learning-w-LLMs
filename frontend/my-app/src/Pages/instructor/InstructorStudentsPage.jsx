@@ -24,8 +24,8 @@ function ProgressBar({ pct }) {
 }
 
 function StudentRow({ student, expanded, onToggle, onMonitor }) {
-  const passRate = student.quizPassRate;
-  const isStruggling = passRate !== null && passRate < 60;
+  const topicPassRate = student.topicPassRate;
+  const atRisk = !!student.atRisk;
 
   return (
     <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
@@ -54,11 +54,22 @@ function StudentRow({ student, expanded, onToggle, onMonitor }) {
         <div className="flex items-center gap-5 text-xs text-gray-500 flex-shrink-0">
           <span>{student.completedTopics}/{student.totalTopics} topics</span>
           <span>{student.totalPoints} pts</span>
-          {passRate !== null && (
-            <span className={`font-semibold px-2 py-0.5 rounded-full ${
-              isStruggling ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-            }`}>
-              {passRate}% quiz pass
+          {atRisk && (
+            <span
+              className="font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 uppercase tracking-wide text-[10px]"
+              title="Flagged at-risk by the same definition used on the dashboard and Insights (low quiz score, low attempt pass rate, or repeated retries)"
+            >
+              At-risk
+            </span>
+          )}
+          {topicPassRate !== null && topicPassRate !== undefined && (
+            <span
+              className={`font-semibold px-2 py-0.5 rounded-full ${
+                topicPassRate < 60 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+              }`}
+              title="Percentage of this course's topics where the student passed the final quiz"
+            >
+              {topicPassRate}% topic pass rate
             </span>
           )}
         </div>
@@ -164,7 +175,11 @@ export default function InstructorStudentsPage() {
   }
 
   const students = data?.students || [];
-  const struggling = students.filter((s) => s.quizPassRate !== null && s.quizPassRate < 60);
+  // B9: the at-risk count comes from the canonical per-student `atRisk` flag
+  // (computed server-side by getAtRiskStudents) — the same number the dashboard
+  // tile and the Insights panel show. The old "struggling = quizPassRate < 60"
+  // client-side heuristic is retired so the three surfaces can't disagree.
+  const atRiskCount = students.filter((s) => s.atRisk).length;
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
@@ -177,8 +192,8 @@ export default function InstructorStudentsPage() {
         <h1 className="text-2xl font-bold text-gray-900">Student Progress</h1>
         <p className="text-sm text-gray-500 mt-1">
           {students.length} student{students.length !== 1 ? 's' : ''} enrolled
-          {struggling.length > 0 && (
-            <span className="text-red-600 font-medium"> · {struggling.length} struggling</span>
+          {atRiskCount > 0 && (
+            <span className="text-red-600 font-medium"> · {atRiskCount} at-risk</span>
           )}
         </p>
       </div>
@@ -199,12 +214,14 @@ export default function InstructorStudentsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {/* Show struggling students first */}
+          {/* Show at-risk students first, then by lowest topic pass rate */}
           {students
+            .slice()
             .sort((a, b) => {
-              const aStruggle = a.quizPassRate !== null && a.quizPassRate < 60 ? 0 : 1;
-              const bStruggle = b.quizPassRate !== null && b.quizPassRate < 60 ? 0 : 1;
-              return aStruggle - bStruggle;
+              if (!!a.atRisk !== !!b.atRisk) return a.atRisk ? -1 : 1;
+              const at = a.topicPassRate == null ? Infinity : a.topicPassRate;
+              const bt = b.topicPassRate == null ? Infinity : b.topicPassRate;
+              return at - bt;
             })
             .map((s) => (
               <StudentRow

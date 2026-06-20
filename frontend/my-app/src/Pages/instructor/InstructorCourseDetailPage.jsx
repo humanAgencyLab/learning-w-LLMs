@@ -484,7 +484,7 @@ export default function InstructorCourseDetailPage() {
         >
           <div>
             <h3 className="font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Student Progress</h3>
-            <p className="text-xs text-gray-500 mt-0.5">View per-student progress, quiz results, and identify struggling students.</p>
+            <p className="text-xs text-gray-500 mt-0.5">View per-student progress, quiz results, and identify at-risk students.</p>
           </div>
           <svg className="w-5 h-5 text-gray-300 group-hover:text-blue-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

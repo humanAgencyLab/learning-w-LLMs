@@ -75,7 +75,7 @@ async function getStudentProgress(courseId) {
       .select('userId courseTopicId phase progressPct quizAttempts points updatedAt')
       .sort({ updatedAt: -1 })
       .lean(),
-    CourseTopic.find({ courseId }).select('_id title').lean(),
+    CourseTopic.find({ courseId }).select('_id title status').lean(),
   ]);
 
   const userMap = {};
@@ -83,6 +83,31 @@ async function getStudentProgress(courseId) {
 
   const topicMap = {};
   for (const t of topics) topicMap[t._id.toString()] = t.title;
+
+  // B9: topic-level pass rate uses published topics as the denominator —
+  // students only ever work published topics, so that's "the syllabus" the
+  // instructor expects a 100% to be measured against.
+  const publishedTopicIds = new Set(
+    topics.filter((t) => t.status === 'published').map((t) => t._id.toString()),
+  );
+  const publishedCount = publishedTopicIds.size;
+
+  // B9: "at-risk" is owned by getAtRiskStudents — the canonical, flag-based
+  // definition the dashboard tile and the Insights panel already use. Student
+  // Progress must report the SAME set instead of its old quiz-pass-rate < 60
+  // heuristic (that's what made the header say "2 struggling" while the
+  // dashboard/Insights said "5 at-risk"). excludeSynthetic:false because the
+  // synthetic cohort IS the study data (matches the "Include synthetic
+  // cohort" default everywhere else).
+  let atRiskIds = new Set();
+  try {
+    const { getAtRiskStudents } = require('./milestoneAnalyticsService');
+    const atRiskRows = await getAtRiskStudents(courseId, { excludeSynthetic: false });
+    atRiskIds = new Set(atRiskRows.filter((r) => r.atRisk).map((r) => r.studentId));
+  } catch (e) {
+    // Non-fatal: never 500 the whole roster if the risk computation hiccups.
+    atRiskIds = new Set();
+  }
 
   const rows = enrollments.map((en) => {
     const uid = en.studentId.toString();
@@ -105,12 +130,23 @@ async function getStudentProgress(courseId) {
         const curTs = s.updatedAt ? new Date(s.updatedAt).getTime() : 0;
         if (!prev || curTs >= prevTs) {
           const isComplete = s.phase === 'completed' || (s.progressPct != null && s.progressPct >= 100);
+          // B9: did the student pass this topic's terminal quiz? Take the most
+          // recent submitted, non-revision attempt in this (latest) session —
+          // i.e. the last quiz they engaged with for the topic.
+          let topicPassed = false;
+          let terminalTs = -1;
+          for (const a of s.quizAttempts || []) {
+            if (a.status !== 'submitted' || a.isRevision) continue;
+            const ats = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+            if (ats >= terminalTs) { terminalTs = ats; topicPassed = a.passed === true; }
+          }
           topicProgress[tid] = {
             topicId: tid,
             topicTitle: topicMap[tid] || 'Unknown',
             progressPct: s.progressPct || 0,
             phase: s.phase,
             completed: isComplete,
+            topicPassed,
             updatedAt: s.updatedAt || null,
           };
         }
@@ -124,6 +160,13 @@ async function getStudentProgress(courseId) {
     }
 
     const completedTopics = Object.values(topicProgress).filter((tp) => tp.completed).length;
+    // B9: topic pass rate = published topics whose terminal quiz the student
+    // passed, over the published-topic count. Distinct from quizPassRate,
+    // which is attempt-level (passed attempts / submitted attempts).
+    const passedTopics = Object.values(topicProgress).filter(
+      (tp) => tp.topicPassed && publishedTopicIds.has(tp.topicId),
+    ).length;
+    const topicPassRate = publishedCount > 0 ? Math.round((passedTopics / publishedCount) * 100) : null;
 
     return {
       userId: uid,
@@ -137,7 +180,11 @@ async function getStudentProgress(courseId) {
       totalPoints,
       quizAttempts,
       quizPasses,
+      // Attempt-level: kept for internal use / back-compat. The UI no longer
+      // surfaces this on Student Progress (it shows topicPassRate instead).
       quizPassRate: quizAttempts > 0 ? Math.round((quizPasses / quizAttempts) * 100) : null,
+      topicPassRate,
+      atRisk: atRiskIds.has(uid),
       topicProgress: Object.values(topicProgress),
     };
   });
@@ -179,6 +226,12 @@ async function getInstructorStudentDetail(courseId, studentId) {
 
   const topicTitleMap = new Map(topics.map((t) => [t._id.toString(), t.title]));
   const topicOrderMap = new Map(topics.map((t) => [t._id.toString(), t.orderIndex ?? 0]));
+  // B9: published topics are the denominator for topic pass rate (same as
+  // Student Progress) so the per-student Monitor metric matches the roster.
+  const publishedTopicIds = new Set(
+    topics.filter((t) => t.status === 'published').map((t) => t._id.toString()),
+  );
+  const publishedCount = publishedTopicIds.size;
 
   let totalPoints = 0;
   let quizAttempts = 0;
@@ -212,6 +265,16 @@ async function getInstructorStudentDetail(courseId, studentId) {
 
     const completed = s.phase === 'completed' || (s.progressPct != null && s.progressPct >= 100);
 
+    // B9: did the student pass this topic's terminal quiz? (most recent
+    // submitted, non-revision attempt in the latest session for the topic)
+    let topicPassed = false;
+    let terminalTs = -1;
+    for (const a of s.quizAttempts || []) {
+      if (a.status !== 'submitted' || a.isRevision) continue;
+      const ats = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+      if (ats >= terminalTs) { terminalTs = ats; topicPassed = a.passed === true; }
+    }
+
     byTopic.set(tid, {
       courseTopicId: tid,
       topicTitle: topicTitleMap.get(tid) || 'Unknown',
@@ -223,6 +286,7 @@ async function getInstructorStudentDetail(courseId, studentId) {
       updatedAt: s.updatedAt || null,
       createdAt: s.createdAt || null,
       completed,
+      topicPassed,
       moduleCount,
       passedModules,
       totalMilestones,
@@ -234,6 +298,12 @@ async function getInstructorStudentDetail(courseId, studentId) {
 
   const topicsDetail = Array.from(byTopic.values()).sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
   const completedTopics = topicsDetail.filter((t) => t.completed).length;
+  // B9: topic pass rate — published topics whose terminal quiz the student
+  // passed / published-topic count. Same definition as Student Progress.
+  const passedTopics = topicsDetail.filter(
+    (t) => t.topicPassed && publishedTopicIds.has(t.courseTopicId),
+  ).length;
+  const topicPassRate = publishedCount > 0 ? Math.round((passedTopics / publishedCount) * 100) : null;
 
   const quizPassRate = quizAttempts > 0 ? Math.round((quizPasses / quizAttempts) * 100) : null;
 

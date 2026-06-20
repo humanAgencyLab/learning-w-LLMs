@@ -12,7 +12,7 @@ function formatDateTime(ts) {
   }
 }
 
-function Pill({ children, tone = 'gray' }) {
+function Pill({ children, tone = 'gray', title }) {
   const tones = {
     gray: 'bg-gray-100 text-gray-700 border-gray-200',
     red: 'bg-red-50 text-red-700 border-red-200',
@@ -20,7 +20,10 @@ function Pill({ children, tone = 'gray' }) {
     blue: 'bg-blue-50 text-blue-700 border-blue-200',
   };
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${tones[tone] || tones.gray}`}>
+    <span
+      title={title}
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${tones[tone] || tones.gray}`}
+    >
       {children}
     </span>
   );
@@ -666,9 +669,12 @@ export default function InstructorStudentDetailPage() {
         <div className="flex items-center gap-3 flex-shrink-0">
           <Pill tone="blue">{detail.summary.completedTopics}/{detail.summary.totalTopics} topics</Pill>
           <Pill tone="gray">{detail.summary.totalPoints} pts</Pill>
-          {detail.summary.quizPassRate != null && (
-            <Pill tone={detail.summary.quizPassRate < 60 ? 'red' : 'green'}>
-              {detail.summary.quizPassRate}% quiz pass
+          {detail.summary.topicPassRate != null && (
+            <Pill
+              tone={detail.summary.topicPassRate < 60 ? 'red' : 'green'}
+              title="Percentage of this course's topics where the student passed the final quiz"
+            >
+              {detail.summary.topicPassRate}% topic pass rate
             </Pill>
           )}
         </div>
