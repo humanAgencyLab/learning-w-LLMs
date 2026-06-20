@@ -1,7 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
-import OverviewKPIs from '../../components/instructor/OverviewKPIs';
+import AgentBriefingCard from '../../components/instructor/AgentBriefingCard';
+import CourseCardsGrid from '../../components/instructor/CourseCardsGrid';
+
+/**
+ * Phase E dashboard IA:
+ *  1) 4 aggregate KPI tiles (Courses · Students · Sessions · Avg Completion)
+ *  2) AgentBriefingCard — one narrative paragraph across every course
+ *  3) CourseCardsGrid — one card per course (authoring click + Insights chiplet)
+ *
+ * Removed intentionally:
+ *  - OverviewKPIs (per-course table duplicated CourseCardsGrid)
+ *  - "Your Courses" list (duplicated the above)
+ *  - Static "AI Insights" panel (now fully served by the floating chat +
+ *    briefing card + Insights page narrative)
+ *
+ * The floating InstructorChatPanel stays mounted in InstructorShell and is
+ * the single interactive AI affordance. The briefing card's "Ask follow-up"
+ * button dispatches a window CustomEvent that the chat panel listens for.
+ */
 
 function StatCard({ label, value, icon, color = 'blue' }) {
   const colors = {
@@ -23,70 +40,15 @@ function StatCard({ label, value, icon, color = 'blue' }) {
   );
 }
 
-function CourseRow({ course, analytics }) {
-  const stats = analytics?.[course._id];
-  return (
-    <Link
-      to={`/instructor/courses/${course._id}`}
-      className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 rounded-xl transition-colors group"
-    >
-      <div className="flex-1 min-w-0">
-        <h4 className="text-sm font-semibold text-gray-900 group-hover:text-blue-700 transition-colors truncate">
-          {course.title}
-        </h4>
-        <p className="text-xs text-gray-400 mt-0.5">
-          Code: <span className="font-mono font-semibold text-gray-500">{course.accessCode}</span>
-        </p>
-      </div>
-      <div className="flex items-center gap-6 text-xs text-gray-500 flex-shrink-0">
-        <span>{stats?.enrollmentCount ?? 0} students</span>
-        <span>{stats?.sessionCount ?? 0} sessions</span>
-        <span>{stats?.completionRate ?? 0}% complete</span>
-      </div>
-      <svg className="w-4 h-4 text-gray-300 group-hover:text-blue-400 transition-colors flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-      </svg>
-    </Link>
-  );
-}
-
-function TopicInsightRow({ topic }) {
-  const quizPassRate = topic.quizAttempts > 0
-    ? Math.round((topic.quizPasses / topic.quizAttempts) * 100)
-    : null;
-  const isStruggling = quizPassRate !== null && quizPassRate < 60;
-
-  return (
-    <div className={`flex items-center gap-3 px-4 py-2.5 rounded-lg ${isStruggling ? 'bg-red-50' : ''}`}>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-800 truncate">{topic.title}</p>
-        <p className="text-xs text-gray-400">
-          {topic.startedSessions} started · {topic.completedSessions} completed
-        </p>
-      </div>
-      {quizPassRate !== null && (
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-          isStruggling ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-        }`}>
-          {quizPassRate}% pass
-        </span>
-      )}
-    </div>
-  );
-}
-
 export default function InstructorDashboardPage() {
   const [courses, setCourses] = useState([]);
   const [analyticsMap, setAnalyticsMap] = useState({});
-  const [allTopicStats, setAllTopicStats] = useState([]);
-  const [attentionStudents, setAttentionStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [aiInsights, setAiInsights] = useState(null);
-  const [insightsLoading, setInsightsLoading] = useState(false);
   const [overview, setOverview] = useState(null);
   const [includeSynthetic, setIncludeSynthetic] = useState(true);
 
+  // Cross-course overview — feeds CourseCardsGrid's perCourse tiles.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -94,12 +56,14 @@ export default function InstructorDashboardPage() {
         const oRes = await instructorApi.getInstructorOverview({ includeSynthetic });
         if (!cancelled) setOverview(oRes.data || null);
       } catch {
-        /* non-fatal */
+        /* non-fatal — briefing card shows its own error state */
       }
     })();
     return () => { cancelled = true; };
   }, [includeSynthetic]);
 
+  // Per-course session analytics — still needed for the aggregate KPI tiles
+  // (overview doesn't include session counts or completion rate).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -110,7 +74,6 @@ export default function InstructorDashboardPage() {
         if (cancelled) return;
         setCourses(courseList);
 
-        // Fetch analytics for each course in parallel
         const analyticsEntries = await Promise.all(
           courseList.map(async (c) => {
             try {
@@ -119,59 +82,10 @@ export default function InstructorDashboardPage() {
             } catch {
               return [c._id, null];
             }
-          })
+          }),
         );
         if (cancelled) return;
-
-        const aMap = Object.fromEntries(analyticsEntries);
-        setAnalyticsMap(aMap);
-
-        // Aggregate topic stats across all courses
-        const topics = [];
-        for (const [, a] of analyticsEntries) {
-          if (a?.topics) topics.push(...a.topics);
-        }
-        setAllTopicStats(topics);
-
-        // Fetch student progress per course to surface "needs attention" signals.
-        const studentEntries = await Promise.all(
-          courseList.map(async (c) => {
-            try {
-              const sRes = await instructorApi.getStudentProgress(c._id);
-              return [c._id, sRes.data?.students || []];
-            } catch {
-              return [c._id, []];
-            }
-          })
-        );
-        if (cancelled) return;
-        const flat = [];
-        for (const [cid, students] of studentEntries) {
-          for (const s of students) {
-            const passRate = s.quizPassRate;
-            const struggling = passRate !== null && passRate < 60;
-            const noSessions = (s.sessionsStarted || 0) === 0;
-            if (struggling || noSessions) {
-              flat.push({
-                courseId: cid,
-                userId: s.userId,
-                name: s.name,
-                quizPassRate: passRate,
-                sessionsStarted: s.sessionsStarted || 0,
-                completedTopics: s.completedTopics || 0,
-                totalTopics: s.totalTopics || 0,
-                totalPoints: s.totalPoints || 0,
-              });
-            }
-          }
-        }
-        flat.sort((a, b) => {
-          const aScore = a.quizPassRate == null ? 101 : a.quizPassRate;
-          const bScore = b.quizPassRate == null ? 101 : b.quizPassRate;
-          if (aScore !== bScore) return aScore - bScore;
-          return (a.sessionsStarted || 0) - (b.sessionsStarted || 0);
-        });
-        setAttentionStudents(flat.slice(0, 8));
+        setAnalyticsMap(Object.fromEntries(analyticsEntries));
       } catch (e) {
         if (!cancelled) setError(e.message);
       } finally {
@@ -189,24 +103,21 @@ export default function InstructorDashboardPage() {
     );
   }
 
-  // Aggregate stats
+  // Aggregate KPIs across courses. Derived here because `overview` doesn't
+  // include session counts / completion — those live in getCourseAnalytics.
   const totalStudents = Object.values(analyticsMap).reduce((s, a) => s + (a?.enrollmentCount || 0), 0);
   const totalSessions = Object.values(analyticsMap).reduce((s, a) => s + (a?.sessionCount || 0), 0);
   const completedSessions = Object.values(analyticsMap).reduce((s, a) => s + (a?.completedSessionCount || 0), 0);
   const avgCompletion = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0;
 
-  // Topics where students are struggling (pass rate < 60%)
-  const strugglingTopics = allTopicStats.filter((t) => {
-    if (t.quizAttempts === 0) return false;
-    return (t.quizPasses / t.quizAttempts) < 0.6;
-  });
-
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-8 max-w-6xl mx-auto">
       <div className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Instructor Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-1">Overview of your courses and student progress.</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Overview of your courses and student progress. Ask the floating Insights Assistant anything at any time.
+          </p>
         </div>
         <label className="flex items-center gap-2 text-xs text-gray-600 shrink-0">
           <input
@@ -224,14 +135,8 @@ export default function InstructorDashboardPage() {
         </div>
       )}
 
-      {overview && (
-        <div className="mb-8">
-          <OverviewKPIs overview={overview} />
-        </div>
-      )}
-
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      {/* 1) Aggregate KPI tiles */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
           label="Courses"
           value={courses.length}
@@ -258,170 +163,19 @@ export default function InstructorDashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Courses list */}
-        <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-800">Your Courses</h2>
-            <Link
-              to="/instructor/courses"
-              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-            >
-              View all
-            </Link>
-          </div>
-          {courses.length === 0 ? (
-            <div className="text-center py-10">
-              <p className="text-sm text-gray-400">No courses yet.</p>
-              <Link
-                to="/instructor/courses"
-                className="text-sm text-blue-600 hover:text-blue-800 font-medium mt-1 inline-block"
-              >
-                Create your first course
-              </Link>
-            </div>
-          ) : (
-            <div className="py-1">
-              {courses.slice(0, 5).map((c) => (
-                <CourseRow key={c._id} course={c} analytics={analyticsMap} />
-              ))}
-              {courses.length > 5 && (
-                <div className="px-4 py-2 text-center">
-                  <Link to="/instructor/courses" className="text-xs text-blue-600 hover:text-blue-800 font-medium">
-                    +{courses.length - 5} more courses
-                  </Link>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* AI Insights panel */}
-        <div className="bg-white border border-gray-200 rounded-xl">
-          <div className="px-5 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-800">AI Insights</h2>
-            <p className="text-xs text-gray-400 mt-0.5">AI-powered analysis of student performance</p>
-          </div>
-
-          {/* Students needing attention */}
-          {attentionStudents.length > 0 && (
-            <div className="py-2 border-b border-gray-100">
-              <div className="px-4 py-2">
-                <p className="text-xs text-amber-700 font-medium">Students needing attention</p>
-              </div>
-              <div className="px-4 pb-2 space-y-2">
-                {attentionStudents.map((s) => (
-                  <Link
-                    key={`${s.courseId}-${s.userId}`}
-                    to={`/instructor/courses/${s.courseId}/students/${s.userId}`}
-                    className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-gray-100 hover:bg-gray-50"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm text-gray-800 truncate">{s.name}</p>
-                      <p className="text-xs text-gray-400">
-                        {s.completedTopics}/{s.totalTopics} topics · {s.totalPoints} pts
-                      </p>
-                    </div>
-                    {s.sessionsStarted === 0 ? (
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">No sessions</span>
-                    ) : s.quizPassRate != null ? (
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                        s.quizPassRate < 60 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                      }`}>
-                        {s.quizPassRate}% pass
-                      </span>
-                    ) : (
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Low data</span>
-                    )}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Static topic stats */}
-          {strugglingTopics.length > 0 && (
-            <div className="py-2 border-b border-gray-100">
-              <div className="px-4 py-2">
-                <p className="text-xs text-red-600 font-medium">
-                  {strugglingTopics.length} topic{strugglingTopics.length > 1 ? 's' : ''} with low quiz pass rates
-                </p>
-              </div>
-              {strugglingTopics.map((t) => (
-                <TopicInsightRow key={t.topicId} topic={t} />
-              ))}
-            </div>
-          )}
-
-          {/* AI-generated insights */}
-          {aiInsights ? (
-            <div className="px-5 py-4">
-              <p className="text-sm text-gray-700 mb-3">{aiInsights.summary}</p>
-              <div className="space-y-2">
-                {(aiInsights.insights || []).map((insight, i) => {
-                  const colors = {
-                    struggling: 'border-red-200 bg-red-50 text-red-800',
-                    positive: 'border-green-200 bg-green-50 text-green-800',
-                    suggestion: 'border-blue-200 bg-blue-50 text-blue-800',
-                  };
-                  return (
-                    <div key={i} className={`text-xs px-3 py-2 rounded-lg border ${colors[insight.type] || colors.suggestion}`}>
-                      {insight.topic && <span className="font-semibold">{insight.topic}: </span>}
-                      {insight.text}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : totalSessions === 0 ? (
-            <div className="text-center py-10">
-              <p className="text-sm text-gray-400">No data yet.</p>
-              <p className="text-xs text-gray-400 mt-1">Insights appear as students use the platform.</p>
-            </div>
-          ) : (
-            <div className="text-center py-6">
-              <button
-                type="button"
-                disabled={insightsLoading}
-                onClick={async () => {
-                  setInsightsLoading(true);
-                  try {
-                    // Use the first course with data for insights
-                    const courseWithData = courses.find((c) => analyticsMap[c._id]?.sessionCount > 0);
-                    if (courseWithData) {
-                      const res = await instructorApi.getCourseInsights(courseWithData._id);
-                      setAiInsights(res.data);
-                    }
-                  } catch (e) {
-                    setError(e.message);
-                  } finally {
-                    setInsightsLoading(false);
-                  }
-                }}
-                className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors inline-flex items-center gap-2"
-              >
-                {insightsLoading && (
-                  <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
-                )}
-                {insightsLoading ? 'Analyzing...' : 'Generate AI Insights'}
-              </button>
-              <p className="text-xs text-gray-400 mt-2">Analyze student performance with AI</p>
-            </div>
-          )}
-
-          {/* All topics overview */}
-          {allTopicStats.length > 0 && (
-            <div className="border-t border-gray-100 py-2">
-              <div className="px-4 py-2">
-                <p className="text-xs text-gray-500 font-medium">All topics</p>
-              </div>
-              {allTopicStats.slice(0, 5).map((t) => (
-                <TopicInsightRow key={t.topicId} topic={t} />
-              ))}
-            </div>
-          )}
-        </div>
+      {/* 2) Narrative briefing */}
+      <div className="mb-6">
+        <AgentBriefingCard includeSynthetic={includeSynthetic} />
       </div>
+
+      {/* 3) Course cards grid — authoring click + Insights chiplet */}
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="font-semibold text-gray-800">Your Courses</h2>
+        <p className="text-xs text-gray-500">
+          Click a card to author &middot; the chiplet jumps to that course&apos;s Insights
+        </p>
+      </div>
+      <CourseCardsGrid perCourse={overview?.perCourse || []} loading={!overview} />
     </div>
   );
 }

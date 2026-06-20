@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
 
 const PHASE_LABELS = {
@@ -23,7 +23,7 @@ function ProgressBar({ pct }) {
   );
 }
 
-function StudentRow({ student, expanded, onToggle }) {
+function StudentRow({ student, expanded, onToggle, onMonitor }) {
   const passRate = student.quizPassRate;
   const isStruggling = passRate !== null && passRate < 60;
 
@@ -62,6 +62,18 @@ function StudentRow({ student, expanded, onToggle }) {
             </span>
           )}
         </div>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMonitor?.();
+          }}
+          className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"
+          title="Monitor student"
+        >
+          Monitor
+        </button>
 
         {/* Chevron */}
         <svg className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -114,6 +126,7 @@ function StudentRow({ student, expanded, onToggle }) {
 
 export default function InstructorStudentsPage() {
   const { courseId } = useParams();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [courseName, setCourseName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -199,6 +212,7 @@ export default function InstructorStudentsPage() {
                 student={s}
                 expanded={expandedId === s.userId}
                 onToggle={() => setExpandedId(expandedId === s.userId ? null : s.userId)}
+                onMonitor={() => navigate(`/instructor/courses/${courseId}/students/${s.userId}`)}
               />
             ))}
         </div>

@@ -763,14 +763,13 @@ router.post('/forgot-password', async (req, res) => {
       }
 
       const resetLink = `${frontendUrl.replace(/\/$/, '')}/resetpassword?token=${encodeURIComponent(resetToken)}`;
-      if (process.env.NODE_ENV === 'production') {
-        // In production, never expose token in response — send via email (not yet implemented)
-        return res.json({
-          success: true,
-          message: 'If username exists, password reset link has been sent'
-        });
-      }
-      // Dev/MVP: Return token + link in response (no email in MVP)
+      // Return the reset link directly in the response. No email provider is wired
+      // up, so this mirrors the student (release/first-study) app's behavior and lets
+      // instructors self-serve a reset link on the page.
+      // SECURITY NOTE: this exposes the reset token to anyone who submits a valid
+      // username (i.e. self-service account takeover). Acceptable for the controlled
+      // study deployment with a small known participant set; MUST be replaced with
+      // emailed reset links before any public launch.
       return res.json({
         success: true,
         message: 'Password reset token generated',

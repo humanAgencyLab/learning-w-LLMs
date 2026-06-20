@@ -12,6 +12,10 @@ module.exports = {
     primaryGoal: 'Master Basics',
     daysPerWeek: 3,
     minutesPerSession: 40,
+    // Feeds the tutor's profile-aware prompt. Scripting background —
+    // prefers reference-style prose with balanced depth.
+    learningType: 'Reading/Writing',
+    explanationLength: 'Balanced',
   },
   systemPrompt: [
     'You are simulating a first- or second-year student who has written scripts in Python or JavaScript',

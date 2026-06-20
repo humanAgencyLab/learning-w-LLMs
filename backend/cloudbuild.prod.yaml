@@ -1,0 +1,85 @@
+# Cloud Build config for the PROD (Phase 1, student-only) deployment on the
+# professor's GCP project (llm-ed-studyassist). Mirrors cloudbuild.iitl.yaml
+# but deploys to a separate Cloud Run service so the student app and the
+# instructor app run in isolation.
+#
+# Usage:
+#   git checkout release/first-study
+#   gcloud builds submit --config backend/cloudbuild.prod.yaml \
+#     --project llm-ed-studyassist
+#
+# Build from the release/first-study branch so the student deployment stays
+# pinned to the version validated in the HCII 2026 paper. Do NOT submit from
+# main (main contains the IITL extensions, which would change behavior of
+# the student deployment from the paper-validated state).
+#
+# Notes:
+#   - First deploy will fail to bind secrets if the prod-only secrets don't
+#     exist yet. Create them with `gcloud secrets create` before submitting:
+#       gcloud secrets create mongodb-uri-prod   --project llm-ed-studyassist
+#       gcloud secrets create cors-origins-prod  --project llm-ed-studyassist
+#       gcloud secrets create jwt-secret-prod    --project llm-ed-studyassist
+#     groq-api-key is reused from the IITL deploy (same key, different
+#     databases is fine; Groq billing rolls up either way).
+#   - Secret access for the Cloud Run runtime service account must be
+#     granted once via `gcloud secrets add-iam-policy-binding` for each
+#     new secret.
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/study-assist-backend-prod:$BUILD_ID'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/study-assist-backend-prod:latest'
+      - '.'
+    dir: 'backend'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/study-assist-backend-prod:$BUILD_ID'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/study-assist-backend-prod:latest'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'study-assist-backend-prod'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/study-assist-backend-prod:$BUILD_ID'
+      - '--platform'
+      - 'managed'
+      - '--region'
+      - 'us-central1'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '2'
+      - '--timeout'
+      - '300'
+      - '--max-instances'
+      - '10'
+      - '--min-instances'
+      - '0'
+      - '--set-env-vars'
+      - 'NODE_ENV=production,LLM_PROVIDER=groq,LLM_MODEL=llama3.1,TRUST_PROXY=1,DEPLOY_ENV=prod'
+      - '--set-secrets'
+      - 'GROQ_API_KEY=groq-api-key:latest,MONGODB_URI=mongodb-uri-prod:latest,JWT_SECRET=jwt-secret-prod:latest,CORS_ORIGINS=cors-origins-prod:latest'
+
+images:
+  - 'gcr.io/$PROJECT_ID/study-assist-backend-prod:$BUILD_ID'
+  - 'gcr.io/$PROJECT_ID/study-assist-backend-prod:latest'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '1200s'

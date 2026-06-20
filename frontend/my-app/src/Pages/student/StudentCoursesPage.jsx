@@ -192,7 +192,8 @@ export default function StudentCoursesPage() {
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto overflow-y-auto h-full">
+    <div className="h-full overflow-y-auto">
+      <div className="p-6 max-w-3xl mx-auto">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">My Courses</h1>
 
       {/* Onboarding modal */}
@@ -279,6 +280,7 @@ export default function StudentCoursesPage() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

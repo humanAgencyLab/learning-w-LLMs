@@ -32,17 +32,35 @@ async function getTreeAnalytics(courseId, { excludeSynthetic = true } = {}) {
       .lean(),
     MilestoneAttempt.aggregate([
       { $match: attemptFilter(courseId, { excludeSynthetic }) },
+      // Stage 1: per-(milestone, user) totals so we can compute the "highest
+      // attempt count by any single student" — needed for the new milestone
+      // badges that drop noisy raw attempts in favor of max + ratio.
       {
         $group: {
           _id: {
             courseTopicId: '$courseTopicId',
             moduleId: '$moduleId',
             milestoneIndex: '$milestoneIndex',
+            userId: '$userId',
           },
-          attempts: { $sum: 1 },
-          passes: { $sum: { $cond: ['$passed', 1, 0] } },
-          autoAdvanced: { $sum: { $cond: ['$autoAdvanced', 1, 0] } },
-          uniqueUsers: { $addToSet: '$userId' },
+          perUserAttempts: { $sum: 1 },
+          perUserPasses: { $sum: { $cond: ['$passed', 1, 0] } },
+          perUserAutoAdv: { $sum: { $cond: ['$autoAdvanced', 1, 0] } },
+        },
+      },
+      // Stage 2: roll the per-user numbers up to the milestone level.
+      {
+        $group: {
+          _id: {
+            courseTopicId: '$_id.courseTopicId',
+            moduleId: '$_id.moduleId',
+            milestoneIndex: '$_id.milestoneIndex',
+          },
+          attempts: { $sum: '$perUserAttempts' },
+          passes: { $sum: '$perUserPasses' },
+          autoAdvanced: { $sum: '$perUserAutoAdv' },
+          maxAttemptsByOne: { $max: '$perUserAttempts' },
+          studentCount: { $sum: 1 },
         },
       },
     ]),
@@ -57,7 +75,8 @@ async function getTreeAnalytics(courseId, { excludeSynthetic = true } = {}) {
       attempts: row.attempts,
       passes: row.passes,
       autoAdvanced: row.autoAdvanced,
-      studentCount: Array.isArray(row.uniqueUsers) ? row.uniqueUsers.length : 0,
+      maxAttemptsByOne: row.maxAttemptsByOne || 0,
+      studentCount: row.studentCount || 0,
     });
   }
 
@@ -69,6 +88,7 @@ async function getTreeAnalytics(courseId, { excludeSynthetic = true } = {}) {
           attempts: 0,
           passes: 0,
           autoAdvanced: 0,
+          maxAttemptsByOne: 0,
           studentCount: 0,
         };
         const passRate = s.attempts ? Math.round((s.passes / s.attempts) * 1000) / 10 : 0;
@@ -78,6 +98,7 @@ async function getTreeAnalytics(courseId, { excludeSynthetic = true } = {}) {
           attempts: s.attempts,
           passes: s.passes,
           autoAdvanced: s.autoAdvanced,
+          maxAttemptsByOne: s.maxAttemptsByOne,
           studentCount: s.studentCount,
           passRate,
         };
@@ -240,6 +261,33 @@ async function getAtRiskStudents(courseId, {
   ]);
   const statMap = new Map(perStudent.map((s) => [s._id.toString(), s]));
 
+  // Per-student mean quiz score (scorePct of submitted, non-revision attempts).
+  // This is the SAME metric the score-distribution chart buckets on, so an
+  // at-risk panel keyed off it stays consistent with what the instructor sees:
+  // a student in the red score bucket is the one flagged at-risk. Milestone
+  // pass rate alone misses them — they clear the reflection checks on retry but
+  // still bomb the quizzes.
+  const quizSessions = await Session.find({
+    courseId: new mongoose.Types.ObjectId(courseId),
+    userId: { $in: userIds },
+  }).select('userId quizAttempts').lean();
+  const quizScoreMap = new Map();
+  for (const sess of quizSessions) {
+    const uid = sess.userId?.toString();
+    if (!uid) continue;
+    for (const a of sess.quizAttempts || []) {
+      if (a.status !== 'submitted' || a.isRevision) continue;
+      if (a.scorePct == null || Number.isNaN(Number(a.scorePct))) continue;
+      if (!quizScoreMap.has(uid)) quizScoreMap.set(uid, []);
+      quizScoreMap.get(uid).push(Number(a.scorePct));
+    }
+  }
+  const meanQuizScore = (uid) => {
+    const arr = quizScoreMap.get(uid);
+    if (!arr || !arr.length) return null;
+    return Math.round((arr.reduce((x, y) => x + y, 0) / arr.length) * 10) / 10;
+  };
+
   const rows = enrollments
     .map((en) => {
       const uid = en.studentId.toString();
@@ -254,10 +302,28 @@ async function getAtRiskStudents(courseId, {
       const distinctMs = s?.distinctMilestones?.length || 0;
       const passRate = attempts ? Math.round((passes / attempts) * 1000) / 10 : 0;
       const attemptsPerMilestone = distinctMs ? Math.round((attempts / distinctMs) * 10) / 10 : 0;
+      const quizScore = meanQuizScore(uid);
+
+      // Auto-advance over a *share* of milestones — not "any single one".
+      // The tutor nudges a student past the occasional stubborn milestone, so
+      // 1-2 auto-advances across a long course is normal noise. It only signals
+      // risk when it happens to a meaningful fraction of the student's
+      // milestones. Using a rate (with a small absolute floor) keeps this
+      // sensible whether the course has 4 milestones or 60 — the old
+      // `autoAdvanced > 0` flagged ~every student in a full-length course.
+      const AUTO_ADVANCE_FLOOR = 2;          // ignore one-off nudges
+      const AUTO_ADVANCE_RATE_THRESHOLD = 0.25; // flag at >=25% of milestones
+      const autoAdvanceRate = distinctMs ? autoAdvanced / distinctMs : 0;
+      // Primary signal: mean quiz score below the failing bucket. Kept in sync
+      // with the score-distribution chart's lowest bucket so the two views agree.
+      const QUIZ_SCORE_THRESHOLD = 60;
 
       const flags = [];
+      if (quizScore != null && quizScore < QUIZ_SCORE_THRESHOLD) flags.push('low_quiz_score');
       if (attempts > 0 && passRate < passRateThreshold) flags.push('low_pass_rate');
-      if (autoAdvanced > 0) flags.push('auto_advanced');
+      if (autoAdvanced >= AUTO_ADVANCE_FLOOR && autoAdvanceRate >= AUTO_ADVANCE_RATE_THRESHOLD) {
+        flags.push('auto_advanced');
+      }
       if (attemptsPerMilestone > 2) flags.push('many_retries');
       if (attempts === 0) flags.push('no_activity');
 
@@ -279,6 +345,7 @@ async function getAtRiskStudents(courseId, {
         distinctMilestones: distinctMs,
         passRate,
         attemptsPerMilestone,
+        quizScore,
         lastAttemptAt: s?.lastAttemptAt || null,
         flags,
         atRisk,
@@ -286,9 +353,13 @@ async function getAtRiskStudents(courseId, {
     })
     .filter(Boolean);
 
-  // Sort: at-risk first, then by lowest pass rate, then by most auto-advances
+  // Sort: at-risk first, then by lowest quiz score (the primary risk signal,
+  // nulls last), then lowest pass rate, then most auto-advances.
   rows.sort((a, b) => {
     if (a.atRisk !== b.atRisk) return a.atRisk ? -1 : 1;
+    const qa = a.quizScore == null ? Infinity : a.quizScore;
+    const qb = b.quizScore == null ? Infinity : b.quizScore;
+    if (qa !== qb) return qa - qb;
     if (a.passRate !== b.passRate) return a.passRate - b.passRate;
     return b.autoAdvanced - a.autoAdvanced;
   });
@@ -425,28 +496,37 @@ async function getTopicStudentHeatmap(courseId, { excludeSynthetic = true } = {}
     ? userIds.filter((id) => !userMap.get(id.toString())?.profile?.isSynthetic)
     : userIds;
 
-  const match = attemptFilter(courseId, { excludeSynthetic });
-  match.userId = { $in: filteredUserIds };
+  // QUIZ-BASED cells. Each cell is the student's quiz performance on that topic
+  // (mean scorePct of submitted, non-revision quiz attempts), so the heatmap is
+  // consistent with the score-distribution chart, the quiz-difficulty table, and
+  // the at-risk panel — all of which read quiz performance. This grid used to be
+  // milestone-check based, which made it look rosier than the quiz reality and
+  // disagree with the other views (it showed a cell for students who did the
+  // reflection checks but never submitted the topic's quiz).
+  const quizSessions = await Session.find({
+    courseId: new mongoose.Types.ObjectId(courseId),
+    userId: { $in: filteredUserIds },
+  }).select('userId courseTopicId quizAttempts').lean();
 
-  const grouped = await MilestoneAttempt.aggregate([
-    { $match: match },
-    {
-      $group: {
-        _id: { userId: '$userId', courseTopicId: '$courseTopicId' },
-        attempts: { $sum: 1 },
-        passes: { $sum: { $cond: ['$passed', 1, 0] } },
-      },
-    },
-  ]);
-
-  // rowKey: userId -> topicId -> {attempts, passes}
+  // rowKey: userId -> topicId -> { attempts, passes, scoreSum, scoreN }
   const rowMap = new Map();
-  for (const g of grouped) {
-    const uid = g._id.userId?.toString();
-    const tid = g._id.courseTopicId?.toString();
+  for (const sess of quizSessions) {
+    const uid = sess.userId?.toString();
+    const tid = sess.courseTopicId?.toString();
     if (!uid || !tid) continue;
-    if (!rowMap.has(uid)) rowMap.set(uid, new Map());
-    rowMap.get(uid).set(tid, { attempts: g.attempts, passes: g.passes });
+    for (const a of sess.quizAttempts || []) {
+      if (a.status !== 'submitted' || a.isRevision) continue;
+      if (!rowMap.has(uid)) rowMap.set(uid, new Map());
+      const tmap = rowMap.get(uid);
+      if (!tmap.has(tid)) tmap.set(tid, { attempts: 0, passes: 0, scoreSum: 0, scoreN: 0 });
+      const cell = tmap.get(tid);
+      cell.attempts += 1;
+      if (a.passed === true) cell.passes += 1;
+      if (a.scorePct != null && !Number.isNaN(Number(a.scorePct))) {
+        cell.scoreSum += Number(a.scorePct);
+        cell.scoreN += 1;
+      }
+    }
   }
 
   const topicIds = topics.map((t) => t._id.toString());
@@ -459,11 +539,20 @@ async function getTopicStudentHeatmap(courseId, { excludeSynthetic = true } = {}
       const c = per?.get(tid);
       const attempts = c?.attempts || 0;
       const passes = c?.passes || 0;
+      // `passRate` carries the mean quiz score (scorePct) for this student×topic
+      // so the existing heatmap renderer colors/labels by quiz performance with
+      // no frontend change. attempts/passes are quiz-attempt counts (for the
+      // tooltip). Falls back to quiz pass-rate if a submitted attempt lacks a
+      // scorePct (real-data robustness; sim data always has one).
+      const meanScore = c && c.scoreN ? Math.round((c.scoreSum / c.scoreN) * 10) / 10 : null;
+      const value = meanScore != null
+        ? meanScore
+        : (attempts ? Math.round((passes / attempts) * 1000) / 10 : null);
       return {
         courseTopicId: tid,
         attempts,
         passes,
-        passRate: attempts ? Math.round((passes / attempts) * 1000) / 10 : null,
+        passRate: value,
       };
     });
     return {

@@ -330,6 +330,16 @@ export async function getInstructorSessionMessages(courseId, sessionId, { fromEn
   );
 }
 
+export async function getInstructorSessionQuizzes(courseId, sessionId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/sessions/${sessionId}/quizzes`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
 export async function getStudentNotes(courseId, studentId, { courseTopicId = null } = {}) {
   const params = new URLSearchParams();
   if (courseTopicId) params.set('courseTopicId', String(courseTopicId));
@@ -405,6 +415,39 @@ export async function getTopicStudentHeatmap(courseId, { includeSynthetic = fals
 export async function getInstructorOverview({ includeSynthetic = false } = {}) {
   return parse(
     await fetch(`${API_BASE}/v1/instructor/overview${buildSyntheticQS(includeSynthetic)}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+/** Dashboard hero — 2–3 sentence agent-generated briefing + the raw overview. */
+export async function getBriefing({ includeSynthetic = false } = {}) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/briefing${buildSyntheticQS(includeSynthetic)}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+/** Course page — one-sentence "hot signal" about the course's most pressing issue. */
+export async function getHotSignal(courseId, { includeSynthetic = false } = {}) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/hot-signal${buildSyntheticQS(includeSynthetic)}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+/** Insights page — 3–5 narrative cards, each keyed to an existing chart. */
+export async function getInsightCards(courseId, { includeSynthetic = false } = {}) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/insight-cards${buildSyntheticQS(includeSynthetic)}`, {
       method: 'GET',
       headers: getAuthHeaders(),
       credentials: 'include',

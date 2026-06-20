@@ -3,6 +3,7 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const { z } = require('zod');
 const Session = require('../models/Session');
+const Course = require('../models/Course');
 const { chatRequestSchema } = require('../validation/chatValidation');
 const { validateInput } = require('../middleware/validationHardening');
 const { contextControl } = require('../middleware/contextControl');
@@ -161,14 +162,36 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
       });
     }
     
-    console.log('Session loaded successfully', { 
-      sessionId, 
+    console.log('Session loaded successfully', {
+      sessionId,
       phase: session.phase,
       topic: session.topic,
       mode: session.mode,
       requestedMode
     });
-    
+
+    // Load course-level instructor guidelines if this session is scoped to a
+    // course. Null for student-driven (non-course) sessions — in which case
+    // every downstream buildTeacherPrompt call just receives an empty string,
+    // which the prompt builder treats as "no instructor block".
+    let courseGlobalInstructions = '';
+    if (session.courseId) {
+      try {
+        const course = await Course.findById(session.courseId)
+          .select('globalInstructions')
+          .lean();
+        if (course && typeof course.globalInstructions === 'string') {
+          courseGlobalInstructions = course.globalInstructions;
+        }
+      } catch (courseErr) {
+        console.warn('Failed to load course.globalInstructions', {
+          sessionId,
+          courseId: String(session.courseId),
+          err: courseErr.message
+        });
+      }
+    }
+
     // Update session mode if frontend requests a different mode
     if (requestedMode && requestedMode !== session.mode) {
       console.log('Updating session mode from', session.mode, 'to', requestedMode);
@@ -820,8 +843,8 @@ Return ONLY valid JSON in this format:
           // Generate first teaching content for first milestone
           // Use trigger message that will be detected as first_teaching scenario
           const triggerMessage = `Let's start from the beginning of ${activeModule.title}`;
-          const teacherPrompt = buildTeacherPrompt(session, triggerMessage, false);
-          
+          const teacherPrompt = buildTeacherPrompt(session, triggerMessage, false, null, null, courseGlobalInstructions);
+
           try {
             const teachingContent = await callTeacherAPI(teacherPrompt, 1500, session);
             const assistantMessageObj = {
@@ -1057,8 +1080,8 @@ Return ONLY valid JSON in this format:
           if (firstMilestone) {
             // Use trigger message that will be detected as first_teaching scenario
             const triggerMessage = `Let's start with ${expectedNextModule.title}`;
-            const teacherPrompt = buildTeacherPrompt(session, triggerMessage, false);
-            
+            const teacherPrompt = buildTeacherPrompt(session, triggerMessage, false, null, null, courseGlobalInstructions);
+
             try {
               const teachingContent = await callTeacherAPI(teacherPrompt, 1500, session);
               const assistantMessageObj = {
@@ -1317,7 +1340,8 @@ Return ONLY valid JSON in this format:
                   userMessage,
                   isFollowUp,
                   assessmentForTeacher,
-                  milestoneInfo
+                  milestoneInfo,
+                  courseGlobalInstructions
                 );
                 assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1500, session);
               } catch (fallbackErr) {
@@ -2019,7 +2043,7 @@ Return ONLY valid JSON in this format:
           
           // Pass assessment result to teacher prompt for structured responses
           const assessmentResult = llmDecision.assessmentResult || null;
-          const teacherPrompt = buildTeacherPrompt(session, userMessage, llmDecision.isFollowUpToOutstanding, assessmentResult, milestoneInfo);
+          const teacherPrompt = buildTeacherPrompt(session, userMessage, llmDecision.isFollowUpToOutstanding, assessmentResult, milestoneInfo, courseGlobalInstructions);
           
           // Prepare validation context for response structure validation
           let validationContext = null;
@@ -2245,7 +2269,7 @@ Return ONLY valid JSON in this format:
         console.error('LLM conversation decision failed', { sessionId, error: error.message, stack: error.stack });
         
         // Fallback: use teacher prompt
-        const teacherPrompt = buildTeacherPrompt(session, userMessage, false);
+        const teacherPrompt = buildTeacherPrompt(session, userMessage, false, null, null, courseGlobalInstructions);
         const assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1100, session);
         
         const userMessageObj = {

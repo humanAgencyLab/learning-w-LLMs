@@ -3,3 +3,7 @@
 node_modules
 *.log
 .DS_Store
+
+# Per-run simulation manifests are ephemeral research artifacts.
+# The paper-grade cohort manifest is committed separately if needed.
+simulation/manifests/

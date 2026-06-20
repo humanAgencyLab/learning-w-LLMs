@@ -86,6 +86,7 @@ router.get('/mine', requireAuth, async (req, res, next) => {
 /** GET /v1/courses/:courseId/topics — published only, enrolled students */
 router.get('/:courseId/topics', requireAuth, requireEnrolledStudent, async (req, res, next) => {
   try {
+    const courseId = req.params.courseId;
     const topics = await CourseTopic.find({
       courseId: req.params.courseId,
       status: 'published'
@@ -93,7 +94,31 @@ router.get('/:courseId/topics', requireAuth, requireEnrolledStudent, async (req,
       .sort({ orderIndex: 1, createdAt: 1 })
       .select('title objective orderIndex status publishedAt version')
       .lean();
-    res.json({ success: true, data: { topics } });
+
+    // Attach existing sessionId (if any) so UI can show "Continue learning".
+    // We query once and map by courseTopicId to avoid N queries.
+    const sessions = await Session.find({
+      userId: req.userId,
+      courseId: new mongoose.Types.ObjectId(courseId),
+      enrollmentId: req.enrollment._id,
+      courseTopicId: { $in: topics.map(t => t._id) },
+    })
+      .select('_id courseTopicId updatedAt')
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    const byTopicId = new Map();
+    for (const s of sessions) {
+      const key = String(s.courseTopicId);
+      if (!byTopicId.has(key)) byTopicId.set(key, s._id.toString());
+    }
+
+    const topicsWithSession = topics.map((t) => ({
+      ...t,
+      sessionId: byTopicId.get(String(t._id)) || null,
+    }));
+
+    res.json({ success: true, data: { topics: topicsWithSession } });
   } catch (e) {
     next(e);
   }

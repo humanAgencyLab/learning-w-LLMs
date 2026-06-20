@@ -1,6 +1,30 @@
 {
   "projects": {
-    "default": "study-assist-prod"
-  }
+    "default": "study-assist-prod",
+    "personal": "study-assist-prod",
+    "professor": "llm-ed-studyassist"
+  },
+  "targets": {
+    "study-assist-prod": {
+      "hosting": {
+        "prod": [
+          "study-assist-prod"
+        ],
+        "iitl": [
+          "studyassist-iitl"
+        ]
+      }
+    },
+    "llm-ed-studyassist": {
+      "hosting": {
+        "prod": [
+          "studyassist-prod-keanu"
+        ],
+        "iitl": [
+          "studyassist-iitl-keanu"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
-

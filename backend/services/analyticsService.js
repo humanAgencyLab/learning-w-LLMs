@@ -492,6 +492,10 @@ async function getCoursePerformanceSummary(courseId) {
   });
 
   // --- Module quiz pass rate only (published topics) ---
+  // Per-module roll-up of submitted, non-revision quiz attempts. Tracks:
+  //   - studentsAttempted (denominator for passRate)
+  //   - totalAttempts (used by frontend tryRatio = totalAttempts/studentsAttempted)
+  //   - maxAttemptsByOne (highest attempt count for any single student)
   const moduleDifficulty = [];
   for (const t of topics) {
     if (t.status !== 'published') continue;
@@ -499,32 +503,34 @@ async function getCoursePerformanceSummary(courseId) {
     for (const mod of t.modules || []) {
       const mid = mod.moduleId;
       if (!mid) continue;
-      const attempted = new Set();
+      const perUserAttempts = new Map();
       const passed = new Set();
       for (const uid of userIds.map((id) => id.toString())) {
         const list = sessionsByUserTopic.get(`${uid}_${tid}`) || [];
-        let userAttempted = false;
+        let userCount = 0;
         let userPassed = false;
         for (const s of list) {
           for (const a of s.quizAttempts || []) {
             if (a.status !== 'submitted' || a.isRevision) continue;
             if (a.moduleId !== mid) continue;
-            userAttempted = true;
+            userCount += 1;
             if (a.passed === true) userPassed = true;
           }
         }
-        if (userAttempted) {
-          attempted.add(uid);
-          if (userPassed) passed.add(uid);
-        }
+        if (userCount > 0) perUserAttempts.set(uid, userCount);
+        if (userPassed) passed.add(uid);
       }
-      const na = attempted.size;
+      const na = perUserAttempts.size;
+      const totalAttempts = Array.from(perUserAttempts.values()).reduce((a, b) => a + b, 0);
+      const maxAttemptsByOne = na > 0 ? Math.max(...perUserAttempts.values()) : 0;
       moduleDifficulty.push({
         topicId: tid,
         topicTitle: t.title,
         moduleId: mid,
         moduleTitle: mod.title || mid,
         studentsAttempted: na,
+        totalAttempts,
+        maxAttemptsByOne,
         passRate: na > 0 ? Math.round((passed.size / na) * 1000) / 10 : null,
       });
     }

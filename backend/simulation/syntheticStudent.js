@@ -52,11 +52,25 @@ class SyntheticStudent {
 
   priorKnowledgePayload() {
     const { profileFields } = this.persona;
+    // Enrollment.priorKnowledge.selfRating is the lowercase enum
+    // ['none', 'beginner', 'intermediate', 'advanced']; personas store the
+    // UI-facing capitalized form ('Beginner', 'Intermediate', ...) for the
+    // user-profile side. Normalize here so /courses/join validates.
+    const rawRating = (profileFields.selfRating || '').toString().toLowerCase();
+    const ratingMap = {
+      '': 'none',
+      none: 'none',
+      basic: 'beginner',
+      beginner: 'beginner',
+      intermediate: 'intermediate',
+      advanced: 'advanced',
+    };
+    const selfRating = ratingMap[rawRating] || 'none';
     return {
       programmingExposure: profileFields.programmingExposure,
       motivationType: profileFields.motivationType,
       selfConfidence: profileFields.selfConfidence,
-      selfRating: profileFields.selfRating,
+      selfRating,
     };
   }
 

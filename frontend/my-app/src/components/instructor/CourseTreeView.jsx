@@ -1,33 +1,95 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 
-function passRateColor(rate, attempts) {
-  if (!attempts) return 'bg-gray-100 text-gray-400';
+function passRateColor(rate) {
+  if (rate == null) return 'bg-gray-100 text-gray-400';
   if (rate >= 80) return 'bg-green-100 text-green-700';
   if (rate >= 60) return 'bg-lime-100 text-lime-700';
   if (rate >= 40) return 'bg-amber-100 text-amber-700';
   return 'bg-red-100 text-red-700';
 }
 
-function NodeBadge({ attempts, passRate, autoAdvanced, studentCount }) {
+function fmtRatio(numerator, denominator) {
+  if (!denominator) return null;
+  return (numerator / denominator).toFixed(1);
+}
+
+function Pill({ children, className = '', title }) {
   return (
-    <span className="inline-flex items-center gap-2 text-[11px]">
-      <span className={`px-2 py-0.5 rounded-full font-semibold ${passRateColor(passRate, attempts)}`}>
+    <span className={`px-2 py-0.5 rounded-full text-[11px] ${className}`} title={title}>
+      {children}
+    </span>
+  );
+}
+
+function MilestoneBadges({ milestone }) {
+  const { attempts, studentCount, maxAttemptsByOne, autoAdvanced, passRate } = milestone;
+  const ratio = fmtRatio(attempts, studentCount);
+  return (
+    <span className="inline-flex items-center gap-2 flex-wrap justify-end">
+      <Pill className={`font-semibold ${passRateColor(attempts ? passRate : null)}`}>
         {attempts ? `${passRate}% pass` : 'no data'}
-      </span>
-      {attempts > 0 && (
-        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-          {attempts} attempt{attempts !== 1 ? 's' : ''}
-        </span>
+      </Pill>
+      {attempts > 0 && maxAttemptsByOne > 0 && (
+        <Pill className="bg-slate-100 text-slate-600" title="Highest attempt count by any single student on this milestone">
+          max {maxAttemptsByOne}
+        </Pill>
       )}
-      {studentCount > 0 && (
-        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-          {studentCount} student{studentCount !== 1 ? 's' : ''}
-        </span>
+      {attempts > 0 && ratio && (
+        <Pill className="bg-slate-100 text-slate-600" title="Total attempts ÷ students who tried (1.0 = everyone passed first try)">
+          ratio {ratio}
+        </Pill>
       )}
       {autoAdvanced > 0 && (
-        <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700" title="Times the system force-advanced a student">
+        <Pill className="bg-rose-100 text-rose-700" title="Times the system force-advanced a student past this milestone">
           {autoAdvanced} auto-advance
-        </span>
+        </Pill>
+      )}
+    </span>
+  );
+}
+
+function ModuleBadges({ quiz }) {
+  // `quiz` is the moduleDifficulty row — quiz-level stats for this module.
+  // Returns "no quiz data" if no submitted attempts yet.
+  if (!quiz || !quiz.studentsAttempted) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        <Pill className="bg-gray-100 text-gray-400">no quiz data</Pill>
+      </span>
+    );
+  }
+  const { passRate, totalAttempts, studentsAttempted, maxAttemptsByOne } = quiz;
+  const ratio = fmtRatio(totalAttempts, studentsAttempted);
+  return (
+    <span className="inline-flex items-center gap-2 flex-wrap justify-end">
+      <Pill className={`font-semibold ${passRateColor(passRate)}`}>
+        {passRate != null ? `${passRate}% quiz pass` : 'no data'}
+      </Pill>
+      {maxAttemptsByOne > 0 && (
+        <Pill className="bg-slate-100 text-slate-600" title="Highest quiz attempts by any single student on this module">
+          max {maxAttemptsByOne}
+        </Pill>
+      )}
+      {ratio && (
+        <Pill className="bg-slate-100 text-slate-600" title="Total quiz attempts ÷ students who tried">
+          ratio {ratio}
+        </Pill>
+      )}
+    </span>
+  );
+}
+
+function TopicBadges({ totals }) {
+  const { attempts, passRate } = totals || {};
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Pill className={`font-semibold ${passRateColor(attempts ? passRate : null)}`}>
+        {attempts ? `${passRate}% pass` : 'no data'}
+      </Pill>
+      {attempts > 0 && (
+        <Pill className="bg-slate-100 text-slate-600">
+          {attempts} attempt{attempts !== 1 ? 's' : ''}
+        </Pill>
       )}
     </span>
   );
@@ -39,18 +101,14 @@ function MilestoneRow({ milestone }) {
       <div className="flex-1 min-w-0">
         <p className="text-sm text-gray-700 line-clamp-2">{milestone.text || '(empty)'}</p>
       </div>
-      <NodeBadge
-        attempts={milestone.attempts}
-        passRate={milestone.passRate}
-        autoAdvanced={milestone.autoAdvanced}
-        studentCount={milestone.studentCount}
-      />
+      <MilestoneBadges milestone={milestone} />
     </div>
   );
 }
 
-function ModuleNode({ module: mod }) {
+function ModuleNode({ module: mod, quizByModuleId }) {
   const [open, setOpen] = useState(true);
+  const quiz = quizByModuleId.get(mod.moduleId) || null;
   return (
     <div className="ml-6">
       <button
@@ -65,7 +123,7 @@ function ModuleNode({ module: mod }) {
             {mod.difficulty}
           </span>
         </span>
-        <NodeBadge attempts={mod.totals.attempts} passRate={mod.totals.passRate} autoAdvanced={0} studentCount={0} />
+        <ModuleBadges quiz={quiz} />
       </button>
       {open && (
         <div className="mt-0.5">
@@ -78,7 +136,7 @@ function ModuleNode({ module: mod }) {
   );
 }
 
-function TopicNode({ topic }) {
+function TopicNode({ topic, quizByModuleId }) {
   const [open, setOpen] = useState(true);
   return (
     <div className="border border-gray-200 rounded-xl bg-white">
@@ -92,12 +150,12 @@ function TopicNode({ topic }) {
           <span className="font-semibold text-gray-900">{topic.title}</span>
           <span className="text-[10px] uppercase tracking-wide text-gray-400">{topic.status}</span>
         </span>
-        <NodeBadge attempts={topic.totals.attempts} passRate={topic.totals.passRate} autoAdvanced={0} studentCount={0} />
+        <TopicBadges totals={topic.totals} />
       </button>
       {open && (
         <div className="pb-3 pt-1 pr-2">
           {(topic.modules || []).map((mod) => (
-            <ModuleNode key={mod.moduleId} module={mod} />
+            <ModuleNode key={mod.moduleId} module={mod} quizByModuleId={quizByModuleId} />
           ))}
         </div>
       )}
@@ -105,7 +163,16 @@ function TopicNode({ topic }) {
   );
 }
 
-export default function CourseTreeView({ tree }) {
+export default function CourseTreeView({ tree, moduleDifficulty = [] }) {
+  // moduleId is unique per course, so a flat lookup is fine.
+  const quizByModuleId = useMemo(() => {
+    const m = new Map();
+    for (const row of moduleDifficulty) {
+      if (row && row.moduleId) m.set(row.moduleId, row);
+    }
+    return m;
+  }, [moduleDifficulty]);
+
   if (!tree || !Array.isArray(tree.topics) || tree.topics.length === 0) {
     return (
       <div className="border border-dashed border-gray-300 rounded-xl p-8 text-center text-gray-500 text-sm">
@@ -125,7 +192,7 @@ export default function CourseTreeView({ tree }) {
         </span>
       </div>
       {tree.topics.map((t) => (
-        <TopicNode key={t.courseTopicId} topic={t} />
+        <TopicNode key={t.courseTopicId} topic={t} quizByModuleId={quizByModuleId} />
       ))}
     </div>
   );

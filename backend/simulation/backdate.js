@@ -44,13 +44,20 @@ function pickBlock(studentBlocks, ts) {
   return best;
 }
 
-async function backdateUser(models, { userId, blocks }, semesterStart, stats) {
+async function backdateUser(models, { userId, blocks }, semesterStart, stats, courseId) {
   const userIdStr = String(userId);
   for (const { name } of MODELS) {
     const M = models[name];
     if (!M) continue;
+    // Course-scoped mode (SIM_BACKDATE_COURSE_ID): only remap records that
+    // belong to the target course, and never touch the shared User doc. This
+    // makes it safe to backdate a "reused accounts" run without rewriting the
+    // students' records from a *different* course they're also enrolled in.
+    if (courseId && name === 'User') continue;
     const userField = name === 'User' ? '_id' : 'userId';
-    const docs = await M.find({ [userField]: userId }).lean();
+    const filter = { [userField]: userId };
+    if (courseId && name !== 'User') filter.courseId = courseId;
+    const docs = await M.find(filter).lean();
     if (!docs.length) continue;
     const ops = [];
     for (const d of docs) {
@@ -65,12 +72,16 @@ async function backdateUser(models, { userId, blocks }, semesterStart, stats) {
         updateOne: {
           filter: { _id: d._id },
           update: { $set: { createdAt: newCreated, updatedAt: newUpdated } },
-          timestamps: false,
         },
       });
     }
     if (ops.length) {
-      const r = await M.bulkWrite(ops, { ordered: false, timestamps: false });
+      // Use the NATIVE driver (M.collection), not Mongoose (M.bulkWrite). Models
+      // with `timestamps: true` mark `createdAt` immutable, so a Mongoose update
+      // silently strips the createdAt $set — leaving every record stamped at its
+      // real run time. The native driver bypasses that, so both createdAt and
+      // updatedAt land in the backdated week.
+      const r = await M.collection.bulkWrite(ops, { ordered: false });
       stats[name] = (stats[name] || 0) + (r.modifiedCount || ops.length);
       log.info(`${name}: rewrote ${ops.length} docs for user ${userIdStr.slice(-6)}`);
     }
@@ -96,11 +107,17 @@ async function main({ manifestPath = MANIFEST_PATH } = {}) {
     }),
   );
 
+  const courseIdRaw = process.env.SIM_BACKDATE_COURSE_ID;
+  const courseId = courseIdRaw ? new mongoose.Types.ObjectId(courseIdRaw) : null;
+  if (courseId) {
+    log.info(`course-scoped backdate: only remapping records with courseId=${courseIdRaw} (User docs skipped)`);
+  }
+
   const stats = {};
   try {
     for (const student of manifest.students) {
       if (!student.userId) continue;
-      await backdateUser(models, student, semesterStart, stats);
+      await backdateUser(models, student, semesterStart, stats, courseId);
     }
   } finally {
     await mongoose.disconnect();

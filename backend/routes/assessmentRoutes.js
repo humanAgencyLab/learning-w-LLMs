@@ -3,6 +3,7 @@ const router = express.Router();
 const pino = require('pino');
 const { z } = require('zod');
 const Session = require('../models/Session');
+const Course = require('../models/Course');
 const { 
   assessmentRequestSchema, 
   assessmentResponseSchema,
@@ -24,6 +25,28 @@ const { runEngagementAgent } = require('../agents/engagementAgent');
 const logger = pino({
   level: process.env.LOG_LEVEL || 'info'
 });
+
+// Load course-level instructor guidelines for a session. Returns '' when the
+// session is student-driven (no courseId), when the course is missing, or on
+// any DB error — callers can treat this as "no instructor block".
+async function loadCourseGlobalInstructions(session, log) {
+  if (!session || !session.courseId) return '';
+  try {
+    const course = await Course.findById(session.courseId)
+      .select('globalInstructions')
+      .lean();
+    if (course && typeof course.globalInstructions === 'string') {
+      return course.globalInstructions;
+    }
+  } catch (err) {
+    (log || logger).warn({
+      msg: 'Failed to load course.globalInstructions',
+      courseId: String(session.courseId),
+      err: err.message
+    });
+  }
+  return '';
+}
 
 // Middleware to add request ID to logger
 const addRequestId = (req, res, next) => {
@@ -264,14 +287,18 @@ router.post('/v1/assessment', requireAuth, addRequestId, contextControl, async (
       }
     }
 
+    // Load instructor global guidelines for course-scoped sessions (empty
+    // string otherwise — the prompt builder treats that as "no block").
+    const courseGlobalInstructions = await loadCourseGlobalInstructions(session, req.logger);
+
     // Always generate plan directly (no user interaction, no clarification questions)
     // Extract key context from recent messages (last 4 messages max)
     const conversationHistory = (session.messages || [])
       .slice(-4)
       .map(m => ({ role: m.role, content: m.content }));
-    
+
     // Build prompt with conversation history (will be retry version if needed)
-    const prompt = buildAssessmentPrompt(profile, userMessage, mode, conversationHistory, false);
+    const prompt = buildAssessmentPrompt(profile, userMessage, mode, conversationHistory, false, courseGlobalInstructions);
     
     // Call API with retry logic
     let response;
@@ -313,7 +340,7 @@ router.post('/v1/assessment', requireAuth, addRequestId, contextControl, async (
         retryCount = 1;
         
         try {
-          const retryPrompt = buildAssessmentPrompt(profile, userMessage, mode, conversationHistory, true);
+          const retryPrompt = buildAssessmentPrompt(profile, userMessage, mode, conversationHistory, true, courseGlobalInstructions);
           response = await callAssessmentAPI(retryPrompt, true);
           parsedResponse = await parseAssessmentResponse(response, true);
         } catch (retryError) {
@@ -374,7 +401,7 @@ router.post('/v1/assessment', requireAuth, addRequestId, contextControl, async (
       const correctiveMessage = `${userMessage}\n\n⚠️ CORRECTION REQUIRED: You generated ${finalPlan.length} modules, but the plan must have EXACTLY 3 modules (not 4, not 5, not more). Please regenerate the plan with EXACTLY 3 modules by consolidating/merging the content from the following modules:\n\n${planSummary}\n\nMerge related topics and consolidate the content into EXACTLY 3 well-structured modules. Keep all important learning objectives but organize them into 3 modules instead of ${finalPlan.length}.`;
       
       try {
-        const correctivePrompt = buildAssessmentPrompt(profile, correctiveMessage, mode, conversationHistory, true);
+        const correctivePrompt = buildAssessmentPrompt(profile, correctiveMessage, mode, conversationHistory, true, courseGlobalInstructions);
         const correctiveResponse = await callAssessmentAPI(correctivePrompt, true);
         const correctiveParsed = await parseAssessmentResponse(correctiveResponse, true);
         
@@ -832,7 +859,8 @@ router.post('/v1/assessment/approve', requireAuth, addRequestId, async (req, res
         // Build teacher prompt for first milestone teaching
         // Use a trigger message that indicates we're starting
         const triggerMessage = "Let's start learning";
-        teacherPrompt = buildTeacherPrompt(session, triggerMessage, false);
+        const courseGlobalInstructions = await loadCourseGlobalInstructions(session, req.logger);
+        teacherPrompt = buildTeacherPrompt(session, triggerMessage, false, null, null, courseGlobalInstructions);
         console.log('Initial teaching prompt generated', {
           sessionId,
           promptLength: teacherPrompt ? teacherPrompt.length : 0,
@@ -1133,7 +1161,8 @@ router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, 
     ).join('\n');
     
     const userMessageWithModification = `${session.topic} - User wants to modify the plan. Current plan:\n${existingPlanSummary}\n\nModification request: "${modificationRequest}"\n\nPlease generate a NEW plan that incorporates this feedback while keeping the topic: "${session.topic}".`;
-    const prompt = buildAssessmentPrompt(profile, userMessageWithModification, session.mode, conversationHistory, false);
+    const courseGlobalInstructions = await loadCourseGlobalInstructions(session, req.logger);
+    const prompt = buildAssessmentPrompt(profile, userMessageWithModification, session.mode, conversationHistory, false, courseGlobalInstructions);
     
     // Add modification context to prompt
     const modificationPrompt = prompt + `\n\nCRITICAL MODIFICATION INSTRUCTIONS:
@@ -1184,7 +1213,7 @@ router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, 
           retryCount++;
           try {
             const retryUserMessage = `${session.topic} - Modification: ${modificationRequest}`;
-            const retryPrompt = buildAssessmentPrompt(profile, retryUserMessage, session.mode, conversationHistory, true);
+            const retryPrompt = buildAssessmentPrompt(profile, retryUserMessage, session.mode, conversationHistory, true, courseGlobalInstructions);
             const retryModificationPrompt = retryPrompt + `\n\nCRITICAL MODIFICATION INSTRUCTIONS:
 1. The user wants to MODIFY the existing plan based on their feedback: "${modificationRequest}"
 2. Keep the same topic: "${session.topic}"
@@ -1338,7 +1367,7 @@ router.post('/v1/assessment/modify', requireAuth, addRequestId, contextControl, 
       const correctiveMessage = `${modificationRequest}\n\n⚠️ CORRECTION REQUIRED: You generated ${finalPlan.length} modules, but the plan must have EXACTLY 3 modules (not 4, not 5, not more). Please regenerate the plan with EXACTLY 3 modules by consolidating/merging the content from the following modules:\n\n${planSummary}\n\nMerge related topics and consolidate the content into EXACTLY 3 well-structured modules. Keep all important learning objectives but organize them into 3 modules instead of ${finalPlan.length}.`;
       
       try {
-        const correctivePrompt = buildAssessmentPrompt(profile, correctiveMessage, session.mode, conversationHistory, true);
+        const correctivePrompt = buildAssessmentPrompt(profile, correctiveMessage, session.mode, conversationHistory, true, courseGlobalInstructions);
         const correctiveResponse = await callAssessmentAPI(correctivePrompt, true);
         const correctiveParsed = await parseAssessmentResponse(correctiveResponse, true);
         

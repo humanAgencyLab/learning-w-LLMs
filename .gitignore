@@ -161,6 +161,10 @@ dist
 
 # Frontend build output (CRA lives under frontend/my-app)
 frontend/my-app/build/
+frontend/my-app/build-iitl/
+
+# Firebase Hosting deploy cache
+.firebase/
 
 # Backend generated artifacts
 backend/uploads/

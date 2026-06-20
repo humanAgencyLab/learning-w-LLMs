@@ -14,6 +14,7 @@ function TopicCard({ topic, onStart, starting }) {
   const milestoneCount = modules.reduce((s, m) => s + (m.milestones?.length || 0), 0);
   const totalPoints = modules.reduce((s, m) => s + (m.points || 0), 0);
   const difficulties = [...new Set(modules.map(m => m.difficulty).filter(Boolean))];
+  const hasSession = !!topic.sessionId;
 
   return (
     <div className="border border-gray-200 rounded-xl bg-white overflow-hidden hover:border-blue-300 hover:shadow-sm transition-all">
@@ -36,7 +37,7 @@ function TopicCard({ topic, onStart, starting }) {
                 <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
                 Starting...
               </>
-            ) : 'Start learning'}
+            ) : (hasSession ? 'Continue learning' : 'Start learning')}
           </button>
         </div>
 
@@ -122,7 +123,8 @@ export default function StudentCourseTopicsPage() {
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto overflow-y-auto h-full">
+    <div className="h-full overflow-y-auto">
+      <div className="p-6 max-w-3xl mx-auto">
       <Link to="/courses" className="text-sm text-blue-600 hover:text-blue-800 inline-flex items-center gap-1">
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
         My courses
@@ -154,6 +156,7 @@ export default function StudentCourseTopicsPage() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

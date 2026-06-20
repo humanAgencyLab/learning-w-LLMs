@@ -20,6 +20,11 @@ const {
   getTopicStudentHeatmap,
 } = require('../services/milestoneAnalyticsService');
 const { runStruggleSummary } = require('../agents/struggleSummaryAgent');
+const {
+  runBriefing,
+  runHotSignal,
+  runInsightCards,
+} = require('../agents/instructorBriefingAgent');
 
 // `?includeSynthetic=1` flips the excludeSynthetic default to false. The
 // professor-study dashboards pass this so the synthetic cohort — which IS
@@ -28,6 +33,61 @@ function parseSyntheticFlag(req) {
   const raw = req.query?.includeSynthetic;
   const include = raw === '1' || raw === 'true' || raw === 'yes';
   return { excludeSynthetic: !include };
+}
+
+/**
+ * Classify an error thrown from a Groq-backed narrative agent call. Returns a
+ * short machine-readable reason if the error should be handled as a soft
+ * "degraded" outcome (timeout, upstream 5xx/429, transport blip), or `null`
+ * if it's a real bug we should let bubble up through `next(e)`.
+ *
+ * Phase F rationale: the briefing / hot-signal / insight-cards endpoints sit
+ * in front of the React UI via CRA's dev proxy. A raw 5xx here causes the
+ * proxy to mislabel the whole backend as down. By returning HTTP 200 with
+ * `degraded: true`, the charts + KPI strip still render and the UI shows a
+ * soft "AI summary unavailable right now" line instead of a red banner.
+ */
+function classifyAgentError(err) {
+  if (!err) return null;
+  if (err.code === 'AGENT_TIMEOUT') return 'timeout';
+  // Groq SDK surfaces HTTP status on err.status / err.response?.status.
+  // ANY 4xx/5xx from Groq is degradable: the LLM narrative can't render but
+  // the charts + KPI tiles still carry the instructor's dense-scan needs.
+  // This includes 401 (bad key), 403 (model blocked at project level —
+  // discovered during Phase F rollout), 404 (model not found), 429 (rate),
+  // 400 (malformed request, e.g. context too long), and any 5xx.
+  const status = err.status || err.response?.status;
+  if (typeof status === 'number' && status >= 400 && status < 600) {
+    if (status === 429) return 'rate_limited';
+    if (status === 401 || status === 403) return 'upstream_forbidden';
+    if (status === 404) return 'upstream_not_found';
+    if (status >= 500) return 'upstream_5xx';
+    return 'upstream_4xx';
+  }
+  // Network transport errors: fetch abort, DNS, connection reset.
+  if (err.name === 'AbortError') return 'aborted';
+  if (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT' || err.code === 'ENOTFOUND') {
+    return 'network';
+  }
+  // Groq SDK wraps JSON parse failures in a generic Error — if the upstream
+  // returns malformed JSON we'd rather degrade than show a 500 to the prof.
+  if (/JSON/i.test(err.message || '') && /parse|invalid/i.test(err.message || '')) {
+    return 'bad_json';
+  }
+  // Catch-all: any error whose constructor looks like an SDK APIError is
+  // still an upstream thing, not a bug in our code — degrade rather than
+  // 5xx. This keeps the proxy's "backend down" path reserved for real
+  // connection failures.
+  const ctor = err.constructor?.name || '';
+  if (/APIError|ApiError|GroqError/i.test(ctor)) return 'upstream_other';
+  return null;
+}
+
+function logDegraded(route, reason, err) {
+  // One-line warn so we can audit how often each route degrades. Keep the
+  // message slice short — we've seen Groq errors include whole payloads.
+  const msg = (err?.message || String(err)).slice(0, 200);
+  console.warn('[agent.degraded]', { route, reason, msg });
 }
 
 const router = express.Router();
@@ -183,6 +243,68 @@ router.get('/courses/:courseId/sessions/:sessionId/messages', requireAuth, requi
     const hasMore = fromEnd + limit < totalCount;
 
     return res.json({ success: true, data: { messages, totalCount, hasMore } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** GET /v1/instructor/courses/:courseId/sessions/:sessionId/quizzes — submitted quiz attempts */
+router.get('/courses/:courseId/sessions/:sessionId/quizzes', requireAuth, requireRole('instructor'), requireCourseOwner, async (req, res, next) => {
+  try {
+    const { courseId, sessionId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+      return res.status(400).json({ success: false, error: 'Invalid session id', code: 'VALIDATION_ERROR' });
+    }
+
+    const session = await Session.findById(sessionId).select('courseId enrollmentId quizAttempts').lean();
+    const ok = assertSessionBelongsToCourse(session, courseId);
+    if (!ok.ok) return res.status(ok.status).json({ success: false, error: ok.error, code: ok.code });
+
+    // Ensure enrollmentId belongs to this course (defense in depth)
+    if (session.enrollmentId) {
+      const enrollment = await Enrollment.findById(session.enrollmentId).select('courseId').lean();
+      const enrollmentCourseId = enrollment?.courseId?.toString();
+      if (enrollmentCourseId && enrollmentCourseId !== courseId) {
+        return res.status(404).json({ success: false, error: 'Session not found', code: 'NOT_FOUND' });
+      }
+    }
+
+    // Only submitted attempts are useful to the instructor (drafts are still
+    // in-progress). Return just the presentation fields, most recent first.
+    const all = Array.isArray(session.quizAttempts) ? session.quizAttempts : [];
+    const attempts = all
+      .filter((a) => a && a.status === 'submitted')
+      .map((a) => ({
+        id: a.id,
+        moduleId: a.moduleId,
+        attemptNo: a.attemptNo,
+        status: a.status,
+        items: Array.isArray(a.items)
+          ? a.items.map((it) => ({
+              id: it.id,
+              text: it.text,
+              options: Array.isArray(it.options) ? it.options : [],
+              correctIndex: it.correctIndex,
+            }))
+          : [],
+        answers: Array.isArray(a.answers)
+          ? a.answers.map((an) => ({ id: an.id, userIndex: an.userIndex }))
+          : [],
+        scorePct: a.scorePct,
+        passed: a.passed,
+        pointsEarned: a.pointsEarned,
+        createdAt: a.createdAt,
+        submittedAt: a.submittedAt,
+        isRevision: !!a.isRevision,
+        revisionTopic: a.revisionTopic,
+      }))
+      .sort((x, y) => {
+        const tx = x.submittedAt ? new Date(x.submittedAt).getTime() : 0;
+        const ty = y.submittedAt ? new Date(y.submittedAt).getTime() : 0;
+        return ty - tx; // most recent submission first
+      });
+
+    return res.json({ success: true, data: { attempts, totalCount: attempts.length } });
   } catch (e) {
     next(e);
   }
@@ -365,5 +487,123 @@ router.get('/overview', requireAuth, requireRole('instructor'), async (req, res,
     next(e);
   }
 });
+
+/**
+ * GET /v1/instructor/briefing — one-shot narrative briefing across all courses.
+ * Powers the dashboard hero card. Grounded in getCrossCourseKPIs output.
+ */
+router.get('/briefing', requireAuth, requireRole('instructor'), async (req, res, next) => {
+  try {
+    const overview = await getCrossCourseKPIs(req.userId, parseSyntheticFlag(req));
+    // Degrade only the narrative call — if analytics itself fails we still
+    // want the loud 5xx, because that's a real bug in our code.
+    try {
+      const { briefing } = await runBriefing(overview);
+      return res.json({ success: true, data: { briefing, overview } });
+    } catch (agentErr) {
+      const reason = classifyAgentError(agentErr);
+      if (!reason) throw agentErr;
+      logDegraded('briefing', reason, agentErr);
+      return res.json({
+        success: true,
+        data: { briefing: '', overview, degraded: true, reason },
+      });
+    }
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * GET /v1/instructor/courses/:courseId/hot-signal — one-sentence alert for
+ * the course page. Grounded in hardest milestones + at-risk students.
+ */
+router.get(
+  '/courses/:courseId/hot-signal',
+  requireAuth,
+  requireRole('instructor'),
+  requireCourseOwner,
+  async (req, res, next) => {
+    try {
+      const { courseId } = req.params;
+      const flag = parseSyntheticFlag(req);
+      const [milestones, atRisk, analytics] = await Promise.all([
+        getMilestoneStats(courseId, flag),
+        getAtRiskStudents(courseId, { ...flag, passRateThreshold: 60 }),
+        getCourseAnalytics(courseId).catch(() => null),
+      ]);
+      const courseTitle = analytics?.courseTitle || analytics?.title || '';
+      const totalAttempts = (milestones || []).reduce((s, m) => s + (m.attempts || 0), 0);
+      if (!totalAttempts) {
+        return res.json({
+          success: true,
+          data: {
+            hotSignal: 'Not enough attempts yet — check back after students engage.',
+            grounded: false,
+          },
+        });
+      }
+      try {
+        const { hotSignal } = await runHotSignal({ milestones, atRisk, courseTitle });
+        return res.json({ success: true, data: { hotSignal, grounded: true } });
+      } catch (agentErr) {
+        const reason = classifyAgentError(agentErr);
+        if (!reason) throw agentErr;
+        logDegraded('hot-signal', reason, agentErr);
+        return res.json({
+          success: true,
+          data: { hotSignal: '', grounded: false, degraded: true, reason },
+        });
+      }
+    } catch (e) {
+      next(e);
+    }
+  }
+);
+
+/**
+ * GET /v1/instructor/courses/:courseId/insight-cards — 3–5 narrative insight
+ * cards for the Insights page. Grounded in tree + milestones + heatmap + at-risk.
+ */
+router.get(
+  '/courses/:courseId/insight-cards',
+  requireAuth,
+  requireRole('instructor'),
+  requireCourseOwner,
+  async (req, res, next) => {
+    try {
+      const { courseId } = req.params;
+      const flag = parseSyntheticFlag(req);
+      const [tree, milestones, heatmap, atRisk, analytics] = await Promise.all([
+        getTreeAnalytics(courseId, flag),
+        getMilestoneStats(courseId, flag),
+        getTopicStudentHeatmap(courseId, flag),
+        getAtRiskStudents(courseId, { ...flag, passRateThreshold: 60 }),
+        getCourseAnalytics(courseId).catch(() => null),
+      ]);
+      const courseTitle = analytics?.courseTitle || analytics?.title || '';
+      try {
+        const { insightCards } = await runInsightCards({
+          tree,
+          milestones,
+          heatmap,
+          atRisk,
+          courseTitle,
+        });
+        return res.json({ success: true, data: { insightCards } });
+      } catch (agentErr) {
+        const reason = classifyAgentError(agentErr);
+        if (!reason) throw agentErr;
+        logDegraded('insight-cards', reason, agentErr);
+        return res.json({
+          success: true,
+          data: { insightCards: [], degraded: true, reason },
+        });
+      }
+    } catch (e) {
+      next(e);
+    }
+  }
+);
 
 module.exports = router;

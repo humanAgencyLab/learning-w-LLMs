@@ -423,7 +423,8 @@ export default function InstructorTopicEditorPage() {
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto overflow-y-auto h-full pb-24">
+    <div className="h-full overflow-y-auto">
+      <div className="p-6 max-w-3xl mx-auto pb-24">
       {/* Navigation */}
       <Link to={`/instructor/courses/${courseId}`} className="text-sm text-blue-600 hover:text-blue-800 inline-flex items-center gap-1">
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -539,6 +540,7 @@ export default function InstructorTopicEditorPage() {
         <span className="text-xs text-gray-400">
           {modules.length} module{modules.length !== 1 ? 's' : ''} · {modules.reduce((s, m) => s + (m.milestones?.length || 0), 0)} milestones
         </span>
+      </div>
       </div>
     </div>
   );

@@ -52,6 +52,25 @@ export default function InstructorChatPanel() {
   const [error, setError] = useState('');
   const [includeSynthetic, setIncludeSynthetic] = useState(true);
   const scrollRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // Listen for `instructor:openChat` events dispatched by AgentBriefingCard /
+  // InsightCards' "Ask follow-up" & "Ask about this" buttons. The detail
+  // payload carries a `prefill` string that pre-populates the input so the
+  // professor can tweak-and-send rather than invent a prompt from scratch.
+  useEffect(() => {
+    function onOpen(e) {
+      setOpen(true);
+      const prefill = e?.detail?.prefill;
+      if (typeof prefill === 'string' && prefill.trim()) {
+        setInput(prefill);
+        // Focus after the panel mounts + input renders.
+        window.setTimeout(() => inputRef.current?.focus(), 50);
+      }
+    }
+    window.addEventListener('instructor:openChat', onOpen);
+    return () => window.removeEventListener('instructor:openChat', onOpen);
+  }, []);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
@@ -179,9 +198,12 @@ export default function InstructorChatPanel() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2 text-sm">
         {loading && <div className="text-xs text-gray-400">Loading history…</div>}
         {!loading && messages.length === 0 && (
-          <div className="text-xs text-gray-400 text-center p-4">
-            Ask a question about your courses or students.
-            <ul className="mt-2 text-left space-y-1">
+          <div className="text-xs text-gray-500 text-center p-4">
+            <p className="text-gray-700 font-medium">Hi — I'm your Insights Assistant.</p>
+            <p className="mt-1">
+              I only cite numbers from this course's data. Ask me to list strugglers, compare topics, or summarize a student.
+            </p>
+            <ul className="mt-3 text-left space-y-1 text-gray-500">
               <li>• "Which students are struggling in this course?"</li>
               <li>• "What's the hardest milestone?"</li>
               <li>• "Who is most at risk right now?"</li>
@@ -207,6 +229,7 @@ export default function InstructorChatPanel() {
 
       <form onSubmit={onSend} className="p-2 border-t border-gray-200 flex gap-2">
         <input
+          ref={inputRef}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}

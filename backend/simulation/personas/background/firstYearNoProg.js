@@ -12,6 +12,12 @@ module.exports = {
     primaryGoal: 'Master Basics',
     daysPerWeek: 4,
     minutesPerSession: 45,
+    // Feeds the tutor's profile-aware prompt so two sim students with
+    // different backgrounds produce visibly different transcripts during
+    // the professor think-aloud. First-year with zero programming exposure
+    // leans on concrete diagrams + fuller explanations.
+    learningType: 'Visual',
+    explanationLength: 'Detailed',
   },
   systemPrompt: [
     'You are simulating a first-year CS major who chose the major out of career interest but has',

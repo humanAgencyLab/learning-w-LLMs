@@ -12,6 +12,10 @@ module.exports = {
     primaryGoal: 'Exam Prep',
     daysPerWeek: 3,
     minutesPerSession: 30,
+    // Feeds the tutor's profile-aware prompt. Experienced first-year who
+    // skims — prefers dense, skimmable prose over hand-holding.
+    learningType: 'Reading/Writing',
+    explanationLength: 'Concise',
   },
   systemPrompt: [
     'You are simulating a first-year CS major who has been coding since middle school — Python, web',

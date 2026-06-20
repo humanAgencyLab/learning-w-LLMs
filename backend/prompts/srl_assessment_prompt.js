@@ -2,7 +2,7 @@
 // This prompt is used ONLY in /v1/assessment endpoint
 // ALWAYS returns plan JSON (no clarification questions)
 
-const buildAssessmentPrompt = (profile, userMessage, mode, conversationHistory = [], isRetry = false) => {
+const buildAssessmentPrompt = (profile, userMessage, mode, conversationHistory = [], isRetry = false, globalInstructions = '') => {
   const retryInstruction = isRetry
     ? '\n\nFINAL WARNING: Reply with the JSON object only. Absolutely no explanatory text, no markdown fences, no trailing sentences. If you cannot comply, return the JSON anyway—do NOT abort.'
     : '\n\nABSOLUTE OUTPUT RULES:\n- Reply with the JSON object only. Do NOT add any text before `{` or after `}`.\n- No markdown, no prose, no comments, no ``` fences, no backticks.\n- Use standard JSON only (double quotes, no trailing commas, numbers without quotes).\n- Ensure the JSON parses successfully; invalid JSON will be rejected.';
@@ -127,7 +127,14 @@ ${explicitModuleInstruction}
 ${explicitRequirementsInstruction}
 ${modificationGuidance}`;
 
-  return `You are an expert learning assessment AI. Your job is to create a personalized study plan based on the user's profile and request.
+  // Instructor-authored guidelines for this course (from Course.globalInstructions).
+  // For course-scoped plan generation, these take precedence over default heuristics.
+  // Empty for student-driven sessions outside a course context.
+  const globalInstructionsBlock = (globalInstructions && String(globalInstructions).trim())
+    ? `\n\nINSTRUCTOR GLOBAL GUIDELINES (authoritative for this course — these take priority over defaults):\n${String(globalInstructions).trim()}\n`
+    : '';
+
+  return `You are an expert learning assessment AI. Your job is to create a personalized study plan based on the user's profile and request.${globalInstructionsBlock}
 
 ${enhancedProfileText}
 

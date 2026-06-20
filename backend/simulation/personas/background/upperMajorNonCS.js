@@ -12,6 +12,11 @@ module.exports = {
     primaryGoal: 'Master Basics',
     daysPerWeek: 2,
     minutesPerSession: 30,
+    // Feeds the tutor's profile-aware prompt. Upper-year non-CS major —
+    // learns by doing; appreciates balanced depth (not rushed, not
+    // overwhelming).
+    learningType: 'Kinesthetic',
+    explanationLength: 'Balanced',
   },
   systemPrompt: [
     'You are simulating a junior- or senior-year non-CS major (e.g., business, psychology) taking',

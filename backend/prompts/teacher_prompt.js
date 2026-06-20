@@ -1,7 +1,7 @@
 // Teacher Prompt - Unified Teaching System
 // This prompt provides a consistent structure for ALL teaching scenarios
 
-const buildTeacherPrompt = (session, userMessage, isFollowUp = false, assessmentResult = null, milestoneInfo = null) => {
+const buildTeacherPrompt = (session, userMessage, isFollowUp = false, assessmentResult = null, milestoneInfo = null, globalInstructions = '') => {
   const { topic, activeModuleId, plan, profile, phase, meta, points = 0, gems = 0 } = session;
   const topicName = topic || 'the subject';
   const activeModule = plan.find(m => m.id === activeModuleId);
@@ -189,6 +189,12 @@ NEXT Milestone: "${nextMilestoneText}" ${nextMilestoneText !== 'N/A' ? '(do NOT 
     ? profile.motivationType
     : null;
   const selfConfidence = (typeof profile.selfConfidence === 'number') ? profile.selfConfidence : null;
+  const learningType = profile.learningType && profile.learningType !== 'unknown'
+    ? profile.learningType
+    : null;
+  const explanationLength = profile.explanationLength && profile.explanationLength !== 'unknown'
+    ? profile.explanationLength
+    : null;
 
   const profileContext = `
 Student Profile:
@@ -196,7 +202,7 @@ Student Profile:
 - Skill Level: ${profile.skillLevel || 'Not specified'}
 - Goals: ${profile.goals?.join(', ') || 'Not specified'}
 - Preferred Style: ${profile.preferredStyle || 'Not specified'}
-- Time Available: ${profile.timePerDayMins || 'Not specified'} minutes/day${programmingExposure ? `\n- Programming Exposure: ${programmingExposure}` : ''}${motivationType ? `\n- Motivation: ${motivationType}` : ''}${selfConfidence !== null ? `\n- Self-Confidence: ${selfConfidence}/5` : ''}
+- Time Available: ${profile.timePerDayMins || 'Not specified'} minutes/day${programmingExposure ? `\n- Programming Exposure: ${programmingExposure}` : ''}${motivationType ? `\n- Motivation: ${motivationType}` : ''}${selfConfidence !== null ? `\n- Self-Confidence: ${selfConfidence}/5` : ''}${learningType ? `\n- Preferred Learning Modality: ${learningType} (lean on ${learningType === 'Visual' ? 'diagrams, structured examples, and visualizable analogies' : learningType === 'Auditory' ? 'narrated walk-throughs and conversational framing' : learningType === 'Reading/Writing' ? 'structured prose, bullet lists, and written definitions' : 'hands-on, run-and-observe framing with small code to try'})` : ''}${explanationLength ? `\n- Preferred Explanation Length: ${explanationLength} (${explanationLength === 'Concise' ? 'keep teaching paragraphs short and dense' : explanationLength === 'Detailed' ? 'offer fuller teaching paragraphs with extra examples' : 'default paragraph depth'})` : ''}
 
 Progress Tracking:
 - Current Points: ${points}/100
@@ -516,8 +522,16 @@ If ANY check fails, rewrite your response.
                      ? 'language tutor'
                      : 'expert tutor';
   
+  // Instructor-authored guidelines for this course (from Course.globalInstructions).
+  // Framed as top-priority context so the tutor treats them as overrides on the
+  // default Socratic posture. The system message in teacherService still sets
+  // the safety floor, so adversarial instructor prose cannot override that.
+  const globalInstructionsBlock = (globalInstructions && String(globalInstructions).trim())
+    ? `\n\nInstructor Global Guidelines (authoritative for this course — these take priority over defaults):\n${String(globalInstructions).trim()}\n`
+    : '';
+
   // Build the main prompt with scenario-specific overrides
-  let mainPrompt = `You are an ${tutorRole} teaching ${topicName}.
+  let mainPrompt = `You are an ${tutorRole} teaching ${topicName}.${globalInstructionsBlock}
 
 ${profileContext}
 

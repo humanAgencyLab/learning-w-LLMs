@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
-import CoursePerformanceSummary from '../../components/instructor/CoursePerformanceSummary';
+import HotSignalCard from '../../components/instructor/HotSignalCard';
 
 const STATUS_STYLES = {
   draft: 'bg-gray-100 text-gray-600 border-gray-200',
@@ -186,9 +186,6 @@ export default function InstructorCourseDetailPage() {
   const [course, setCourse] = useState(null);
   const [topics, setTopics] = useState([]);
   const [analytics, setAnalytics] = useState(null);
-  const [performanceSummary, setPerformanceSummary] = useState(null);
-  const [performanceLoading, setPerformanceLoading] = useState(true);
-  const [performanceError, setPerformanceError] = useState(null);
   const [globalInstructions, setGlobalInstructions] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -215,32 +212,16 @@ export default function InstructorCourseDetailPage() {
       if (chatRes?.data?.messages) {
         setChatMessages(chatRes.data.messages);
       }
-      setPerformanceLoading(true);
-      setPerformanceError(null);
       try {
-        const [aRes, perfRes] = await Promise.all([
-          instructorApi.getCourseAnalytics(courseId).catch(() => null),
-          instructorApi.getCoursePerformanceSummary(courseId).catch((e) => ({ __error: e?.message || 'Failed to load' })),
-        ]);
-        if (aRes?.data) setAnalytics(aRes.data);
-        else setAnalytics(null);
-        if (perfRes?.__error) {
-          setPerformanceSummary(null);
-          setPerformanceError(perfRes.__error);
-        } else {
-          setPerformanceSummary(perfRes?.data ?? null);
-          setPerformanceError(null);
-        }
+        const aRes = await instructorApi.getCourseAnalytics(courseId).catch(() => null);
+        setAnalytics(aRes?.data ?? null);
       } catch {
         setAnalytics(null);
-        setPerformanceSummary(null);
-        setPerformanceError('Failed to load analytics');
       }
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
-      setPerformanceLoading(false);
     }
   }, [courseId]);
 
@@ -361,7 +342,8 @@ export default function InstructorCourseDetailPage() {
   const draftCount = topics.filter(t => t.status === 'draft').length;
 
   return (
-    <div className="p-6 max-w-4xl mx-auto overflow-y-auto h-full pb-12">
+    <div className="h-full overflow-y-auto">
+      <div className="p-6 max-w-4xl mx-auto pb-12">
       {/* Navigation */}
       <Link to="/instructor/courses" className="text-sm text-blue-600 hover:text-blue-800 inline-flex items-center gap-1">
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -403,21 +385,22 @@ export default function InstructorCourseDetailPage() {
         </div>
       )}
 
-      {/* Analytics */}
+      {/* Numeric KPIs + one-line narrative hot signal.
+          Richer analytics (score distribution, funnel, heatmaps, etc.)
+          moved to the Insights page — this page is authoring-only. */}
       {analytics && (
-        <div className="flex gap-3 mb-6 flex-wrap">
-          <StatCard label="Enrolled" value={analytics.enrollmentCount ?? 0} />
-          <StatCard label="Sessions" value={analytics.sessionCount ?? 0} />
-          <StatCard label="Completion" value={`${analytics.completionRate ?? 0}%`} />
-          <StatCard label="Topics" value={topics.length} sub={`${publishedCount} published`} />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard label="Enrolled" value={analytics.enrollmentCount ?? 0} />
+            <StatCard label="Sessions" value={analytics.sessionCount ?? 0} />
+            <StatCard label="Completion" value={`${analytics.completionRate ?? 0}%`} />
+            <StatCard label="Topics" value={topics.length} sub={`${publishedCount} published`} />
+          </div>
+          <div className="lg:col-span-1">
+            <HotSignalCard courseId={courseId} />
+          </div>
         </div>
       )}
-
-      <CoursePerformanceSummary
-        performanceSummary={performanceSummary}
-        loading={performanceLoading}
-        error={performanceError}
-      />
 
       {/* Student progress link */}
       {analytics && analytics.enrollmentCount > 0 && (
@@ -603,6 +586,7 @@ export default function InstructorCourseDetailPage() {
           </p>
         )}
       </section>
+      </div>
     </div>
   );
 }

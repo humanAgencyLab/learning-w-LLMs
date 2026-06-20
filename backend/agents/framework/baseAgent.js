@@ -2,6 +2,52 @@ const { getGroqClient } = require('../../lib/llmClient');
 const { getModelForTask } = require('./modelRouter');
 
 /**
+ * Default per-call Groq timeout. Groq happy-path is 1–3 s; occasional slow
+ * responses land around 8–10 s. 15 s gives ~5× headroom and keeps us under
+ * the CRA dev-proxy's 20 s ceiling so we always surface a clean "degraded"
+ * state instead of the socket-hangup → "Backend unreachable" chain.
+ */
+const DEFAULT_AGENT_TIMEOUT_MS = 15000;
+
+/**
+ * Throws the tagged timeout error our route-level handlers recognize.
+ * Using a stable `err.code` ('AGENT_TIMEOUT') means callers don't have to
+ * string-match the message — they can branch on the code and return a
+ * `degraded: true` payload.
+ */
+function makeAgentTimeoutError(reason = 'Agent call timed out') {
+  const err = new Error('agent_timeout');
+  err.code = 'AGENT_TIMEOUT';
+  err.reason = reason;
+  return err;
+}
+
+/**
+ * Wrap a Groq `client.chat.completions.create(...)` call with an
+ * AbortController so a stalled request rejects with AGENT_TIMEOUT instead
+ * of hanging until the proxy drops the socket.
+ *
+ * The Groq SDK accepts a second `{ signal }` argument (OpenAI-style). If
+ * a future SDK change removes that, the setTimeout-side still fires and
+ * the resulting race still rejects in bounded time — we just lose the
+ * ability to cancel the underlying fetch.
+ */
+async function createChatCompletionWithTimeout(client, requestOpts, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await client.chat.completions.create(requestOpts, { signal: controller.signal });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw makeAgentTimeoutError(`Groq call exceeded ${timeoutMs}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Base agent runner. Every agent is a thin wrapper: a system prompt, a user
  * prompt builder, an optional response parser, and a task name for model routing.
  *
@@ -13,6 +59,8 @@ const { getModelForTask } = require('./modelRouter');
  * @param {number} [opts.temperature=0.3]
  * @param {boolean} [opts.jsonMode=true] – request JSON response format
  * @param {function} [opts.parse]       – (rawText) => parsed object; defaults to JSON.parse
+ * @param {number} [opts.timeoutMs=15000] – per-call Groq timeout. On abort throws
+ *                                          an error with `code === 'AGENT_TIMEOUT'`.
  * @returns {Promise<object>} parsed output
  */
 async function runAgent({
@@ -23,6 +71,7 @@ async function runAgent({
   temperature = 0.3,
   jsonMode = true,
   parse,
+  timeoutMs = DEFAULT_AGENT_TIMEOUT_MS,
 }) {
   const client = getGroqClient();
   const model = getModelForTask(taskName);
@@ -41,7 +90,7 @@ async function runAgent({
     requestOpts.response_format = { type: 'json_object' };
   }
 
-  const response = await client.chat.completions.create(requestOpts);
+  const response = await createChatCompletionWithTimeout(client, requestOpts, timeoutMs);
   const raw = response.choices[0].message.content.trim();
 
   if (parse) return parse(raw);
@@ -75,6 +124,11 @@ async function runAgent({
  * @param {number} [opts.maxTokens=1200]
  * @param {number} [opts.temperature=0.2]
  * @param {function} [opts.onToolCall]             – observability: (name, args, result) => void
+ * @param {number}   [opts.timeoutMs=15000]        – per-round Groq timeout. Cap is
+ *                                                   per Groq round, not the whole
+ *                                                   loop — tool handlers run on
+ *                                                   the server and shouldn't be
+ *                                                   counted against the LLM budget.
  * @returns {Promise<{content: string, toolCalls: Array, iterations: number}>}
  */
 async function runAgentWithTools({
@@ -86,6 +140,7 @@ async function runAgentWithTools({
   maxTokens = 1200,
   temperature = 0.2,
   onToolCall,
+  timeoutMs = DEFAULT_AGENT_TIMEOUT_MS,
 }) {
   const client = getGroqClient();
   const model = getModelForTask(taskName);
@@ -115,14 +170,18 @@ async function runAgentWithTools({
   const toolCallsLog = [];
 
   for (let i = 0; i < maxIterations; i++) {
-    const response = await client.chat.completions.create({
-      model,
-      messages: conversation,
-      tools: toolSchemas,
-      tool_choice: 'auto',
-      temperature,
-      max_tokens: maxTokens,
-    });
+    const response = await createChatCompletionWithTimeout(
+      client,
+      {
+        model,
+        messages: conversation,
+        tools: toolSchemas,
+        tool_choice: 'auto',
+        temperature,
+        max_tokens: maxTokens,
+      },
+      timeoutMs,
+    );
     const msg = response.choices[0].message;
 
     // Terminal: plain assistant reply.

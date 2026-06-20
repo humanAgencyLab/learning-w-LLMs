@@ -13,16 +13,20 @@ const { make } = require('./logger');
 
 const log = make('clean');
 
+// Each entry lists the foreign-key field(s) on that collection that point
+// back to the synthetic user. Most use `userId`; `Enrollment` uses
+// `studentId`; `InstructorStudentNote` uses both (author or subject).
+// When multiple fields apply, we delete if ANY matches.
 const COLLECTIONS = [
-  'Session',
-  'MilestoneAttempt',
-  'QuizAttempt',
-  'Enrollment',
-  'ChatLog',
-  'DataLog',
-  'FlashcardInteraction',
-  'StudySession',
-  'InstructorStudentNote',
+  { name: 'Session', userFields: ['userId'] },
+  { name: 'MilestoneAttempt', userFields: ['userId'] },
+  { name: 'QuizAttempt', userFields: ['userId'] },
+  { name: 'Enrollment', userFields: ['studentId'] },
+  { name: 'ChatLog', userFields: ['userId'] },
+  { name: 'DataLog', userFields: ['userId'] },
+  { name: 'FlashcardInteraction', userFields: ['userId'] },
+  { name: 'StudySession', userFields: ['userId'] },
+  { name: 'InstructorStudentNote', userFields: ['studentId', 'instructorId'] },
 ];
 
 async function main({ dryRun = false } = {}) {
@@ -35,11 +39,15 @@ async function main({ dryRun = false } = {}) {
     log.info(`found ${userIds.length} synthetic users`);
 
     const stats = {};
-    for (const name of COLLECTIONS) {
+    for (const { name, userFields } of COLLECTIONS) {
       let M = null;
       try { M = require(`../models/${name}`); } catch { continue; }
       if (!M) continue;
-      const filter = { userId: { $in: userIds } };
+      // Build an $or filter so collections whose FK isn't `userId`
+      // (e.g. Enrollment.studentId) still match.
+      const filter = userFields.length === 1
+        ? { [userFields[0]]: { $in: userIds } }
+        : { $or: userFields.map((f) => ({ [f]: { $in: userIds } })) };
       if (dryRun) {
         const count = await M.countDocuments(filter);
         stats[name] = { wouldDelete: count };
