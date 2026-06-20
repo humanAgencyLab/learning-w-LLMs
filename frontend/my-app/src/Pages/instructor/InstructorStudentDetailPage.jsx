@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
 import MessageContent from '../../components/chat/MessageContent';
@@ -543,6 +543,10 @@ export default function InstructorStudentDetailPage() {
 
   const [selectedTopicId, setSelectedTopicId] = useState(null);
   const [selectedSessionId, setSelectedSessionId] = useState(null);
+  // The session viewer renders below a (potentially long) topics list, so on
+  // selection we scroll it into view — otherwise it lands off-screen and the
+  // "View session" click looks like it did nothing.
+  const sessionViewerRef = useRef(null);
 
   // notesScope: null = course-wide, courseTopicId string = topic-specific
   const [notesScope, setNotesScope] = useState(null);
@@ -584,6 +588,14 @@ export default function InstructorStudentDetailPage() {
     setSelectedSessionId(sessionId);
     setNotesScope(topicId);
   };
+
+  // Bring the session viewer into view whenever a session is (re)selected, so
+  // the thread/quizzes are visible immediately rather than scrolled off below.
+  useEffect(() => {
+    if (selectedSessionId && sessionViewerRef.current) {
+      sessionViewerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [selectedSessionId]);
 
   if (loading) {
     return (
@@ -687,7 +699,9 @@ export default function InstructorStudentDetailPage() {
             </div>
           </div>
 
-          <SessionViewer courseId={courseId} sessionId={selectedSessionId} />
+          <div ref={sessionViewerRef} style={{ scrollMarginTop: 16 }}>
+            <SessionViewer courseId={courseId} sessionId={selectedSessionId} />
+          </div>
         </div>
 
         {/* Notes panel */}
