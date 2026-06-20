@@ -7,6 +7,16 @@
 
 This revision drops findings deferred by the team (preview-as-student, onboarding rework, AI-edit diff, synthetic-data labeling, mobile nav) and folds in the team's answers to open questions. Code claims were checked against source; one earlier finding (course cards lacking keyboard support) was wrong and removed after verification. A new section near the end, **Pilot run**, adds a simulated instructor think-aloud against the Phase 2 study protocol and nine new findings (N1-N9) it surfaced.
 
+## Status legend
+
+- **(shipped)** — implemented, deployed, verified on `studyassist-iitl-keanu.web.app`.
+- **(in progress)** — work in flight or queued for this week.
+- **(pre-pilot)** — to ship before the 6/22–6/24 faculty pilot.
+- **(post-pilot)** — defer until after the pilot validates priority.
+- **(deferred)** — explicitly out of scope for this study cycle.
+
+Default if unmarked: a backlog item not yet scheduled.
+
 ---
 
 ## How this was assessed
@@ -23,26 +33,27 @@ Every finding cites a file or a screen, usually both. Severity reflects instruct
 
 ## Priority backlog (start here)
 
-| # | Finding | Area | Severity | Effort |
+| # | Finding | Area | Severity | Status |
 |---|---------|------|----------|--------|
-| 1 | "Modify" silently deletes all draft topics, warning shown only as helper text | Authoring | P0 | S |
-| 2 | AI generate/modify gives no progress or cancel during the wait | Authoring | P0 | S |
-| 3 | "Completion" means three different numbers across three screens (79% / 15% / 88.2%) | Analytics | P0 | S |
-| 4 | Insights and Student Progress disagree on who's struggling (5 at-risk vs 2 struggling; per-student numbers conflict) | Analytics/IA | P1 | M |
-| 5 | At-risk panel is a dead end: doesn't link to the Monitor/student page where you act | Analytics | P1 | S |
-| 6 | Hot Signal card on course page renders one word per line (layout bug) | Dashboard | P1 | S |
-| 7 | Course-structure tree auto-expands everything, burying charts under "no data" rows | Analytics | P1 | S |
-| 8 | Heatmap encodes pass rate on a red-to-green scale (colorblind-unsafe) | Analytics | P1 | S |
-| 9 | Sidebar omits Students and Insights; analytics buried 2-3 levels deep | Nav/IA | P1 | S |
-| 10 | Cryptic rollup pills ("max 8", "ratio 2.1", "auto-advance") with no legend | Analytics | P2 | S |
-| 11 | Raw error codes surfaced to instructors (e.g. "SYLLABUS_COVERAGE_SOURCES") | Authoring | P2 | S |
-| 12 | Course badged "draft" while its topics are published and 20 students are enrolled | Authoring/Status | P2 | S |
-| 13 | Quiz Pattern (the key Task-4 control) is collapsed by default and easily missed (pilot N3) | Authoring | P1 | S |
-| 14 | "Difficulty" vs Bloom "Cognitive level" collide; "apply" means two different things on one screen (pilot N4) | Authoring | P1 | S |
-| 15 | Bloom levels truncated at "analyze"; evaluate/create missing, higher levels silently downgraded (pilot N5) | Authoring | P1 | S |
-| 16 | Generate/Modify mode switch signalled only by a button color + label change (pilot N1) | Authoring | P1 | S |
-| 17 | No analytics export for end-of-semester / accreditation reporting (pilot N9) | Analytics | P1 | M |
-| 18 | No bulk approve/publish; a 15-topic course needs 15 individual approvals (pilot N7) | Authoring | P2 | M |
+| 1 | "Modify" silently deletes all draft topics | Authoring | P0 | **(shipped)** confirmation modal lists draft titles before replace |
+| 2 | AI generate/modify gives no progress or cancel | Authoring | P0 | **(shipped)** staged status text + elapsed (m:ss) counter; cancel deferred |
+| 3 | "Completion" means three different numbers | Analytics | P0 | **(shipped)** Dashboard + CourseDetail relabelled to "Session completion"; tooltips added; Insights "Fully complete" untouched |
+| 4 | Insights and Student Progress disagree | Analytics/IA | P1 | **(pre-pilot)** partially addressed by B8; cohort counts and per-student metrics still diverge — see B9 below |
+| 5 | At-risk panel is a dead end | Analytics | P1 | **(pre-pilot)** B2 prompt up next |
+| 6 | Hot Signal one word per line | Dashboard | P1 | (post-pilot) |
+| 7 | Course tree auto-expands | Analytics | P1 | (post-pilot) |
+| 8 | Heatmap red-to-green | Analytics | P1 | (post-pilot) |
+| 9 | Sidebar omits Students and Insights | Nav/IA | P1 | (post-pilot) |
+| 10 | Cryptic rollup pills | Analytics | P2 | (deferred) |
+| 11 | Raw error codes | Authoring | P2 | (post-pilot) |
+| 12 | Course "draft" with topics published | Authoring | P2 | (post-pilot) |
+| 13 | Quiz Pattern collapsed by default | Authoring | P1 | **(shipped)** opens expanded; collapse-on-click preserved |
+| 14 | Difficulty vs Bloom "apply" collision | Authoring | P1 | (post-pilot) |
+| 15 | Bloom truncated at "analyze" | Authoring | P1 | **(shipped)** dropdown now has all six levels |
+| 16 | Generate/Modify mode signalled only by color | Authoring | P1 | (post-pilot) — partially mitigated by the new Modify confirmation modal |
+| 17 | No analytics export | Analytics | P1 | (post-pilot) |
+| 18 | No bulk approve/publish | Authoring | P2 | (post-pilot) |
+| – | Dead-zone scroll on instructor pages | UX/Layout | P1 | **(shipped)** outer scroll container + inner max-w split on Courses, Course Detail, Topic Editor |
 
 ---
 
@@ -66,13 +77,9 @@ The course header badges the course **draft** while its topics are **published**
 
 ## B. Course analytics (Insights)
 
-### B1 (P0) "Completion" is three different numbers
-The same course, CPS 1231-Mid Semester, shows:
-- Dashboard card: **79% Avg. Completion**
-- Course header: **88.2% Completion**
-- Insights KPI: **15% Fully complete** (3 of 20)
+### B1 (shipped) "Completion" was three different numbers, now relabelled
 
-Three screens, one word, three definitions. `InstructorDashboardPage.jsx:111` computes "Avg. Completion" as completed sessions over total sessions, which is not course completion at all. An instructor reading "79% complete" will believe most students finished the content. **Fix:** name each metric for what it measures ("Session completion", "Students fully complete", "Avg topic progress") and use one consistent definition for the headline number across all three surfaces.
+The same course, CPS 1231-Mid Semester, used to show 79% on the dashboard, 88.2% on the course header, and 15% on Insights, all under the word "Completion." All three numbers were correct for what they actually measured; the names lied. The dashboard tile and the course header both compute completed sessions divided by total sessions (`analyticsService.js:55`), so both are now labelled **"Session completion"** with tooltips defining the metric. Insights "Fully complete" was already accurate and is untouched. Deployed and verified June 2026.
 
 ### B2 (P1) At-risk panel is a dead end
 The "Students flagged as at-risk" panel lists students with useful flags (Nia Singh 20% quiz avg, LOW QUIZ SCORE; Amara Das 47.6% pass, LOW PASS RATE + MANY RETRIES). None of the rows link anywhere or offer an action (`InstructorInsightsPage.jsx` AtRiskPanel). The destination already exists: Student Progress → Monitor opens a per-student page with last-active, an inactivity badge, per-topic progress, session replay, and tagged instructor notes. The at-risk panel just doesn't connect to it. Detection with no path to act is wasted. **Fix:** link each at-risk row to that student's Monitor page, pre-seeded with the flags; add a "flag for follow-up" action.
@@ -92,18 +99,33 @@ The chart openly labels itself "Mixed: some students bucketed on quiz-score mean
 ### B7 (P2) Rollup pills are unexplained jargon
 Tree rows show pills like `max 8`, `ratio 2.1`, `2 auto-advance`, `93.8% quiz pass` with no legend (`CourseTreeView.jsx`). A new instructor cannot tell what "ratio 2.1" or "max 8" means. **Fix:** add a one-line legend or hover definitions; spell out "auto-advanced" with a short explanation, since it's an important and unintuitive signal.
 
-### B8 (data integrity) Contradictory at-risk stats
-Nia Singh's at-risk card reads "20% quiz avg · 3 attempts · 100% pass". With a 60% passing threshold (team-confirmed), a 20% average should not pass at all, yet the card shows 100% pass and a LOW QUIZ SCORE flag. Cross-checking against Student Progress, the same student shows "0% quiz pass" and an instructor note "Did not perform the quiz", so the Insights "100% pass" is the wrong figure. Worth tracing the quiz-average and pass calculations; the threshold is known (60%), the averaging is not.
+### B8 (shipped) At-risk row conflated two different data sources under "quiz" labels
 
-### B9 (P1) Insights and Student Progress are two disconnected directions that disagree
-The instructor has two surfaces about the same students that don't reconcile.
+The original audit framed this as "Nia Singh's 20% quiz average coexists with a 100% pass rate, trace why." The trace surfaced a different root cause than expected: the at-risk row was rendering **quiz** average (from `Session.quizAttempts`) next to **milestone** attempt count and pass rate (from `MilestoneAttempt`) under unified "quiz" labels. Each number was individually correct; they just measured different objects.
 
-- **Counts disagree.** Insights and the dashboard card report **5 at-risk**; Student Progress reports **2 struggling** for the same course (CPS 1231-Mid Semester). They use different criteria (Insights: low quiz score, low pass rate, many retries; Student Progress: a quiz-pass threshold) and never say so. An instructor who trusts "2 struggling" misses three students Insights flagged.
-- **Per-student numbers disagree.** Nia Singh is "20% quiz avg · 100% pass" on Insights but "0% quiz pass" on Student Progress and her detail page. The 0% matches her note ("Did not perform the quiz") and "Inactive 80d", so Insights is showing a wrong number for the same person.
-- **They don't hand off.** Insights identifies struggling students but doesn't link to the place you act (the Monitor/detail page, which lives under Student Progress). The cohort view and the per-student view run in parallel instead of as one flow.
-- **Inconsistent naming.** The same idea is "at-risk" on Insights and "struggling" on Student Progress; the entry points are a "Students" button (on Insights) and a "Student Progress" row (on the course page). Three labels for one object.
+`getAtRiskStudents` in `backend/services/milestoneAnalyticsService.js` now derives quiz average, quiz pass rate, and quiz attempt count from the same submitted, non-revision quiz-attempt set. When that set is empty, all three render as "No quiz data" instead of defaulting to misleading numbers.
 
-The split itself is fine and standard: Insights answers "where are the problems across the class," Student Progress answers "what's going on with this student and what do I do." Per-student functionality is genuinely good (session replay, inactivity badge, tagged notes). The problem is coherence: the two views report different numbers, use different words, and don't link. **Fix:** one definition and one label for "struggling/at-risk", computed once and shown identically on both; make Insights at-risk rows and the dashboard "AT-RISK N" deep-link into Student Progress filtered to those students; align the headline counts.
+After the fix, every at-risk row is internally consistent. Verified across all 40 synthetic students: zero hard contradictions, zero threshold mismatches. Spot-check examples:
+
+- Nia Singh: 32.2% avg · 27.8% pass · 18 attempts (was 20% / 100% / 3)
+- Noah Yamamoto: 32.4% / 17.2% / 29
+- Liam Adeyemi: 53.6% / 50% / 28
+- 2 mid-sem students with no submitted quizzes → "No quiz data"
+
+Deployed and verified June 2026. Note: this does **not** resolve B9, which is the same kind of source-conflation at the cohort and cross-surface level.
+
+### B9 (pre-pilot) Insights and Student Progress still disagree on counts and per-student metrics
+
+B8 fixed the conflation **within** the at-risk row. The conflation **between** Insights and Student Progress as surfaces still exists, and the post-B8 spot check confirmed it:
+
+- **Cohort counts disagree.** CPS 1231-Mid Semester: Insights flags **5 at-risk** (Nia, Noah, Ananya, Isabela, Budi all at LOW QUIZ SCORE), Student Progress flags **2 struggling**. Different thresholds and definitions, never reconciled, never named.
+- **Per-student numbers disagree.** Nia Singh: Insights at-risk row reads "**27.8% quiz pass · 18 attempts**" (attempt-level pass rate across all submitted quiz attempts). Student Progress reads "**0% quiz pass**" (topic-level pass — Nia has passed zero of 15 topic gates). Both numbers are correct for what they measure, but they share the label "quiz pass."
+- **No hand-off.** At-risk rows on Insights still don't link to the per-student Monitor page — see B2.
+- **Inconsistent naming.** "At-risk" vs "struggling" still describe the same idea under different words.
+
+This is the same B8 problem one layer up. Fix is: pick one definition of "at-risk / struggling" with an explicit threshold, compute it in one place on the backend, expose it via one endpoint, consume it identically on both surfaces. The per-student "quiz pass" label needs to disambiguate attempt-level vs topic-level — easiest fix is to call one of them by a different name (e.g. attempt pass rate vs topic pass rate). 
+
+Tracked for pre-pilot fix.
 
 ---
 
@@ -137,6 +159,24 @@ Principles to apply going forward, each tied to findings above.
 **6. Accessible and consistent by default.** Colorblind-safe palettes with a non-color cue (text or pattern) on every data color. Tokens, not inline hex, so color and contrast are fixable in one place. One icon language across the section. (B4, C1)
 
 **7. Label research data while it's in the build.** The synthetic cohort stays for the study, which is fine. While it's live, keep the toggle and consider a small "includes synthetic" marker on blended numbers, and plan to default to real-only once the study ends.
+
+---
+
+## Shipped pre-pilot (June 2026)
+
+These items shipped to `studyassist-iitl-keanu.web.app` ahead of the 6/22–6/24 faculty pilot and are reflected in branch `pilot-prep`:
+
+| Finding | Status |
+|---|---|
+| A1 — Modify wipes drafts | (shipped) confirmation modal listing draft titles |
+| A2 — No AI progress feedback | (shipped) staged status + elapsed counter |
+| B1 — Three definitions of "Completion" | (shipped) relabelled, tooltips added |
+| B8 — At-risk row conflated two sources | (shipped) unified to one quiz-attempt set, "No quiz data" for empty |
+| N3 — Quiz Pattern collapsed by default | (shipped) opens expanded |
+| N5 — Bloom truncated at "analyze" | (shipped) all six levels in dropdown |
+| Dead-zone scroll on instructor pages | (shipped) outer scroll + inner max-w split |
+
+Still pre-pilot: **B9** (cohort + per-student metric reconciliation) and **B2** (at-risk panel link-out to Monitor).
 
 ---
 
@@ -200,20 +240,20 @@ Most of the work above is connecting and clarifying what already exists, not reb
 
 Yes, most of the top findings are concrete UI changes, and most are small. These were checked by reading the components, not inferred. File and line refs are exact at the time of review.
 
-| Finding | File : line | Now | Change |
+| Finding | File : line | Status | Notes |
 |---|---|---|---|
-| N3 Quiz Pattern hidden | InstructorTopicEditorPage.jsx:79 | `useState(false)` (collapsed) | default `true`, or badge the module card when a non-default pattern is set |
-| N5 Bloom truncated | InstructorTopicEditorPage.jsx:12 | 4 of 6 levels | add `'evaluate','create'` — backend already accepts all 6 (instructorRoutes.js:88) |
-| N4 difficulty/Bloom collision | InstructorTopicEditorPage.jsx:5-6, :12 | module tiers reuse "Apply" | rename module tiers off Bloom verbs |
-| N6 no sum-to-100 | InstructorTopicEditorPage.jsx:84-87, 126-141 | per-field clamp only | show running total; warn when not 100 |
-| N10 question-type mix has no UI | InstructorTopicEditorPage.jsx:13, 34, 78-156 | field exists, never rendered | add weighting control, or remove the dead field |
-| AI Edit no diff | InstructorTopicEditorPage.jsx:290-348 | "Applied successfully", no diff | before/after review (deferred) |
-| B4 heatmap red-green | TopicStudentHeatmap.jsx:3-11 | hardcoded green→red hex ramp | colorblind-safe ramp + legend (cells already have hover tooltips and a "syn" badge) |
-| B1 "completion" = 3 numbers | InstructorDashboardPage.jsx:111,159 · InstructorCourseDetailPage.jsx:396 · insights fully-complete | sessions-based vs `completionRate` vs fully-complete, all labeled "Completion" | one definition; relabel the dashboard tile "Session completion" |
-| B2 at-risk dead end | InstructorInsightsPage.jsx:58-70 (AtRiskPanel) | rows render, no link | wrap each row in a Link to the student detail / Monitor page (it exists) |
-| C1 Hot Signal one-word-per-line | InstructorCourseDetailPage.jsx:392-402 (1/3 column) + HotSignalCard.jsx:50,72 (inline shrink-0 CTA) | narrow column plus inline CTA squeezes the text | give the signal its own full-width row, or stack the CTA under the text |
-| N8 Delete course | InstructorCourseDetailPage.jsx:320 (confirm exists), 364-377 (placement) | guarded by window.confirm; sits next to "View insights" | relocate from the primary row; consider typed confirmation |
-| A1 Modify wipes drafts | InstructorCourseDetailPage.jsx:272,284,546,551 + instructorRoutes.js:530,887 | auto mode, post-hoc warning, no undo | confirm-before-replace listing the titles; keep replaced drafts archived for undo |
-| B3 tree auto-expands | CourseTreeView.jsx | every module/milestone expanded | collapse to module level by default |
+| N3 Quiz Pattern hidden | InstructorTopicEditorPage.jsx:79 | (shipped) | now `useState(true)` |
+| N5 Bloom truncated | InstructorTopicEditorPage.jsx:12 | (shipped) | array extended with `'evaluate','create'` |
+| N4 difficulty/Bloom collision | InstructorTopicEditorPage.jsx:5-6, :12 | (post-pilot) | rename module tiers off Bloom verbs |
+| N6 no sum-to-100 | InstructorTopicEditorPage.jsx:84-87, 126-141 | (post-pilot) | running total + warn |
+| N10 question-type mix no UI | InstructorTopicEditorPage.jsx:13, 34, 78-156 | (post-pilot) | render the field or remove it |
+| AI Edit no diff | InstructorTopicEditorPage.jsx:290-348 | (deferred) | before/after review |
+| B4 heatmap red-green | TopicStudentHeatmap.jsx:3-11 | (post-pilot) | colorblind-safe ramp |
+| B1 "completion" = 3 numbers | several files | (shipped) | Dashboard + CourseDetail = "Session completion"; tooltips |
+| B2 at-risk dead end | InstructorInsightsPage.jsx:58-70 | (pre-pilot) | wrap rows in `<Link>` to Monitor — next prompt |
+| C1 Hot Signal layout | InstructorCourseDetailPage.jsx:392-402 + HotSignalCard.jsx:50,72 | (post-pilot) | full-width row or stacked CTA |
+| N8 Delete course placement | InstructorCourseDetailPage.jsx:320,364-377 | (post-pilot) | relocate; typed confirmation |
+| A1 Modify wipes drafts | InstructorCourseDetailPage.jsx:272,284,546,551 + instructorRoutes.js:530,887 | (shipped, frontend only) | confirmation modal lists draft titles; archived-for-undo deferred |
+| B3 tree auto-expands | CourseTreeView.jsx | (post-pilot) | collapse to module level |
 
-Quick wins (one-liners or near): N3 (default-open), N5 (two array entries), B1 (relabel), B2 (wrap rows in a link), C1 (move one card to its own row). The heavier ones are A1 (confirm + undo flow), N10 (new control), and B1's deeper fix (reconcile the metric definitions across pages, which touches the backend too).
+Shipped this cycle: N3, N5, B1, and A1's confirmation modal (archived-for-undo still pending). Remaining quick wins: B2 (wrap rows in a link) and C1 (move one card to its own row). Heavier: N10 (new control) and B1's deeper backend reconciliation of metric definitions (also the root of B9).
