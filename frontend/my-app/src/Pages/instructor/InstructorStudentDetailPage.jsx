@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useLocation } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
 import MessageContent from '../../components/chat/MessageContent';
 
@@ -536,6 +536,12 @@ function NotesPanel({ courseId, studentId, notesScope, scopeLabel, selectedTopic
 
 export default function InstructorStudentDetailPage() {
   const { courseId, studentId } = useParams();
+  const location = useLocation();
+  // Optional context when navigated here from the Insights at-risk panel (B2).
+  // Absent on direct navigation (e.g. Student Progress → Monitor), so the
+  // banner is purely additive for the at-risk flow.
+  const incomingAtRiskFlags = location.state?.atRiskFlags || null;
+  const [atRiskBannerDismissed, setAtRiskBannerDismissed] = useState(false);
   const [detail, setDetail] = useState(null);
   const [courseName, setCourseName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -614,6 +620,31 @@ export default function InstructorStudentDetailPage() {
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
         {courseName || 'Back to students'}
       </Link>
+
+      {/* B2: context banner when arriving from the Insights at-risk panel.
+          Dismissible for the session; never shown on direct navigation. */}
+      {incomingAtRiskFlags && incomingAtRiskFlags.length > 0 && !atRiskBannerDismissed && (
+        <div className="mt-4 flex items-start justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-rose-800">You opened this student from the at-risk panel.</p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-rose-700">Flags:</span>
+              {incomingAtRiskFlags.map((f) => (
+                <Pill key={f} tone="red">{String(f).replace(/_/g, ' ').toUpperCase()}</Pill>
+              ))}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAtRiskBannerDismissed(true)}
+            className="flex-shrink-0 px-1 text-lg leading-none text-rose-400 hover:text-rose-600"
+            title="Dismiss"
+            aria-label="Dismiss at-risk banner"
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
       <div className="mt-4 flex items-start justify-between gap-6">
         <div className="min-w-0">

@@ -55,7 +55,7 @@ function SectionCard({ title, eyebrow, children, right, innerRef }) {
   );
 }
 
-function AtRiskPanel({ rows }) {
+function AtRiskPanel({ rows, courseId }) {
   if (!rows) return null;
   const atRisk = rows.filter((r) => r.atRisk);
   if (atRisk.length === 0) {
@@ -68,9 +68,11 @@ function AtRiskPanel({ rows }) {
   return (
     <div className="space-y-2">
       {atRisk.map((r) => (
-        <div
+        <Link
           key={r.studentId}
-          className="flex items-center gap-3 p-3 border border-rose-200 bg-rose-50/40 rounded-lg"
+          to={`/instructor/courses/${courseId}/students/${r.studentId}`}
+          state={{ atRiskFlags: r.flags, fromInsights: true }}
+          className="flex items-center gap-3 p-3 border border-rose-200 bg-rose-50/40 rounded-lg cursor-pointer hover:bg-white hover:border-gray-300 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -105,7 +107,10 @@ function AtRiskPanel({ rows }) {
               ))}
             </div>
           </div>
-        </div>
+          <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
       ))}
     </div>
   );
@@ -301,7 +306,7 @@ export default function InstructorInsightsPage() {
           </SectionCard>
 
           <SectionCard innerRef={atRiskRef} title="Students flagged as at-risk">
-            <AtRiskPanel rows={atRisk} />
+            <AtRiskPanel rows={atRisk} courseId={courseId} />
           </SectionCard>
         </>
       )}
