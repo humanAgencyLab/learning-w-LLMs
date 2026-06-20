@@ -271,21 +271,37 @@ async function getAtRiskStudents(courseId, {
     courseId: new mongoose.Types.ObjectId(courseId),
     userId: { $in: userIds },
   }).select('userId quizAttempts').lean();
-  const quizScoreMap = new Map();
+  // INVARIANT: the at-risk panel's quiz numbers are computed over SUBMITTED,
+  // NON-REVISION attempts only — the single source of truth. Drafts are
+  // abandoned in-progress quizzes; revisions aren't module-completion attempts;
+  // neither counts. Crucially, the average AND the pass rate are derived from
+  // the SAME attempt set, so the two displayed numbers can never contradict
+  // (e.g. 100% pass implies avg >= the 60% threshold). A student with zero such
+  // attempts gets null for both (the UI renders that as "—"/"No quiz data").
+  // This replaces an earlier bug where the row paired the quiz average with the
+  // *milestone* attempts/pass-rate, producing impossible reads like
+  // "20% quiz avg · 100% pass".
+  const quizStatMap = new Map(); // uid -> { scores: number[], passed, count }
   for (const sess of quizSessions) {
     const uid = sess.userId?.toString();
     if (!uid) continue;
     for (const a of sess.quizAttempts || []) {
       if (a.status !== 'submitted' || a.isRevision) continue;
-      if (a.scorePct == null || Number.isNaN(Number(a.scorePct))) continue;
-      if (!quizScoreMap.has(uid)) quizScoreMap.set(uid, []);
-      quizScoreMap.get(uid).push(Number(a.scorePct));
+      if (!quizStatMap.has(uid)) quizStatMap.set(uid, { scores: [], passed: 0, count: 0 });
+      const qs = quizStatMap.get(uid);
+      qs.count += 1;
+      if (a.passed === true) qs.passed += 1;
+      if (a.scorePct != null && !Number.isNaN(Number(a.scorePct))) qs.scores.push(Number(a.scorePct));
     }
   }
-  const meanQuizScore = (uid) => {
-    const arr = quizScoreMap.get(uid);
-    if (!arr || !arr.length) return null;
-    return Math.round((arr.reduce((x, y) => x + y, 0) / arr.length) * 10) / 10;
+  const quizStatsFor = (uid) => {
+    const qs = quizStatMap.get(uid);
+    if (!qs || qs.count === 0) return { quizScore: null, quizPassRate: null, quizAttemptCount: 0 };
+    const quizScore = qs.scores.length
+      ? Math.round((qs.scores.reduce((x, y) => x + y, 0) / qs.scores.length) * 10) / 10
+      : null;
+    const quizPassRate = Math.round((qs.passed / qs.count) * 1000) / 10;
+    return { quizScore, quizPassRate, quizAttemptCount: qs.count };
   };
 
   const rows = enrollments
@@ -302,7 +318,7 @@ async function getAtRiskStudents(courseId, {
       const distinctMs = s?.distinctMilestones?.length || 0;
       const passRate = attempts ? Math.round((passes / attempts) * 1000) / 10 : 0;
       const attemptsPerMilestone = distinctMs ? Math.round((attempts / distinctMs) * 10) / 10 : 0;
-      const quizScore = meanQuizScore(uid);
+      const { quizScore, quizPassRate, quizAttemptCount } = quizStatsFor(uid);
 
       // Auto-advance over a *share* of milestones — not "any single one".
       // The tutor nudges a student past the occasional stubborn milestone, so
@@ -346,6 +362,8 @@ async function getAtRiskStudents(courseId, {
         passRate,
         attemptsPerMilestone,
         quizScore,
+        quizPassRate,
+        quizAttemptCount,
         lastAttemptAt: s?.lastAttemptAt || null,
         flags,
         atRisk,

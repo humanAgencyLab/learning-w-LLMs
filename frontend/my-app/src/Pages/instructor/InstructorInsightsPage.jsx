@@ -86,8 +86,12 @@ function AtRiskPanel({ rows }) {
               <span className="text-xs text-gray-500">@{r.username}</span>
             </div>
             <div className="text-xs text-gray-600 mt-0.5">
-              {r.quizScore != null && `${r.quizScore}% quiz avg · `}
-              {r.attempts} attempts · {r.passRate}% pass · {r.attemptsPerMilestone} per milestone
+              {/* Quiz numbers only — all from the same submitted, non-revision
+                  attempt set so avg and pass rate are always consistent. (Was
+                  mixing the quiz avg with the milestone pass rate.) */}
+              {r.quizAttemptCount > 0
+                ? `${r.quizScore != null ? `${r.quizScore}% quiz avg · ` : ''}${r.quizPassRate}% quiz pass · ${r.quizAttemptCount} quiz attempt${r.quizAttemptCount === 1 ? '' : 's'}`
+                : 'No quiz data'}
               {r.autoAdvanced > 0 && ` · ${r.autoAdvanced} auto-advance`}
             </div>
             <div className="flex gap-1 mt-1 flex-wrap">
