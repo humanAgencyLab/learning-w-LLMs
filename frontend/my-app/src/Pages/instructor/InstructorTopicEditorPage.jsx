@@ -9,7 +9,7 @@ const DIFFICULTY_COLORS = {
   core: 'bg-blue-50 text-blue-700 border-blue-200',
   apply: 'bg-purple-50 text-purple-700 border-purple-200',
 };
-const COGNITIVE_LEVELS = ['remember', 'understand', 'apply', 'analyze'];
+const COGNITIVE_LEVELS = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'];
 const QUESTION_TYPES = ['conceptual', 'applied', 'recall', 'analytical'];
 // Keep these aligned with backend validators (topicPlanValidator.js).
 // These are used for enabling/disabling "Add" controls (not displayed as "x/y",
@@ -76,7 +76,7 @@ function MilestoneRow({ milestone, index, total, onChange, onRemove, onAdd }) {
 
 // ─── Quiz Pattern Section ──────────────────────────────────────────────────
 function QuizPatternSection({ pattern, onChange }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const p = pattern || {};
   const mix = p.difficultyMix || { easy: 30, medium: 50, hard: 20 };
 

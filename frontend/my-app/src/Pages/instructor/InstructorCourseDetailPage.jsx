@@ -29,13 +29,37 @@ function CopyButton({ text }) {
   );
 }
 
-function StatCard({ label, value, sub }) {
+function StatCard({ label, value, sub, title }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 flex-1 min-w-[120px]">
+    <div className="bg-white border border-gray-200 rounded-xl p-4 flex-1 min-w-[120px]" title={title}>
       <p className="text-2xl font-bold text-gray-900">{value}</p>
       <p className="text-sm text-gray-500 mt-0.5">{label}</p>
       {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
     </div>
+  );
+}
+
+// Rotating perceived-progress label shown during the (5-12s) LLM generate/modify
+// call. Rendered only while the request is in flight, so its timer resets every
+// time a new generation starts. Stages are time-based, not wired to real backend
+// progress — they just keep the user oriented during the wait.
+function GenerationProgress() {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const stage =
+    elapsed < 2 ? 'Reading syllabus…'
+      : elapsed < 6 ? 'Drafting topics…'
+        : elapsed < 12 ? 'Validating coverage…'
+          : 'Almost done…';
+  const mm = Math.floor(elapsed / 60);
+  const ss = String(elapsed % 60).padStart(2, '0');
+  return (
+    <span>
+      {stage} <span className="text-gray-400">({mm}:{ss})</span>
+    </span>
   );
 }
 
@@ -195,6 +219,9 @@ export default function InstructorCourseDetailPage() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
+  // Holds the pending message while the "replace drafts?" confirmation is open
+  // (null = no confirmation pending).
+  const [confirmModifyMsg, setConfirmModifyMsg] = useState(null);
   const chatEndRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -271,9 +298,20 @@ export default function InstructorCourseDetailPage() {
   const hasDrafts = topics.some((t) => t.status === 'draft');
   const isModify = hasDrafts || chatMessages.length > 0;
 
-  const onSendChat = async () => {
+  const onSendChat = () => {
     const message = chatInput.trim();
     if (!message || chatBusy) return;
+    // Modify replaces (deletes) all existing draft topics. Confirm first when
+    // there's at least one draft to lose. Generate never has drafts (it only
+    // runs when isModify is false), so it bypasses the confirmation.
+    if (isModify && hasDrafts) {
+      setConfirmModifyMsg(message);
+      return;
+    }
+    doSendChat(message);
+  };
+
+  const doSendChat = async (message) => {
     setChatInput('');
     setChatBusy(true);
     setError(null);
@@ -344,6 +382,42 @@ export default function InstructorCourseDetailPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-6 max-w-4xl mx-auto pb-12">
+      {/* Confirm before Modify wipes existing draft topics */}
+      {confirmModifyMsg !== null && (() => {
+        const draftTopics = topics.filter((t) => t.status === 'draft');
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true">
+            <div className="bg-white border border-gray-200 rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
+              <h3 className="text-lg font-semibold mb-2">Replace draft topics?</h3>
+              <p className="text-gray-600 mb-3">
+                Modify will replace the following {draftTopics.length} draft topic{draftTopics.length === 1 ? '' : 's'} with new versions. Approved and published topics are not affected. This cannot be undone.
+              </p>
+              <ul className="max-h-40 overflow-y-auto border border-gray-100 rounded-lg bg-gray-50 px-3 py-2 mb-5 text-sm text-gray-700 list-disc list-inside space-y-0.5">
+                {draftTopics.map((t, i) => (
+                  <li key={t._id || t.courseTopicId || i} className="truncate">{t.title || '(untitled draft)'}</li>
+                ))}
+              </ul>
+              <div className="flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setConfirmModifyMsg(null)}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-50 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { const m = confirmModifyMsg; setConfirmModifyMsg(null); doSendChat(m); }}
+                  className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium"
+                >
+                  Replace drafts
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Navigation */}
       <Link to="/instructor/courses" className="text-sm text-blue-600 hover:text-blue-800 inline-flex items-center gap-1">
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -393,7 +467,7 @@ export default function InstructorCourseDetailPage() {
           <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard label="Enrolled" value={analytics.enrollmentCount ?? 0} />
             <StatCard label="Sessions" value={analytics.sessionCount ?? 0} />
-            <StatCard label="Completion" value={`${analytics.completionRate ?? 0}%`} />
+            <StatCard label="Session completion" title="Percentage of this course's student sessions that reached the 'completed' phase (completed sessions ÷ total sessions)" value={`${analytics.completionRate ?? 0}%`} />
             <StatCard label="Topics" value={topics.length} sub={`${publishedCount} published`} />
           </div>
           <div className="lg:col-span-1">
@@ -515,7 +589,7 @@ export default function InstructorCourseDetailPage() {
             {chatBusy && (
               <div className="flex justify-start">
                 <div className="bg-gray-100 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-500 flex items-center gap-2 rounded-bl-sm">
-                  <Spinner /> Thinking...
+                  <Spinner /> <GenerationProgress />
                 </div>
               </div>
             )}
