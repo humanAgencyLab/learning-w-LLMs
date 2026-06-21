@@ -14,9 +14,9 @@ import { Link, useNavigate } from 'react-router-dom';
  * so no new endpoint is needed.
  */
 
-function Tile({ label, value, accent }) {
+function Tile({ label, value, accent, title }) {
   return (
-    <div className="flex-1 min-w-0">
+    <div className="flex-1 min-w-0" title={title}>
       <p className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">{label}</p>
       <p className={`text-lg font-bold mt-0.5 leading-tight ${accent || 'text-gray-900'}`}>
         {value}
@@ -139,6 +139,7 @@ export default function CourseCardsGrid({ perCourse = [], loading = false }) {
                 label="At-risk"
                 value={c.atRiskCount ?? 0}
                 accent={c.atRiskCount > 0 ? 'text-rose-700' : 'text-gray-900'}
+                title="Students at highest urgency: Critical or High risk. Watch-tier students are visible in the Insights panel but not in this count."
               />
             </div>
           </div>

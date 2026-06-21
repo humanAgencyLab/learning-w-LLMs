@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
+import { riskMeta } from '../../components/instructor/riskLevel';
 
 const PHASE_LABELS = {
   pre: 'Not started',
@@ -25,7 +26,9 @@ function ProgressBar({ pct }) {
 
 function StudentRow({ student, expanded, onToggle, onMonitor }) {
   const topicPassRate = student.topicPassRate;
-  const atRisk = !!student.atRisk;
+  const isWell = student.classContext === 'doing_well_in_class';
+  const showLevel = !isWell && student.riskLevel && student.riskLevel !== 'healthy';
+  const meta = riskMeta(student.riskLevel);
 
   return (
     <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
@@ -54,12 +57,20 @@ function StudentRow({ student, expanded, onToggle, onMonitor }) {
         <div className="flex items-center gap-5 text-xs text-gray-500 flex-shrink-0">
           <span>{student.completedTopics}/{student.totalTopics} topics</span>
           <span>{student.totalPoints} pts</span>
-          {atRisk && (
+          {isWell && (
             <span
-              className="font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 uppercase tracking-wide text-[10px]"
-              title="Flagged at-risk by the same definition used on the dashboard and Insights (low quiz score, low attempt pass rate, or repeated retries)"
+              className="font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 uppercase tracking-wide text-[10px]"
+              title="Instructor marked this student as doing well in class — excluded from the at-risk count"
             >
-              At-risk
+              Class OK
+            </span>
+          )}
+          {showLevel && (
+            <span
+              className={`font-semibold px-2 py-0.5 rounded-full border uppercase tracking-wide text-[10px] ${meta.pill}`}
+              title={`Risk level: ${meta.label} (${student.riskScore}/100). Same definition as the dashboard tile and the Insights panel.`}
+            >
+              {meta.label}
             </span>
           )}
           {topicPassRate !== null && topicPassRate !== undefined && (
@@ -175,11 +186,19 @@ export default function InstructorStudentsPage() {
   }
 
   const students = data?.students || [];
-  // B9: the at-risk count comes from the canonical per-student `atRisk` flag
-  // (computed server-side by getAtRiskStudents) — the same number the dashboard
-  // tile and the Insights panel show. The old "struggling = quizPassRate < 60"
-  // client-side heuristic is retired so the three surfaces can't disagree.
-  const atRiskCount = students.filter((s) => s.atRisk).length;
+  // Risk Insights v2: header breakdown by level. Students the instructor marked
+  // "doing well in class" are excluded (they show CLASS OK, not a level).
+  const levelCounts = { critical: 0, high: 0, watch: 0 };
+  for (const s of students) {
+    if (s.classContext === 'doing_well_in_class') continue;
+    if (s.riskLevel === 'critical') levelCounts.critical += 1;
+    else if (s.riskLevel === 'high') levelCounts.high += 1;
+    else if (s.riskLevel === 'watch') levelCounts.watch += 1;
+  }
+  const breakdownParts = [];
+  if (levelCounts.critical) breakdownParts.push(`${levelCounts.critical} critical`);
+  if (levelCounts.high) breakdownParts.push(`${levelCounts.high} high`);
+  if (levelCounts.watch) breakdownParts.push(`${levelCounts.watch} watch`);
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
@@ -192,8 +211,8 @@ export default function InstructorStudentsPage() {
         <h1 className="text-2xl font-bold text-gray-900">Student Progress</h1>
         <p className="text-sm text-gray-500 mt-1">
           {students.length} student{students.length !== 1 ? 's' : ''} enrolled
-          {atRiskCount > 0 && (
-            <span className="text-red-600 font-medium"> · {atRiskCount} at-risk</span>
+          {breakdownParts.length > 0 && (
+            <span className="text-red-600 font-medium"> · {breakdownParts.join(' · ')}</span>
           )}
         </p>
       </div>
@@ -214,14 +233,13 @@ export default function InstructorStudentsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {/* Show at-risk students first, then by lowest topic pass rate */}
+          {/* Highest risk first; "doing well in class" overrides sink to the bottom */}
           {students
             .slice()
             .sort((a, b) => {
-              if (!!a.atRisk !== !!b.atRisk) return a.atRisk ? -1 : 1;
-              const at = a.topicPassRate == null ? Infinity : a.topicPassRate;
-              const bt = b.topicPassRate == null ? Infinity : b.topicPassRate;
-              return at - bt;
+              const av = a.classContext === 'doing_well_in_class' ? -1 : (a.riskScore || 0);
+              const bv = b.classContext === 'doing_well_in_class' ? -1 : (b.riskScore || 0);
+              return bv - av;
             })
             .map((s) => (
               <StudentRow

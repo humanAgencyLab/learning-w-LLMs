@@ -9,42 +9,24 @@ import PerformanceKPIStrip from '../../components/instructor/performance/Perform
 import ScoreDistributionChart from '../../components/instructor/performance/ScoreDistributionChart';
 import CompletionFunnel from '../../components/instructor/performance/CompletionFunnel';
 import QuizByTopicTable from '../../components/instructor/performance/QuizByTopicTable';
+import RiskDistributionChart from '../../components/instructor/RiskDistributionChart';
+import { riskMeta, flagLabel, driverPhrase, FLAG_CHIPS, CLASS_OVERRIDE_BORDER } from '../../components/instructor/riskLevel';
 
 /**
- * Phase F Insights page:
- *
- *   Header
- *   → PerformanceKPIStrip (6 dense numeric tiles, density-first scan)
- *   → InsightCards (3–5 narrative cards, each linking to a chart below)
- *   → ScoreDistributionChart (shape of the class — where students land)
- *   → CompletionFunnel (where students drop off)
- *   → CourseTreeView (structure + rollups)
- *   → MilestoneBarDrilldown (hardest milestones; tile 6 scrolls here)
- *   → QuizByTopicTable (which quizzes are hard)
- *   → TopicStudentHeatmap (per-student topic-level shape)
- *   → AtRiskPanel (students needing intervention)
- *
- * Deliberately dropped vs. backend payload: weekly engagement, time-to-complete,
- * and module-difficulty table — those describe pattern, not struggle signal.
- *
- * `chartRefs` stays wired to the InsightCards vocabulary
- * ('tree' | 'milestones' | 'heatmap' | 'atRisk') so each narrative card can
- * still scroll-to-and-flash a specific chart. The new KPI strip reuses that
- * same milestonesRef for its "Hardest module" tile.
+ * Phase F Insights page (Risk Insights v2):
+ *   Header → KPI strip → InsightCards → ScoreDistribution → CompletionFunnel →
+ *   CourseTree → Milestone drilldown → QuizByTopic → Heatmap →
+ *   RiskDistributionChart (with topic + snapshot filters) →
+ *   AtRiskPanel (continuous score + level, filter chips).
  */
 
 function SectionCard({ title, eyebrow, children, right, innerRef }) {
   return (
-    <section
-      ref={innerRef}
-      className="bg-white border border-gray-200 rounded-xl p-5 scroll-mt-6"
-    >
+    <section ref={innerRef} className="bg-white border border-gray-200 rounded-xl p-5 scroll-mt-6">
       <div className="flex items-start justify-between mb-4 gap-4">
         <div className="min-w-0">
           {eyebrow && (
-            <p className="text-[11px] uppercase tracking-wide text-indigo-600 font-semibold mb-0.5">
-              {eyebrow}
-            </p>
+            <p className="text-[11px] uppercase tracking-wide text-indigo-600 font-semibold mb-0.5">{eyebrow}</p>
           )}
           <h2 className="text-base font-semibold text-gray-900">{title}</h2>
         </div>
@@ -55,69 +37,127 @@ function SectionCard({ title, eyebrow, children, right, innerRef }) {
   );
 }
 
-function AtRiskPanel({ rows, courseId }) {
-  if (!rows) return null;
-  const atRisk = rows.filter((r) => r.atRisk);
-  if (atRisk.length === 0) {
-    return (
-      <p className="text-sm text-gray-500">
-        No students currently flagged as at-risk in this course.
-      </p>
-    );
-  }
+function relativeDays(d) {
+  if (!d) return '';
+  const days = Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
+  if (days <= 0) return 'today';
+  if (days === 1) return '1 day ago';
+  if (days < 30) return `${days} days ago`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? '1 month ago' : `${months} months ago`;
+}
+
+// Filter chips (Step 4): single-select level + multi-select flag.
+function FilterChips({ levelFilter, setLevelFilter, flagFilters, setFlagFilters }) {
+  const toggleFlag = (key) =>
+    setFlagFilters((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  const active = !!levelFilter || flagFilters.length > 0;
   return (
-    <div className="space-y-2">
-      {atRisk.map((r) => (
-        <Link
-          key={r.studentId}
-          to={`/instructor/courses/${courseId}/students/${r.studentId}`}
-          state={{ atRiskFlags: r.flags, fromInsights: true }}
-          className="flex items-center gap-3 p-3 border border-rose-200 bg-rose-50/40 rounded-lg cursor-pointer hover:bg-white hover:border-gray-300 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-gray-900">{r.name || r.username}</span>
-              {r.isSynthetic && (
-                <span
-                  className="text-[9px] uppercase px-1 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200"
-                  title={r.personaTag || 'Synthetic student'}
-                >
-                  syn
-                </span>
-              )}
-              <span className="text-xs text-gray-500">@{r.username}</span>
-            </div>
-            <div
-              className="text-xs text-gray-600 mt-0.5"
-              title="Attempt pass rate = percentage of submitted quiz attempts that scored at or above the passing threshold. (Distinct from the topic pass rate on Student Progress, which counts topics whose final quiz was passed.)"
-            >
-              {/* Quiz numbers only — all from the same submitted, non-revision
-                  attempt set so avg and pass rate are always consistent. (Was
-                  mixing the quiz avg with the milestone pass rate.) "Attempt
-                  pass rate" is named explicitly to disambiguate from Student
-                  Progress's topic-level "topic pass rate" (B9). */}
-              {r.quizAttemptCount > 0
-                ? `${r.quizScore != null ? `${r.quizScore}% quiz avg · ` : ''}${r.quizPassRate}% attempt pass rate · ${r.quizAttemptCount} quiz attempt${r.quizAttemptCount === 1 ? '' : 's'}`
-                : 'No quiz data'}
-              {r.autoAdvanced > 0 && ` · ${r.autoAdvanced} auto-advance`}
-            </div>
-            <div className="flex gap-1 mt-1 flex-wrap">
-              {r.flags.map((f) => (
-                <span
-                  key={f}
-                  className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200"
-                >
-                  {f.replace(/_/g, ' ')}
-                </span>
-              ))}
-            </div>
-          </div>
-          <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </Link>
-      ))}
+    <div className="flex flex-wrap items-center gap-2 mb-3">
+      <button
+        type="button"
+        onClick={() => setLevelFilter(null)}
+        className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors ${levelFilter === null ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+      >
+        All
+      </button>
+      {['critical', 'high', 'watch'].map((lvl) => {
+        const m = riskMeta(lvl);
+        const on = levelFilter === lvl;
+        return (
+          <button
+            key={lvl}
+            type="button"
+            onClick={() => setLevelFilter(on ? null : lvl)}
+            className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors ${on ? m.chip : m.chipIdle}`}
+          >
+            {m.label}{on ? ' ×' : ''}
+          </button>
+        );
+      })}
+      <span className="w-px h-4 bg-gray-200 mx-1" />
+      {FLAG_CHIPS.map((f) => {
+        const on = flagFilters.includes(f.key);
+        return (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => toggleFlag(f.key)}
+            className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${on ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+          >
+            {f.label}{on ? ' ×' : ''}
+          </button>
+        );
+      })}
+      {active && (
+        <button type="button" onClick={() => { setLevelFilter(null); setFlagFilters([]); }} className="text-[11px] text-blue-600 hover:text-blue-800 ml-1">
+          Clear filters
+        </button>
+      )}
     </div>
+  );
+}
+
+function RiskRow({ r, courseId, publishedN }) {
+  const meta = riskMeta(r.riskLevel);
+  const isWell = r.classContext === 'doing_well_in_class';
+  const isConfirmed = r.classContext === 'confirmed_at_risk';
+  const borderCls = isWell ? CLASS_OVERRIDE_BORDER : (isConfirmed ? meta.leftBorderHeavy : meta.leftBorder);
+  const noEng = (r.flags || []).includes('no_engagement');
+  const driver = driverPhrase(r.dominantDriver);
+  const quizzed = r.attemptedQuizTopics ?? 0;
+  const touched = r.attemptedPublished ?? 0;
+  const pubN = r.publishedN ?? publishedN ?? 0;
+
+  return (
+    <Link
+      key={r.studentId}
+      to={`/instructor/courses/${courseId}/students/${r.studentId}`}
+      state={{ atRiskFlags: r.flags, fromInsights: true }}
+      className={`flex items-center gap-3 p-3 border border-gray-200 ${borderCls} bg-white rounded-lg cursor-pointer hover:border-gray-300 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500`}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-gray-900">{r.name || r.username}</span>
+          {r.isSynthetic && (
+            <span className="text-[9px] uppercase px-1 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200" title={r.personaTag || 'Synthetic student'}>syn</span>
+          )}
+          <span className="text-xs text-gray-500">@{r.username}</span>
+        </div>
+        <div className="text-xs text-gray-600 mt-0.5">
+          {noEng && r.joinedAt ? `Joined ${relativeDays(r.joinedAt)} · ` : ''}
+          {quizzed} of {pubN} quizzed · {touched} touched
+          {r.avgQuizScore != null ? ` · avg ${r.avgQuizScore}%` : ' · no quiz data'}
+        </div>
+        {driver && <div className="text-xs text-gray-500 mt-0.5">mostly: {driver}</div>}
+        <div className="flex gap-1 mt-1 flex-wrap items-center">
+          {(r.flags || []).map((f) => (
+            <span key={f} className={`text-[10px] uppercase px-1.5 py-0.5 rounded border ${meta.pill}`}>{flagLabel(f)}</span>
+          ))}
+          {r.persistence_score != null && r.persistence_score >= 60 && (
+            <span
+              className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200"
+              title="This student retries and eventually passes — grinding, not quitting"
+            >
+              Persists — passes on retry
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-col items-end flex-shrink-0 gap-0.5">
+        {isWell && (
+          <span className="text-[9px] uppercase px-1 py-0.5 rounded bg-gray-200 text-gray-600 border border-gray-300" title="Instructor marked this student as doing well in class">Class override</span>
+        )}
+        {isConfirmed && (
+          <span className="text-[9px] uppercase px-1 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-300" title="Instructor confirmed this student is at-risk in class">Confirmed in class</span>
+        )}
+        <span className={`text-sm font-bold px-2 py-0.5 rounded border ${isWell ? 'bg-gray-100 text-gray-500 border-gray-200' : meta.pill}`}>{r.riskScore}/100</span>
+        <span className="text-[10px] uppercase tracking-wide text-gray-500">{isWell ? 'Class OK' : meta.label}</span>
+      </div>
+      <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+      </svg>
+    </Link>
   );
 }
 
@@ -127,18 +167,22 @@ export default function InstructorInsightsPage() {
   const [error, setError] = useState('');
   const [tree, setTree] = useState(null);
   const [milestones, setMilestones] = useState([]);
-  const [atRisk, setAtRisk] = useState([]);
+  const [riskRows, setRiskRows] = useState([]);
+  const [riskTopics, setRiskTopics] = useState([]);
   const [heatmap, setHeatmap] = useState({ topics: [], students: [] });
   const [performance, setPerformance] = useState(null);
   const [performanceAvailable, setPerformanceAvailable] = useState(true);
   const [courseTitle, setCourseTitle] = useState('');
   const [includeSynthetic, setIncludeSynthetic] = useState(true);
 
-  // Refs into each chart section so InsightCards can scroll to them. The
-  // keys match `instructorBriefingAgent.CHART_REFS` — when that vocabulary
-  // changes both sides must stay in sync. The KPI strip's hardest-module
-  // tile piggybacks on `milestonesRef` because that's where the drill-down
-  // visualization lives.
+  // Risk panel/chart filter state.
+  const [levelFilter, setLevelFilter] = useState(null);   // single-select level
+  const [flagFilters, setFlagFilters] = useState([]);     // multi-select flags
+  const [topicFilter, setTopicFilter] = useState(null);   // single topicId
+  const [snapshot, setSnapshot] = useState(null);         // up-to-topic N
+  const [distData, setDistData] = useState(null);         // re-scored rows when a topic/snapshot filter is active
+  const [distLoading, setDistLoading] = useState(false);
+
   const treeRef = useRef(null);
   const milestonesRef = useRef(null);
   const heatmapRef = useRef(null);
@@ -152,17 +196,13 @@ export default function InstructorInsightsPage() {
     setLoading(true);
     setError('');
     try {
-      // Performance summary is fetched alongside the other four calls so
-      // the whole page renders in one tick. Wrapped in .catch — if the
-      // perf endpoint itself errors, the four original charts still work.
-      const [courseRes, treeRes, msRes, arRes, hmRes, perfRes] = await Promise.all([
+      const [courseRes, treeRes, msRes, riskRes, hmRes, perfRes] = await Promise.all([
         instructorApi.getCourse(courseId),
         instructorApi.getCourseTree(courseId, { includeSynthetic }),
         instructorApi.getMilestoneStats(courseId, { includeSynthetic }),
-        instructorApi.getAtRiskStudents(courseId, { includeSynthetic }),
+        instructorApi.getRiskDistribution(courseId, { includeSynthetic }),
         instructorApi.getTopicStudentHeatmap(courseId, { includeSynthetic }),
         instructorApi.getCoursePerformanceSummary(courseId).catch((e) => {
-          // Non-fatal — KPI strip renders a polite one-liner.
           console.warn('[insights] performance summary unavailable:', e?.message);
           return null;
         }),
@@ -170,7 +210,8 @@ export default function InstructorInsightsPage() {
       setCourseTitle(courseRes?.data?.course?.title || courseRes?.data?.title || '');
       setTree(treeRes?.data || null);
       setMilestones(msRes?.data || []);
-      setAtRisk(arRes?.data || []);
+      setRiskRows(riskRes?.data?.rows || []);
+      setRiskTopics(riskRes?.data?.topics || []);
       setHeatmap(hmRes?.data || { topics: [], students: [] });
       const perfPayload = perfRes?.data || null;
       setPerformance(perfPayload);
@@ -182,9 +223,29 @@ export default function InstructorInsightsPage() {
     }
   }, [courseId, includeSynthetic]);
 
+  useEffect(() => { load(); }, [load]);
+
+  // Re-score against a topic / snapshot subset when those filters change.
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!topicFilter && !snapshot) { setDistData(null); return undefined; }
+    let cancelled = false;
+    setDistLoading(true);
+    instructorApi.getRiskDistribution(courseId, { includeSynthetic, topicId: topicFilter, upToTopic: snapshot })
+      .then((res) => { if (!cancelled) setDistData(res?.data || null); })
+      .catch(() => { if (!cancelled) setDistData(null); })
+      .finally(() => { if (!cancelled) setDistLoading(false); });
+    return () => { cancelled = true; };
+  }, [courseId, includeSynthetic, topicFilter, snapshot]);
+
+  const publishedN = riskTopics.length;
+  const baseRows = (topicFilter || snapshot) && distData ? (distData.rows || []) : riskRows;
+  const atRiskCount = baseRows.filter((r) => r.riskLevel !== 'healthy').length;
+  const filtersActive = !!levelFilter || flagFilters.length > 0;
+  const panelRows = baseRows
+    .filter((r) => r.riskLevel !== 'healthy')
+    .filter((r) => !levelFilter || r.riskLevel === levelFilter)
+    .filter((r) => flagFilters.length === 0 || flagFilters.some((f) => (r.flags || []).includes(f)))
+    .sort((a, b) => b.riskScore - a.riskScore);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
@@ -197,68 +258,32 @@ export default function InstructorInsightsPage() {
             <span>/</span>
             <span>Insights</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {courseTitle ? `${courseTitle} — Insights` : 'Course Insights'}
-          </h1>
+          <h1 className="text-2xl font-bold text-gray-900">{courseTitle ? `${courseTitle} — Insights` : 'Course Insights'}</h1>
         </div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-xs text-gray-600">
-            <input
-              type="checkbox"
-              checked={includeSynthetic}
-              onChange={(e) => setIncludeSynthetic(e.target.checked)}
-            />
+            <input type="checkbox" checked={includeSynthetic} onChange={(e) => setIncludeSynthetic(e.target.checked)} />
             Include synthetic cohort
           </label>
-          <Link
-            to={`/instructor/courses/${courseId}`}
-            className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50"
-          >
-            Edit course
-          </Link>
-          <Link
-            to={`/instructor/courses/${courseId}/students`}
-            className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50"
-          >
-            Students
-          </Link>
+          <Link to={`/instructor/courses/${courseId}`} className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50">Edit course</Link>
+          <Link to={`/instructor/courses/${courseId}/students`} className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50">Students</Link>
         </div>
       </div>
 
-      {error && (
-        <div className="p-3 bg-rose-50 border border-rose-200 rounded text-sm text-rose-700">
-          {error}
-        </div>
-      )}
+      {error && <div className="p-3 bg-rose-50 border border-rose-200 rounded text-sm text-rose-700">{error}</div>}
 
-      {/* 1) Density-first numeric strip. Hardest-module tile scrolls + flashes
-          the milestone drilldown section below. */}
-      <PerformanceKPIStrip
-        loading={loading}
-        performance={performance}
-        hardestModuleRef={milestonesRef}
-      />
+      <PerformanceKPIStrip loading={loading} performance={performance} hardestModuleRef={milestonesRef} />
 
       {!performanceAvailable && !loading && (
-        <div className="text-xs text-gray-500 -mt-3">
-          Performance data unavailable right now — the charts below still render.
-        </div>
+        <div className="text-xs text-gray-500 -mt-3">Performance data unavailable right now — the charts below still render.</div>
       )}
 
-      {/* 2) Narrative cards frame the charts. "View chart" scrolls to the
-          matching SectionCard below, with a brief highlight flash. */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-semibold text-gray-900">What stands out</h2>
-          <p className="text-xs text-gray-500">
-            Agent-generated &mdash; every claim is grounded in this course&apos;s data.
-          </p>
+          <p className="text-xs text-gray-500">Agent-generated &mdash; every claim is grounded in this course&apos;s data.</p>
         </div>
-        <InsightCards
-          courseId={courseId}
-          chartRefs={chartRefs}
-          includeSynthetic={includeSynthetic}
-        />
+        <InsightCards courseId={courseId} chartRefs={chartRefs} includeSynthetic={includeSynthetic} />
       </section>
 
       {loading ? (
@@ -266,31 +291,19 @@ export default function InstructorInsightsPage() {
       ) : (
         <>
           {performance && (
-            <SectionCard
-              eyebrow="Where the class lands"
-              title="Score distribution"
-            >
+            <SectionCard eyebrow="Where the class lands" title="Score distribution">
               <ScoreDistributionChart scoreDistribution={performance.scoreDistribution} />
             </SectionCard>
           )}
 
           {performance && (
-            <SectionCard
-              eyebrow="Where students drop off"
-              title="Completion funnel"
-            >
-              <CompletionFunnel
-                funnel={performance.funnel}
-                enrollmentCount={performance.enrollmentCount}
-              />
+            <SectionCard eyebrow="Where students drop off" title="Completion funnel">
+              <CompletionFunnel funnel={performance.funnel} enrollmentCount={performance.enrollmentCount} />
             </SectionCard>
           )}
 
           <SectionCard innerRef={treeRef} title="Course structure with attempt rollups">
-            <CourseTreeView
-              tree={tree}
-              moduleDifficulty={performance?.moduleDifficulty || []}
-            />
+            <CourseTreeView tree={tree} moduleDifficulty={performance?.moduleDifficulty || []} />
           </SectionCard>
 
           <SectionCard innerRef={milestonesRef} title="Milestone difficulty">
@@ -298,10 +311,7 @@ export default function InstructorInsightsPage() {
           </SectionCard>
 
           {performance && (
-            <SectionCard
-              eyebrow="Quizzes that aren't clicking yet"
-              title="Quiz difficulty by topic"
-            >
+            <SectionCard eyebrow="Quizzes that aren't clicking yet" title="Quiz difficulty by topic">
               <QuizByTopicTable quizByTopic={performance.quizByTopic} />
             </SectionCard>
           )}
@@ -310,8 +320,47 @@ export default function InstructorInsightsPage() {
             <TopicStudentHeatmap topics={heatmap.topics} students={heatmap.students} />
           </SectionCard>
 
+          {/* Risk distribution (Step 5) */}
+          <SectionCard eyebrow="Class composition" title="Risk distribution">
+            <RiskDistributionChart
+              rows={baseRows}
+              topics={riskTopics}
+              publishedN={publishedN}
+              topicFilter={topicFilter}
+              onTopicFilter={(t) => { setTopicFilter(t); if (t) setSnapshot(null); }}
+              snapshot={snapshot}
+              onSnapshot={(n) => setSnapshot(n)}
+              activeLevel={levelFilter}
+              onSelectLevel={(lvl) => setLevelFilter((prev) => (prev === lvl ? null : lvl))}
+              loading={distLoading}
+            />
+          </SectionCard>
+
+          {/* At-risk panel (Steps 3, 4, 7) */}
           <SectionCard innerRef={atRiskRef} title="Students flagged as at-risk">
-            <AtRiskPanel rows={atRisk} courseId={courseId} />
+            <FilterChips
+              levelFilter={levelFilter}
+              setLevelFilter={setLevelFilter}
+              flagFilters={flagFilters}
+              setFlagFilters={setFlagFilters}
+            />
+            <p className="text-xs text-gray-500 mb-3">
+              {filtersActive
+                ? `Showing ${panelRows.length} of ${atRiskCount} at-risk students`
+                : `Showing ${atRiskCount} at-risk students (Critical + High + Watch)`}
+              {(topicFilter || snapshot) && <span className="text-indigo-600"> · re-scored for the current chart filter</span>}
+            </p>
+            {panelRows.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                {atRiskCount === 0 ? 'No students currently flagged as at-risk in this course.' : 'No students match the current filters.'}
+              </p>
+            ) : (
+              <div className={`space-y-2 ${distLoading ? 'opacity-50 transition-opacity' : ''}`}>
+                {panelRows.map((r) => (
+                  <RiskRow key={r.studentId} r={r} courseId={courseId} publishedN={publishedN} />
+                ))}
+              </div>
+            )}
           </SectionCard>
         </>
       )}
