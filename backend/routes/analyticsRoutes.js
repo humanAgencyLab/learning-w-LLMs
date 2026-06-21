@@ -18,6 +18,8 @@ const {
   getAtRiskStudents,
   getCrossCourseKPIs,
   getTopicStudentHeatmap,
+  buildRiskInputs,
+  computeRiskScore,
 } = require('../services/milestoneAnalyticsService');
 const { runStruggleSummary } = require('../agents/struggleSummaryAgent');
 const {
@@ -432,6 +434,115 @@ router.post('/courses/:courseId/students/:studentId/notes', requireAuth, require
   }
 });
 
+/**
+ * PUT /v1/instructor/courses/:courseId/students/:studentId/class-context
+ * Risk Insights v2 (Step 7). Sets the instructor's classroom-knowledge override
+ * on the student-level note (courseTopicId: null). Body: { classContext }.
+ * NOTE: this lives here (not instructorRoutes.js as the prompt suggested)
+ * alongside its sibling per-student routes — same pattern as the B8 quiz route.
+ */
+router.put('/courses/:courseId/students/:studentId/class-context', requireAuth, requireRole('instructor'), requireCourseOwner, async (req, res, next) => {
+  try {
+    const { courseId, studentId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(studentId)) {
+      return res.status(400).json({ success: false, error: 'Invalid student id', code: 'VALIDATION_ERROR' });
+    }
+    const allowed = ['doing_well_in_class', 'confirmed_at_risk', null];
+    let classContext = req.body?.classContext;
+    if (classContext === undefined || classContext === '') classContext = null;
+    if (!allowed.includes(classContext)) {
+      return res.status(400).json({ success: false, error: 'Invalid classContext', code: 'VALIDATION_ERROR' });
+    }
+
+    const enrollment = await Enrollment.findOne({
+      courseId: new mongoose.Types.ObjectId(courseId),
+      studentId: new mongoose.Types.ObjectId(studentId),
+      status: 'active',
+    }).select('_id').lean();
+    if (!enrollment?._id) {
+      return res.status(404).json({ success: false, error: 'Student not enrolled in this course', code: 'NOT_FOUND' });
+    }
+
+    const filter = {
+      courseId: new mongoose.Types.ObjectId(courseId),
+      enrollmentId: enrollment._id,
+      studentId: new mongoose.Types.ObjectId(studentId),
+      courseTopicId: null,
+      createdByInstructorId: new mongoose.Types.ObjectId(req.userId),
+    };
+    const updated = await InstructorStudentNote.findOneAndUpdate(
+      filter,
+      { $set: { classContext }, $setOnInsert: { ...filter } },
+      { upsert: true, new: true },
+    ).select('classContext updatedAt').lean();
+
+    return res.json({ success: true, data: { courseId, studentId, classContext: updated?.classContext ?? null, updatedAt: updated?.updatedAt || null } });
+  } catch (e) {
+    if (e?.code === 11000) {
+      return res.status(409).json({ success: false, error: 'Conflict', code: 'CONFLICT' });
+    }
+    next(e);
+  }
+});
+
+/**
+ * GET /v1/instructor/courses/:courseId/students/:studentId/risk-trend
+ * Risk Insights v2 (Step 6). Computes the student's risk score at 5 weekly
+ * snapshots over the last 28 days (or from enrollment if shorter), reusing the
+ * Step 2 scorer. Returns { points[], trend{} }.
+ */
+router.get('/courses/:courseId/students/:studentId/risk-trend', requireAuth, requireRole('instructor'), requireCourseOwner, async (req, res, next) => {
+  try {
+    const { courseId, studentId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(studentId)) {
+      return res.status(400).json({ success: false, error: 'Invalid student id', code: 'VALIDATION_ERROR' });
+    }
+
+    const { courseData, studentInputs } = await buildRiskInputs(courseId, { excludeSynthetic: false });
+    const studentData = studentInputs.get(studentId.toString());
+    if (!studentData) {
+      return res.json({ success: true, data: { points: [], trend: { direction: 'stable', delta: 0, label: 'No activity yet' } } });
+    }
+
+    const now = new Date();
+    const DAY = 24 * 60 * 60 * 1000;
+    const enrolledAt = studentData.enrollmentCreatedAt ? new Date(studentData.enrollmentCreatedAt) : null;
+    const earliest = studentData.earliestActivity ? new Date(studentData.earliestActivity) : null;
+    let startRef = enrolledAt;
+    if (earliest && (!startRef || earliest < startRef)) startRef = earliest;
+    const tenureDays = startRef ? Math.floor((now.getTime() - startRef.getTime()) / DAY) : 0;
+
+    // Snapshot offsets: today, -7, -14, -21, -28 (clamped to tenure so we never
+    // sample before the student existed). Oldest first.
+    const offsets = [28, 21, 14, 7, 0].filter((d) => d <= Math.max(0, tenureDays) || d === 0);
+    const seen = new Set();
+    const points = [];
+    for (const off of offsets) {
+      const cutoff = new Date(now.getTime() - off * DAY);
+      const key = cutoff.toISOString().slice(0, 10);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const r = computeRiskScore({ studentData, courseData, cutoffDate: cutoff });
+      points.push({ date: key, score: r.riskScore, level: r.riskLevel });
+    }
+
+    let trend = { direction: 'stable', delta: 0, label: 'Stable' };
+    if (points.length >= 2) {
+      const delta = points[points.length - 1].score - points[0].score;
+      const spanDays = Math.min(28, Math.max(0, tenureDays));
+      if (delta <= -10) trend = { direction: 'improving', delta, label: `Improving over the last ${spanDays} days` };
+      else if (delta >= 10) trend = { direction: 'declining', delta, label: `Declining over the last ${spanDays} days` };
+      else trend = { direction: 'stable', delta, label: `Stable over the last ${spanDays} days` };
+    } else if (points.length === 1) {
+      trend = { direction: 'stable', delta: 0, label: `Stable since enrollment ${Math.max(0, tenureDays)} days ago` };
+    }
+
+    return res.json({ success: true, data: { points, trend } });
+  } catch (e) {
+    next(e);
+  }
+});
+
 /** GET /v1/instructor/courses/:courseId/tree — course → topics → modules → milestones with attempt badges */
 router.get('/courses/:courseId/tree', requireAuth, requireRole('instructor'), requireCourseOwner, async (req, res, next) => {
   try {
@@ -463,6 +574,39 @@ router.get('/courses/:courseId/at-risk', requireAuth, requireRole('instructor'),
       passRateThreshold: Number.isFinite(threshold) ? threshold : 60,
     });
     res.json({ success: true, data });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * GET /v1/instructor/courses/:courseId/risk-distribution
+ * Risk Insights v2 (Step 5). Re-scores the cohort against a topic subset for the
+ * distribution chart + panel filters, reusing the canonical scorer.
+ * Query: includeSynthetic, topicId (single), upToTopic (first-N by orderIndex).
+ * Returns { topics: [{topicId,title,orderIndex}], rows: [...] }.
+ */
+router.get('/courses/:courseId/risk-distribution', requireAuth, requireRole('instructor'), requireCourseOwner, async (req, res, next) => {
+  try {
+    const { excludeSynthetic } = parseSyntheticFlag(req);
+    const topicId = req.query.topicId && mongoose.Types.ObjectId.isValid(String(req.query.topicId))
+      ? String(req.query.topicId) : null;
+    const upToTopic = req.query.upToTopic != null ? parseInt(req.query.upToTopic, 10) : null;
+
+    const rows = await getAtRiskStudents(req.params.courseId, {
+      excludeSynthetic,
+      topicIds: topicId ? [topicId] : null,
+      upToTopicCount: (topicId == null && Number.isInteger(upToTopic)) ? upToTopic : null,
+    });
+
+    const topicDocs = await require('../models/CourseTopic')
+      .find({ courseId: new mongoose.Types.ObjectId(req.params.courseId), status: 'published' })
+      .select('_id title orderIndex')
+      .sort({ orderIndex: 1 })
+      .lean();
+    const topics = topicDocs.map((t) => ({ topicId: t._id.toString(), title: t.title || 'Untitled', orderIndex: t.orderIndex ?? 0 }));
+
+    res.json({ success: true, data: { topics, rows } });
   } catch (e) {
     next(e);
   }

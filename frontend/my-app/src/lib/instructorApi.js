@@ -307,6 +307,30 @@ export async function getStudentDetail(courseId, studentId) {
   );
 }
 
+// Risk Insights v2 — per-student risk trend (5 weekly snapshots over 28 days).
+export async function getRiskTrend(courseId, studentId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/students/${studentId}/risk-trend`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+// Risk Insights v2 — set the Class Context override.
+// classContext: 'doing_well_in_class' | 'confirmed_at_risk' | null
+export async function updateClassContext(courseId, studentId, classContext) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/students/${studentId}/class-context`, {
+      method: 'PUT',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ classContext }),
+    })
+  );
+}
+
 export async function getInstructorSession(courseId, sessionId) {
   return parse(
     await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/sessions/${sessionId}`, {
@@ -405,6 +429,23 @@ export async function getAtRiskStudents(courseId, { includeSynthetic = false, pa
 export async function getTopicStudentHeatmap(courseId, { includeSynthetic = false } = {}) {
   return parse(
     await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/heatmap${buildSyntheticQS(includeSynthetic)}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+// Risk Insights v2 — re-scored distribution for the topic / snapshot filters.
+// opts: { includeSynthetic, topicId, upToTopic }
+export async function getRiskDistribution(courseId, { includeSynthetic = false, topicId = null, upToTopic = null } = {}) {
+  const params = new URLSearchParams();
+  if (includeSynthetic) params.set('includeSynthetic', '1');
+  if (topicId) params.set('topicId', String(topicId));
+  if (topicId == null && upToTopic != null) params.set('upToTopic', String(upToTopic));
+  const qs = params.toString();
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/risk-distribution${qs ? `?${qs}` : ''}`, {
       method: 'GET',
       headers: getAuthHeaders(),
       credentials: 'include',
