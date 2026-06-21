@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useLocation } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
 import MessageContent from '../../components/chat/MessageContent';
+import RiskTrendCard from '../../components/instructor/RiskTrendCard';
 
 function formatDateTime(ts) {
   if (!ts) return '';
@@ -556,6 +557,30 @@ export default function InstructorStudentDetailPage() {
   // notesScope: null = course-wide, courseTopicId string = topic-specific
   const [notesScope, setNotesScope] = useState(null);
 
+  // Class Context override (Step 7)
+  const [classContext, setClassContext] = useState(null);
+  const [savingContext, setSavingContext] = useState(false);
+  const [contextToast, setContextToast] = useState('');
+  useEffect(() => { setClassContext(detail?.classContext ?? null); }, [detail]);
+  const saveClassContext = async (value) => {
+    const next = value || null;
+    setClassContext(next);
+    setSavingContext(true);
+    try {
+      await instructorApi.updateClassContext(courseId, studentId, next);
+      setContextToast(
+        next === 'doing_well_in_class' ? 'Saved — doing well in class'
+          : next === 'confirmed_at_risk' ? 'Saved — confirmed at-risk'
+            : 'Class context cleared',
+      );
+    } catch (e) {
+      setContextToast('Failed to save');
+    } finally {
+      setSavingContext(false);
+      setTimeout(() => setContextToast(''), 2500);
+    }
+  };
+
   const riskFlags = detail?.summary?.riskFlags || [];
   const topics = useMemo(() => (detail?.topics || []), [detail]);
 
@@ -630,6 +655,11 @@ export default function InstructorStudentDetailPage() {
         <div className="mt-4 flex items-start justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
           <div className="min-w-0">
             <p className="text-sm font-medium text-rose-800">You opened this student from the at-risk panel.</p>
+            {detail?.risk && (
+              <p className="text-sm text-rose-800 mt-0.5">
+                Risk level: <span className="font-semibold capitalize">{detail.risk.riskLevel}</span> ({detail.risk.riskScore}/100)
+              </p>
+            )}
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-rose-700">Flags:</span>
               {incomingAtRiskFlags.map((f) => (
@@ -665,6 +695,29 @@ export default function InstructorStudentDetailPage() {
               ))}
             </div>
           )}
+          {/* Persistence readout (Step 3) — positive signal, Monitor only.
+              OUT OF SCOPE: engagement-quality export / bonus grading is post-pilot. */}
+          {detail?.risk?.persistence_score != null && (
+            <p className="text-xs text-emerald-700 mt-2" title="Of the topics this student had to retry, the share they eventually passed">
+              Persistence: {detail.risk.persistence_score}/100 — {detail.risk.persistence_score >= 60 ? 'eventually passes most retries' : 'rarely recovers after a failed attempt'}
+            </p>
+          )}
+          {/* Class context override (Step 7) — instructor's classroom knowledge */}
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            <label className="text-xs text-gray-500">Class context:</label>
+            <select
+              value={classContext || ''}
+              onChange={(e) => saveClassContext(e.target.value || null)}
+              disabled={savingContext}
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white disabled:opacity-50"
+              title="Encode what you know from class that the platform can't see"
+            >
+              <option value="">Not set</option>
+              <option value="doing_well_in_class">Doing well in class — override at-risk flag</option>
+              <option value="confirmed_at_risk">Confirmed at-risk in class — validates platform signal</option>
+            </select>
+            {contextToast && <span className="text-xs text-green-600">{contextToast}</span>}
+          </div>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
           <Pill tone="blue">{detail.summary.completedTopics}/{detail.summary.totalTopics} topics</Pill>
@@ -727,7 +780,7 @@ export default function InstructorStudentDetailPage() {
           <SessionViewer courseId={courseId} sessionId={selectedSessionId} />
         </div>
 
-        {/* Notes panel */}
+        {/* Notes panel + risk trend */}
         <div className="space-y-4">
           <NotesPanel
             courseId={courseId}
@@ -737,6 +790,7 @@ export default function InstructorStudentDetailPage() {
             selectedTopicId={selectedTopicId}
             onScopeChange={setNotesScope}
           />
+          <RiskTrendCard courseId={courseId} studentId={studentId} />
         </div>
       </div>
     </div>
