@@ -99,14 +99,21 @@ async function getStudentProgress(courseId) {
   // dashboard/Insights said "5 at-risk"). excludeSynthetic:false because the
   // synthetic cohort IS the study data (matches the "Include synthetic
   // cohort" default everywhere else).
-  let atRiskIds = new Set();
+  // Risk Insights v2: carry the per-student riskLevel + classContext (for the
+  // level pills / CLASS OK pill / header breakdown), plus the headline `atRisk`.
+  let riskByStudent = new Map();
   try {
     const { getAtRiskStudents } = require('./milestoneAnalyticsService');
     const atRiskRows = await getAtRiskStudents(courseId, { excludeSynthetic: false });
-    atRiskIds = new Set(atRiskRows.filter((r) => r.atRisk).map((r) => r.studentId));
+    riskByStudent = new Map(atRiskRows.map((r) => [r.studentId, {
+      atRisk: r.atRisk,
+      riskLevel: r.riskLevel,
+      riskScore: r.riskScore,
+      classContext: r.classContext || null,
+    }]));
   } catch (e) {
     // Non-fatal: never 500 the whole roster if the risk computation hiccups.
-    atRiskIds = new Set();
+    riskByStudent = new Map();
   }
 
   const rows = enrollments.map((en) => {
@@ -184,7 +191,11 @@ async function getStudentProgress(courseId) {
       // surfaces this on Student Progress (it shows topicPassRate instead).
       quizPassRate: quizAttempts > 0 ? Math.round((quizPasses / quizAttempts) * 100) : null,
       topicPassRate,
-      atRisk: atRiskIds.has(uid),
+      // Risk Insights v2 (level pill + CLASS OK + header breakdown)
+      atRisk: riskByStudent.get(uid)?.atRisk || false,
+      riskLevel: riskByStudent.get(uid)?.riskLevel || 'healthy',
+      riskScore: riskByStudent.get(uid)?.riskScore ?? 0,
+      classContext: riskByStudent.get(uid)?.classContext || null,
       topicProgress: Object.values(topicProgress),
     };
   });
@@ -317,6 +328,34 @@ async function getInstructorStudentDetail(courseId, studentId) {
     riskFlags.push({ type: 'low_quiz_pass_rate', quizPassRate });
   }
 
+  // Risk Insights v2 — pull this student's continuous risk + class context from
+  // the canonical computation so the Monitor banner/persistence/context match
+  // the Insights panel exactly. (Recomputes the course; fine for a detail view.)
+  let risk = null;
+  let classContext = null;
+  try {
+    const { getAtRiskStudents } = require('./milestoneAnalyticsService');
+    const riskRows = await getAtRiskStudents(courseId, { excludeSynthetic: false });
+    const row = riskRows.find((r) => r.studentId === studentId.toString());
+    if (row) {
+      risk = {
+        riskScore: row.riskScore,
+        riskLevel: row.riskLevel,
+        flags: row.flags,
+        persistence_score: row.persistence_score,
+        dominantDriver: row.dominantDriver,
+        publishedN: row.publishedN,
+        attemptedPublished: row.attemptedPublished,
+        attemptedQuizTopics: row.attemptedQuizTopics,
+        passedPublished: row.passedPublished,
+        metaNote: row.metaNote || null,
+      };
+      classContext = row.classContext || null;
+    }
+  } catch (e) {
+    // Non-fatal: the rest of the detail page still renders without risk.
+  }
+
   return {
     courseId,
     student: {
@@ -335,8 +374,11 @@ async function getInstructorStudentDetail(courseId, studentId) {
       quizAttempts,
       quizPasses,
       quizPassRate,
+      topicPassRate, // (was computed but omitted from the summary — B9 fix)
       riskFlags,
     },
+    risk,
+    classContext,
     topics: topicsDetail,
   };
 }

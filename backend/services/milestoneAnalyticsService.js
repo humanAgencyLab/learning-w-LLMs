@@ -5,6 +5,7 @@ const Course = require('../models/Course');
 const Enrollment = require('../models/Enrollment');
 const User = require('../models/User');
 const Session = require('../models/Session');
+const InstructorStudentNote = require('../models/InstructorStudentNote');
 
 // Shared: build a MilestoneAttempt filter for a course, optionally excluding
 // synthetic-user rows. The professor-study dashboards default to
@@ -218,6 +219,326 @@ async function getMilestoneStats(courseId, { excludeSynthetic = true } = {}) {
   });
 }
 
+// ===========================================================================
+// Risk Insights v2 — continuous risk score (0–100) + level, computed against
+// PUBLISHED topics as of a cutoff date. See computeRiskScore below.
+// ===========================================================================
+
+// Step 1 — canonical denominator: how many topics are currently published.
+async function publishedTopicsCount(courseId) {
+  return CourseTopic.countDocuments({
+    courseId: new mongoose.Types.ObjectId(courseId),
+    status: 'published',
+  });
+}
+
+// Weights are constants (UI-tuning is post-pilot, deferred R7). Do not change
+// without flagging — they are part of the documented formula contract.
+const RISK_WEIGHTS = { engagement: 0.40, passRate: 0.30, quizScore: 0.20, struggle: 0.10 };
+// R5 — watch raised from 10 to 20 to de-flood the noisiest band.
+const RISK_LEVEL_THRESHOLDS = { critical: 70, high: 40, watch: 20 };
+const QUIZ_PASS_THRESHOLD = 60;
+const NEW_ENROLLEE_GRACE_DAYS = 7;   // R1
+const PUBLISH_GRACE_DAYS = 2;        // R3
+const DROWNING_FLOOR = 40;           // R4
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Pure, as-of-cutoffDate risk computation for ONE student. No DB access — all
+ * inputs are pre-fetched (so the trend endpoint can call this at several
+ * cutoffs over the same data). Implements the v2 formula with adjustments
+ * R1–R6 approved before implementation.
+ *
+ * @param {object} args
+ * @param {object} args.studentData
+ *   - enrollmentCreatedAt: Date         enrollment row creation
+ *   - earliestActivity: Date|null       first quiz/milestone activity (see R1 note)
+ *   - quizByTopic: Map<topicId, [{ submittedAt, passed, scorePct }]>  submitted, non-revision
+ *   - milestoneDatesByTopic: Map<topicId, [Date]>
+ * @param {object} args.courseData
+ *   - publishedTopics: [{ topicId, orderIndex, publishedAt }]   status==='published'
+ * @param {Date}   args.cutoffDate       moment to compute as-of (defaults to now)
+ * @returns {object} { riskScore, riskLevel, flags, persistence_score, dominantDriver, ...signals }
+ */
+function computeRiskScore({ studentData, courseData, cutoffDate }) {
+  const now = cutoffDate instanceof Date ? cutoffDate : (cutoffDate ? new Date(cutoffDate) : new Date());
+  const nowTs = now.getTime();
+
+  // --- daysSinceEnrollment ---
+  // The "new enrollee" grace protects students who genuinely haven't had TIME to
+  // start — not students whose enrollment ROW carries a recent timestamp. So we
+  // anchor to effectiveStart = min(enrollmentCreatedAt, earliestActivity): a
+  // student with a long activity history is not new even if their enrollment row
+  // was just (re)created. This is the correct intent for real cases too — a
+  // student who transfers sections or re-enrolls keeps their activity history and
+  // must not be reset to "new" — and it incidentally handles the synthetic
+  // full-sem cohort whose enrollments are ~2 days old but whose backdated
+  // activity spans ~45 days. A genuinely new student has no activity, so
+  // effectiveStart == enrollment and the grace still fires.
+  const enrolledAt = studentData.enrollmentCreatedAt ? new Date(studentData.enrollmentCreatedAt) : null;
+  const earliest = studentData.earliestActivity ? new Date(studentData.earliestActivity) : null;
+  let startRef = enrolledAt;
+  if (earliest && (!startRef || earliest < startRef)) startRef = earliest;
+  const daysSinceEnrollment = startRef ? Math.floor((nowTs - startRef.getTime()) / DAY_MS) : Infinity;
+
+  // R1 — actual grace period for new enrollees (mandatory early return).
+  if (daysSinceEnrollment < NEW_ENROLLEE_GRACE_DAYS) {
+    return {
+      riskScore: 0,
+      riskLevel: 'healthy',
+      flags: [],
+      persistence_score: null,
+      dominantDriver: 'new_enrollee',
+      metaNote: 'New enrollee — risk score paused for the first 7 days',
+      publishedN: null,
+      attemptedPublished: 0,
+      attemptedQuizTopics: 0,
+      passedPublished: 0,
+      totalAttempts: 0,
+      avgQuizScore: null,
+      daysSinceEnrollment,
+      usedPublishGraceFallback: false,
+      signals: { engagement_signal: 0, pass_rate_signal: 0, quiz_score_signal: 0, struggle_signal: 0 },
+    };
+  }
+
+  // R3 — publishing grace: a topic counts only once it has been published for
+  // more than PUBLISH_GRACE_DAYS (and not after the cutoff). If publishedAt is
+  // missing, fall back to counting it (documented) and record that the grace was
+  // bypassed for transparency.
+  const gateTs = nowTs - PUBLISH_GRACE_DAYS * DAY_MS;
+  let usedPublishGraceFallback = false;
+  const gatedTopics = (courseData.publishedTopics || []).filter((t) => {
+    if (t.publishedAt == null) { usedPublishGraceFallback = true; return true; }
+    return new Date(t.publishedAt).getTime() <= gateTs;
+  });
+  const publishedN = gatedTopics.length;
+
+  // --- per-topic rollup (as of cutoff) ---
+  // Q2 — two engagement denominators: ANY activity (milestone OR quiz) drives
+  // the broad engagement_signal; QUIZ activity alone drives pass-rate. A student
+  // who did a milestone but never took a quiz is "not progressing", NOT "failing
+  // quizzes" — so milestone-only topics must not enter the pass-rate denominator.
+  let attemptedPublished = 0;   // any-activity topics (engagement + displayed "X of Y attempted")
+  let attemptedQuizzes = 0;     // quiz-attempted topics (pass-rate denominator)
+  let passedPublished = 0;      // topics whose terminal quiz passed (pass-rate numerator)
+  let totalAttempts = 0;
+  let unresolvedStruggle = 0;
+  let persistentSuccess = 0;
+  const allScores = [];
+
+  for (const t of gatedTopics) {
+    const tid = t.topicId;
+    const quizzes = (studentData.quizByTopic.get(tid) || [])
+      .filter((a) => !a.submittedAt || new Date(a.submittedAt).getTime() <= nowTs);
+    const milestones = (studentData.milestoneDatesByTopic.get(tid) || [])
+      .filter((d) => d && new Date(d).getTime() <= nowTs);
+
+    const attemptsOnTopic = quizzes.length;
+    totalAttempts += attemptsOnTopic;
+    for (const a of quizzes) {
+      if (a.scorePct != null && !Number.isNaN(Number(a.scorePct))) allScores.push(Number(a.scorePct));
+    }
+
+    // engagement counts ANY activity; pass-rate counts only quiz activity (Q2)
+    if (attemptsOnTopic > 0 || milestones.length > 0) attemptedPublished += 1;
+    if (attemptsOnTopic > 0) attemptedQuizzes += 1;
+
+    // terminal quiz = latest submitted, non-revision attempt by submittedAt
+    let passed = false;
+    if (attemptsOnTopic > 0) {
+      const sorted = quizzes.slice().sort((a, b) => {
+        const ta = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+        const tb = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+        return ta - tb;
+      });
+      passed = sorted[sorted.length - 1].passed === true;
+      if (passed) passedPublished += 1;
+    }
+
+    // struggle accounting: retries beyond the first, split by terminal outcome
+    if (passed) persistentSuccess += Math.max(0, attemptsOnTopic - 1);
+    else unresolvedStruggle += Math.max(0, attemptsOnTopic - 1);
+  }
+
+  const avgQuizScore = allScores.length
+    ? Math.round((allScores.reduce((x, y) => x + y, 0) / allScores.length) * 10) / 10
+    : null;
+
+  // --- signals ---
+  const engagement_signal = publishedN === 0
+    ? 0
+    : (attemptedPublished === 0 ? 1.0 : Math.max(0, 1 - attemptedPublished / publishedN));
+  // R2 + Q2 — pass-rate among QUIZ-attempted topics only (decoupled from
+  // engagement AND from milestone-only activity).
+  const pass_rate_signal = attemptedQuizzes > 0 ? 1 - passedPublished / attemptedQuizzes : 0;
+  const quiz_score_signal = avgQuizScore !== null
+    ? Math.max(0, (QUIZ_PASS_THRESHOLD - avgQuizScore) / QUIZ_PASS_THRESHOLD)
+    : 0; // R2 side-effect: engagement_signal carries the fully-disengaged case alone
+  const struggle_signal = totalAttempts > 0 ? unresolvedStruggle / totalAttempts : 0;
+
+  let riskScore = Math.round(100 * (
+    RISK_WEIGHTS.engagement * engagement_signal
+    + RISK_WEIGHTS.passRate * pass_rate_signal
+    + RISK_WEIGHTS.quizScore * quiz_score_signal
+    + RISK_WEIGHTS.struggle * struggle_signal
+  ));
+
+  // R4 — drowning-but-trying floor: max engagement, mostly failing, sub-50 avg.
+  // NOTE (structural limit, accepted): with weights unchanged a fully-engaged
+  // student caps at 60, so the worst ENGAGED performers reach 'high' (via this
+  // floor) but not 'critical'. Critical therefore means the disengagement tail —
+  // pedagogically defensible after R2 (engagement tail = higher drop risk).
+  if (engagement_signal < 0.2 && pass_rate_signal >= 0.8 && avgQuizScore !== null && avgQuizScore < 50) {
+    riskScore = Math.max(riskScore, DROWNING_FLOOR);
+  }
+
+  const riskLevel = riskScore >= RISK_LEVEL_THRESHOLDS.critical ? 'critical'
+    : riskScore >= RISK_LEVEL_THRESHOLDS.high ? 'high'
+    : riskScore >= RISK_LEVEL_THRESHOLDS.watch ? 'watch'
+    : 'healthy';
+
+  // --- flags (tagging, not scoring) ---
+  const flags = [];
+  if (engagement_signal >= 0.5 && daysSinceEnrollment >= NEW_ENROLLEE_GRACE_DAYS) flags.push('no_engagement');
+  // R6 + Q2 — only flag low_pass_rate when they actually took quizzes and failed
+  // some of them (a milestone-only student is "no_engagement", not "low_pass_rate").
+  if (pass_rate_signal >= 0.5 && attemptedQuizzes > 0 && passedPublished < attemptedQuizzes) {
+    flags.push('low_pass_rate');
+  }
+  if (quiz_score_signal >= 0.4) flags.push('low_quiz_score');
+  if (struggle_signal >= 0.5) flags.push('stuck_topic');
+
+  // --- dominant driver (row transparency; based on weighted contributions) ---
+  const contributions = [
+    ['needs to engage', RISK_WEIGHTS.engagement * engagement_signal],
+    ['failing what they try', RISK_WEIGHTS.passRate * pass_rate_signal],
+    ['low quiz scores', RISK_WEIGHTS.quizScore * quiz_score_signal],
+    ['stuck on retries', RISK_WEIGHTS.struggle * struggle_signal],
+  ];
+  const totalContribution = contributions.reduce((s, c) => s + c[1], 0);
+  let dominantDriver;
+  // Q3 — the whole Healthy band reads 'healthy', not just score 0. Below the
+  // watch threshold the largest contribution is noise (e.g. a top student with
+  // 2 unpassed topics would otherwise read "failing what they try"). The driver
+  // isn't surfaced for healthy rows today, but a future per-student view / export
+  // might read it.
+  if (riskLevel === 'healthy') {
+    dominantDriver = 'healthy';
+  } else {
+    const top = contributions.reduce((m, c) => (c[1] > m[1] ? c : m), contributions[0]);
+    dominantDriver = (totalContribution > 0 && top[1] / totalContribution >= 0.5) ? top[0] : 'multiple_factors';
+  }
+
+  // --- persistence readout (display-only positive signal; NOT in risk score) ---
+  // OUT OF SCOPE: the engagement-quality export / bonus-mark grading workflow is
+  // post-pilot. This value is surfaced on the Monitor page only.
+  const persistence_score = (persistentSuccess + unresolvedStruggle > 0)
+    ? Math.round(100 * persistentSuccess / (persistentSuccess + unresolvedStruggle))
+    : null;
+
+  return {
+    riskScore,
+    riskLevel,
+    flags,
+    persistence_score,
+    dominantDriver,
+    publishedN,
+    attemptedPublished,
+    attemptedQuizTopics: attemptedQuizzes,
+    passedPublished,
+    totalAttempts,
+    avgQuizScore,
+    daysSinceEnrollment,
+    usedPublishGraceFallback,
+    signals: { engagement_signal, pass_rate_signal, quiz_score_signal, struggle_signal },
+  };
+}
+
+/**
+ * Fetch + shape all inputs computeRiskScore needs for every enrolled student in
+ * a course, in one pass (reused by getAtRiskStudents now and the per-student
+ * risk-trend endpoint later). Returns { courseData, enrollments, studentInputs }
+ * where studentInputs is Map<uid, studentData>.
+ */
+async function buildRiskInputs(courseId, { excludeSynthetic = true } = {}) {
+  const courseObjId = new mongoose.Types.ObjectId(courseId);
+  const enrollments = await Enrollment.find({ courseId, status: 'active' })
+    .select('studentId joinedAt priorKnowledge createdAt')
+    .lean();
+  const userIds = enrollments.map((e) => e.studentId);
+
+  const topics = await CourseTopic.find({ courseId: courseObjId, status: 'published' })
+    .select('_id orderIndex publishedAt title')
+    .sort({ orderIndex: 1 })
+    .lean();
+  const courseData = {
+    publishedTopics: topics.map((t) => ({
+      topicId: t._id.toString(),
+      orderIndex: t.orderIndex ?? 0,
+      publishedAt: t.publishedAt || null,
+      title: t.title || 'Untitled',
+    })),
+  };
+
+  const studentInputs = new Map();
+  const ensure = (uid) => {
+    if (!studentInputs.has(uid)) {
+      studentInputs.set(uid, {
+        enrollmentCreatedAt: null,
+        joinedAt: null,
+        earliestActivity: null,
+        quizByTopic: new Map(),
+        milestoneDatesByTopic: new Map(),
+      });
+    }
+    return studentInputs.get(uid);
+  };
+  for (const en of enrollments) {
+    const si = ensure(en.studentId.toString());
+    si.enrollmentCreatedAt = en.createdAt || en.joinedAt || null;
+    si.joinedAt = en.joinedAt || null;
+  }
+
+  if (userIds.length) {
+    const [sessions, milestoneDocs] = await Promise.all([
+      Session.find({ courseId: courseObjId, userId: { $in: userIds } })
+        .select('userId courseTopicId quizAttempts')
+        .lean(),
+      MilestoneAttempt.find(attemptFilter(courseId, { excludeSynthetic }))
+        .select('userId courseTopicId createdAt')
+        .lean(),
+    ]);
+
+    for (const sess of sessions) {
+      const uid = sess.userId?.toString();
+      const tid = sess.courseTopicId?.toString();
+      if (!uid || !tid) continue;
+      const si = ensure(uid);
+      if (!si.quizByTopic.has(tid)) si.quizByTopic.set(tid, []);
+      const arr = si.quizByTopic.get(tid);
+      for (const a of sess.quizAttempts || []) {
+        if (a.status !== 'submitted' || a.isRevision) continue;
+        const sub = a.submittedAt ? new Date(a.submittedAt) : null;
+        arr.push({ submittedAt: sub, passed: a.passed === true, scorePct: a.scorePct });
+        if (sub && (!si.earliestActivity || sub < si.earliestActivity)) si.earliestActivity = sub;
+      }
+    }
+    for (const m of milestoneDocs) {
+      const uid = m.userId?.toString();
+      const tid = m.courseTopicId?.toString();
+      if (!uid || !tid) continue;
+      const si = ensure(uid);
+      if (!si.milestoneDatesByTopic.has(tid)) si.milestoneDatesByTopic.set(tid, []);
+      const d = m.createdAt ? new Date(m.createdAt) : null;
+      si.milestoneDatesByTopic.get(tid).push(d);
+      if (d && (!si.earliestActivity || d < si.earliestActivity)) si.earliestActivity = d;
+    }
+  }
+
+  return { courseData, enrollments, studentInputs };
+}
+
 /**
  * Students whose attempt patterns look "at risk":
  *   - pass rate below threshold, OR
@@ -228,11 +549,23 @@ async function getMilestoneStats(courseId, { excludeSynthetic = true } = {}) {
  */
 async function getAtRiskStudents(courseId, {
   excludeSynthetic = true,
-  passRateThreshold = 60,
+  passRateThreshold = 60, // retained for signature compat (legacy callers)
+  topicIds = null,        // optional: restrict scoring to these published topic ids
+  upToTopicCount = null,  // optional: restrict to the first N published topics (orderIndex)
 } = {}) {
-  const enrollments = await Enrollment.find({ courseId, status: 'active' })
-    .select('studentId joinedAt priorKnowledge')
-    .lean();
+  // Risk inputs (published topics + per-student quiz/milestone data) in one pass.
+  const { courseData: fullCourseData, enrollments, studentInputs } = await buildRiskInputs(courseId, { excludeSynthetic });
+  // Topic / snapshot filtering (Insights distribution chart): score against a
+  // subset of published topics while reusing the SAME scorer — no client-side
+  // formula duplication.
+  let publishedTopics = fullCourseData.publishedTopics;
+  if (Array.isArray(topicIds) && topicIds.length) {
+    const set = new Set(topicIds);
+    publishedTopics = publishedTopics.filter((t) => set.has(t.topicId));
+  } else if (Number.isInteger(upToTopicCount)) {
+    publishedTopics = publishedTopics.slice(0, Math.max(0, upToTopicCount));
+  }
+  const courseData = { publishedTopics };
   const userIds = enrollments.map((e) => e.studentId);
   if (!userIds.length) return [];
 
@@ -240,6 +573,19 @@ async function getAtRiskStudents(courseId, {
   const users = await User.find({ _id: { $in: userIds } }).select(userSelect).lean();
   const userMap = new Map(users.map((u) => [u._id.toString(), u]));
 
+  // Class Context overrides (Step 7) — course-owner-set classroom knowledge,
+  // stored on the student-level note (courseTopicId: null).
+  const noteDocs = await InstructorStudentNote.find({
+    courseId: new mongoose.Types.ObjectId(courseId),
+    studentId: { $in: userIds },
+    courseTopicId: null,
+    classContext: { $ne: null },
+  }).select('studentId classContext').lean();
+  const classContextMap = new Map(noteDocs.map((n) => [n.studentId.toString(), n.classContext]));
+
+  // Legacy milestone aggregation — kept so the existing row UI fields
+  // (autoAdvanced, passRate, attemptsPerMilestone, distinctMilestones) keep
+  // working. The v2 risk score does NOT use these; they are descriptive only.
   const perStudent = await MilestoneAttempt.aggregate([
     { $match: attemptFilter(courseId, { excludeSynthetic }) },
     {
@@ -261,49 +607,31 @@ async function getAtRiskStudents(courseId, {
   ]);
   const statMap = new Map(perStudent.map((s) => [s._id.toString(), s]));
 
-  // Per-student mean quiz score (scorePct of submitted, non-revision attempts).
-  // This is the SAME metric the score-distribution chart buckets on, so an
-  // at-risk panel keyed off it stays consistent with what the instructor sees:
-  // a student in the red score bucket is the one flagged at-risk. Milestone
-  // pass rate alone misses them — they clear the reflection checks on retry but
-  // still bomb the quizzes.
-  const quizSessions = await Session.find({
-    courseId: new mongoose.Types.ObjectId(courseId),
-    userId: { $in: userIds },
-  }).select('userId quizAttempts').lean();
-  // INVARIANT: the at-risk panel's quiz numbers are computed over SUBMITTED,
-  // NON-REVISION attempts only — the single source of truth. Drafts are
-  // abandoned in-progress quizzes; revisions aren't module-completion attempts;
-  // neither counts. Crucially, the average AND the pass rate are derived from
-  // the SAME attempt set, so the two displayed numbers can never contradict
-  // (e.g. 100% pass implies avg >= the 60% threshold). A student with zero such
-  // attempts gets null for both (the UI renders that as "—"/"No quiz data").
-  // This replaces an earlier bug where the row paired the quiz average with the
-  // *milestone* attempts/pass-rate, producing impossible reads like
-  // "20% quiz avg · 100% pass".
-  const quizStatMap = new Map(); // uid -> { scores: number[], passed, count }
-  for (const sess of quizSessions) {
-    const uid = sess.userId?.toString();
-    if (!uid) continue;
-    for (const a of sess.quizAttempts || []) {
-      if (a.status !== 'submitted' || a.isRevision) continue;
-      if (!quizStatMap.has(uid)) quizStatMap.set(uid, { scores: [], passed: 0, count: 0 });
-      const qs = quizStatMap.get(uid);
-      qs.count += 1;
-      if (a.passed === true) qs.passed += 1;
-      if (a.scorePct != null && !Number.isNaN(Number(a.scorePct))) qs.scores.push(Number(a.scorePct));
-    }
-  }
+  // Legacy B8 quiz stats (course-wide mean / pass rate over SUBMITTED,
+  // non-revision attempts) — derived from the same attempt set buildRiskInputs
+  // collected, so no extra query and no divergence from the risk inputs.
   const quizStatsFor = (uid) => {
-    const qs = quizStatMap.get(uid);
-    if (!qs || qs.count === 0) return { quizScore: null, quizPassRate: null, quizAttemptCount: 0 };
-    const quizScore = qs.scores.length
-      ? Math.round((qs.scores.reduce((x, y) => x + y, 0) / qs.scores.length) * 10) / 10
+    const si = studentInputs.get(uid);
+    if (!si) return { quizScore: null, quizPassRate: null, quizAttemptCount: 0 };
+    let count = 0;
+    let passed = 0;
+    const scores = [];
+    for (const arr of si.quizByTopic.values()) {
+      for (const a of arr) {
+        count += 1;
+        if (a.passed === true) passed += 1;
+        if (a.scorePct != null && !Number.isNaN(Number(a.scorePct))) scores.push(Number(a.scorePct));
+      }
+    }
+    if (count === 0) return { quizScore: null, quizPassRate: null, quizAttemptCount: 0 };
+    const quizScore = scores.length
+      ? Math.round((scores.reduce((x, y) => x + y, 0) / scores.length) * 10) / 10
       : null;
-    const quizPassRate = Math.round((qs.passed / qs.count) * 1000) / 10;
-    return { quizScore, quizPassRate, quizAttemptCount: qs.count };
+    const quizPassRate = Math.round((passed / count) * 1000) / 10;
+    return { quizScore, quizPassRate, quizAttemptCount: count };
   };
 
+  const now = new Date();
   const rows = enrollments
     .map((en) => {
       const uid = en.studentId.toString();
@@ -311,6 +639,7 @@ async function getAtRiskStudents(courseId, {
       if (!user) return null;
       if (excludeSynthetic && user.profile?.isSynthetic) return null;
 
+      // --- legacy descriptive fields (B8/B9 — unchanged semantics) ---
       const s = statMap.get(uid);
       const attempts = s?.attempts || 0;
       const passes = s?.passes || 0;
@@ -320,30 +649,8 @@ async function getAtRiskStudents(courseId, {
       const attemptsPerMilestone = distinctMs ? Math.round((attempts / distinctMs) * 10) / 10 : 0;
       const { quizScore, quizPassRate, quizAttemptCount } = quizStatsFor(uid);
 
-      // Auto-advance over a *share* of milestones — not "any single one".
-      // The tutor nudges a student past the occasional stubborn milestone, so
-      // 1-2 auto-advances across a long course is normal noise. It only signals
-      // risk when it happens to a meaningful fraction of the student's
-      // milestones. Using a rate (with a small absolute floor) keeps this
-      // sensible whether the course has 4 milestones or 60 — the old
-      // `autoAdvanced > 0` flagged ~every student in a full-length course.
-      const AUTO_ADVANCE_FLOOR = 2;          // ignore one-off nudges
-      const AUTO_ADVANCE_RATE_THRESHOLD = 0.25; // flag at >=25% of milestones
-      const autoAdvanceRate = distinctMs ? autoAdvanced / distinctMs : 0;
-      // Primary signal: mean quiz score below the failing bucket. Kept in sync
-      // with the score-distribution chart's lowest bucket so the two views agree.
-      const QUIZ_SCORE_THRESHOLD = 60;
-
-      const flags = [];
-      if (quizScore != null && quizScore < QUIZ_SCORE_THRESHOLD) flags.push('low_quiz_score');
-      if (attempts > 0 && passRate < passRateThreshold) flags.push('low_pass_rate');
-      if (autoAdvanced >= AUTO_ADVANCE_FLOOR && autoAdvanceRate >= AUTO_ADVANCE_RATE_THRESHOLD) {
-        flags.push('auto_advanced');
-      }
-      if (attemptsPerMilestone > 2) flags.push('many_retries');
-      if (attempts === 0) flags.push('no_activity');
-
-      const atRisk = flags.length > 0 && flags[0] !== 'no_activity';
+      // --- v2 continuous risk score ---
+      const risk = computeRiskScore({ studentData: studentInputs.get(uid), courseData, cutoffDate: now });
 
       return {
         studentId: uid,
@@ -355,6 +662,7 @@ async function getAtRiskStudents(courseId, {
         programmingExposure: user.profile?.programmingExposure || 'unknown',
         priorKnowledge: en.priorKnowledge || {},
         joinedAt: en.joinedAt,
+        // legacy descriptive (kept)
         attempts,
         passes,
         autoAdvanced,
@@ -365,22 +673,36 @@ async function getAtRiskStudents(courseId, {
         quizPassRate,
         quizAttemptCount,
         lastAttemptAt: s?.lastAttemptAt || null,
-        flags,
-        atRisk,
+        // v2 risk
+        riskScore: risk.riskScore,
+        riskLevel: risk.riskLevel,
+        flags: risk.flags,
+        persistence_score: risk.persistence_score,
+        dominantDriver: risk.dominantDriver,
+        metaNote: risk.metaNote || null,
+        publishedN: risk.publishedN,
+        attemptedPublished: risk.attemptedPublished,
+        attemptedQuizTopics: risk.attemptedQuizTopics,
+        passedPublished: risk.passedPublished,
+        riskTotalAttempts: risk.totalAttempts,
+        avgQuizScore: risk.avgQuizScore,
+        daysSinceEnrollment: risk.daysSinceEnrollment,
+        usedPublishGraceFallback: risk.usedPublishGraceFallback,
+        signals: risk.signals,
+        classContext: classContextMap.get(uid) || null,
+        // Headline "at-risk" = score >= the High threshold (40) AND not overridden
+        // as "doing well in class" (Step 7). Used by the dashboard tile count and
+        // the Student Progress header. The Insights panel still SHOWS overridden
+        // students (it keys off riskLevel/riskScore, not atRisk) — with a gray
+        // border + "Class override" pill.
+        atRisk: risk.riskScore >= RISK_LEVEL_THRESHOLDS.high
+          && (classContextMap.get(uid) || null) !== 'doing_well_in_class',
       };
     })
     .filter(Boolean);
 
-  // Sort: at-risk first, then by lowest quiz score (the primary risk signal,
-  // nulls last), then lowest pass rate, then most auto-advances.
-  rows.sort((a, b) => {
-    if (a.atRisk !== b.atRisk) return a.atRisk ? -1 : 1;
-    const qa = a.quizScore == null ? Infinity : a.quizScore;
-    const qb = b.quizScore == null ? Infinity : b.quizScore;
-    if (qa !== qb) return qa - qb;
-    if (a.passRate !== b.passRate) return a.passRate - b.passRate;
-    return b.autoAdvanced - a.autoAdvanced;
-  });
+  // Most-at-risk first by continuous score; name as a stable tiebreak.
+  rows.sort((a, b) => (b.riskScore - a.riskScore) || (a.name || '').localeCompare(b.name || ''));
 
   return rows;
 }
@@ -595,4 +917,9 @@ module.exports = {
   getAtRiskStudents,
   getCrossCourseKPIs,
   getTopicStudentHeatmap,
+  // Risk Insights v2 — exported for reuse by the risk-trend endpoint (Step 6)
+  // and any future caller that needs the pure scorer or its inputs.
+  publishedTopicsCount,
+  computeRiskScore,
+  buildRiskInputs,
 };
