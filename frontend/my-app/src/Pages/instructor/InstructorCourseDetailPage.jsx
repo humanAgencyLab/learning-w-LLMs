@@ -378,10 +378,30 @@ export default function InstructorCourseDetailPage() {
 
   const publishedCount = topics.filter(t => t.status === 'published').length;
   const draftCount = topics.filter(t => t.status === 'draft').length;
+  // Functional once at least one topic is published; until then the page is in
+  // setup mode (single column, Topics list last where drafts accumulate).
+  const isFunctional = publishedCount > 0;
+
+  // Shared Student Progress link — rendered narrow-only above the grid AND
+  // wide-only at the top of the right rail (responsive, single definition).
+  const studentProgressCard = (analytics && analytics.enrollmentCount > 0) ? (
+    <Link
+      to={`/instructor/courses/${courseId}/students`}
+      className="flex items-center justify-between border border-gray-200 rounded-xl bg-white px-5 py-4 hover:border-blue-300 hover:shadow-sm transition-all group"
+    >
+      <div>
+        <h3 className="font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Student Progress</h3>
+        <p className="text-xs text-gray-500 mt-0.5">View per-student progress, quiz results, and identify at-risk students.</p>
+      </div>
+      <svg className="w-5 h-5 text-gray-300 group-hover:text-blue-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+      </svg>
+    </Link>
+  ) : null;
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="p-6 max-w-4xl mx-auto pb-12">
+      <div className={`p-6 mx-auto pb-12 ${isFunctional ? 'max-w-7xl' : 'max-w-4xl'}`}>
       {/* Confirm before Modify wipes existing draft topics */}
       {confirmModifyMsg !== null && (() => {
         const draftTopics = topics.filter((t) => t.status === 'draft');
@@ -476,21 +496,53 @@ export default function InstructorCourseDetailPage() {
         </div>
       )}
 
-      {/* Student progress link */}
-      {analytics && analytics.enrollmentCount > 0 && (
-        <Link
-          to={`/instructor/courses/${courseId}/students`}
-          className="mb-6 flex items-center justify-between border border-gray-200 rounded-xl bg-white px-5 py-4 hover:border-blue-300 hover:shadow-sm transition-all group"
-        >
-          <div>
-            <h3 className="font-semibold text-gray-800 group-hover:text-blue-700 transition-colors">Student Progress</h3>
-            <p className="text-xs text-gray-500 mt-0.5">View per-student progress, quiz results, and identify at-risk students.</p>
-          </div>
-          <svg className="w-5 h-5 text-gray-300 group-hover:text-blue-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </Link>
-      )}
+      {/* Student Progress — narrow-screen, FUNCTIONAL mode only (setup mode shows
+          it inside the single-column stack via the rail wrapper below). */}
+      {isFunctional && studentProgressCard && <div className="lg:hidden mb-6">{studentProgressCard}</div>}
+
+      {/* State-dependent layout. Functional (>=1 published topic): two columns —
+          Topics (primary) left, setup tools right. Setup (0 published): single
+          column, setup tools first, Topics list last (drafts accumulate there).
+          Same cards either way — only the wrapper classes/order change. */}
+      <div className={`grid grid-cols-1 gap-6 ${isFunctional ? 'lg:grid-cols-3' : ''}`}>
+        {/* Topics list — left column when functional; ordered LAST when in setup */}
+        <div className={isFunctional ? 'lg:col-span-2' : 'order-2'}>
+          <section className="border border-gray-200 rounded-xl bg-white p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-gray-800">Topics ({topics.length})</h2>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => action(() => instructorApi.createTopic(courseId, { title: 'New draft topic' }))}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium inline-flex items-center gap-1 disabled:opacity-50"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                Add topic
+              </button>
+            </div>
+            {topics.length === 0 ? (
+              <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-xl">
+                <p className="text-gray-400 text-sm mb-1">No topics yet</p>
+                <p className="text-xs text-gray-400">Upload materials and generate topics, or create one manually.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {topics.map((t) => (
+                  <TopicCard key={t._id} topic={t} courseId={courseId} busy={busy} onAction={action} />
+                ))}
+              </div>
+            )}
+            {draftCount > 0 && publishedCount === 0 && (
+              <p className="text-xs text-amber-600 mt-3 bg-amber-50 rounded-lg px-3 py-2">
+                You have {draftCount} draft topic{draftCount > 1 ? 's' : ''}. Approve and publish them so students can see them.
+              </p>
+            )}
+          </section>
+        </div>
+
+        {/* Setup tools — right column when functional; ordered FIRST when in setup */}
+        <div className={isFunctional ? 'lg:col-span-1' : 'order-1'}>
+          {studentProgressCard && <div className={`${isFunctional ? 'hidden lg:block' : ''} mb-6`}>{studentProgressCard}</div>}
 
       {/* Global Instructions */}
       <section className="mb-6 border border-gray-200 rounded-xl bg-white p-5">
@@ -582,7 +634,7 @@ export default function InstructorCourseDetailPage() {
         </p>
 
         {chatMessages.length > 0 && (
-          <div className="max-h-72 overflow-y-auto space-y-2 mb-3 border border-gray-100 rounded-xl p-3 bg-gray-50/50">
+          <div className="max-h-96 overflow-y-auto space-y-2 mb-3 border border-gray-100 rounded-xl p-3 bg-gray-50/50">
             {chatMessages.map((m, i) => (
               <ChatBubble key={i} role={m.role} content={m.content} />
             ))}
@@ -597,7 +649,7 @@ export default function InstructorCourseDetailPage() {
           </div>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 lg:flex-col">
           <input
             className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
             placeholder={isModify ? 'e.g. "Add a topic on neural networks"' : 'e.g. "Create 5 topics covering the full syllabus"'}
@@ -627,39 +679,8 @@ export default function InstructorCourseDetailPage() {
             : 'Generate creates new draft topics from your materials and instructions.'}
         </p>
       </section>
-
-      {/* Topics */}
-      <section className="border border-gray-200 rounded-xl bg-white p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-gray-800">Topics ({topics.length})</h2>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => action(() => instructorApi.createTopic(courseId, { title: 'New draft topic' }))}
-            className="text-sm text-blue-600 hover:text-blue-800 font-medium inline-flex items-center gap-1 disabled:opacity-50"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            Add topic
-          </button>
         </div>
-        {topics.length === 0 ? (
-          <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-xl">
-            <p className="text-gray-400 text-sm mb-1">No topics yet</p>
-            <p className="text-xs text-gray-400">Upload materials and generate topics, or create one manually.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {topics.map((t) => (
-              <TopicCard key={t._id} topic={t} courseId={courseId} busy={busy} onAction={action} />
-            ))}
-          </div>
-        )}
-        {draftCount > 0 && publishedCount === 0 && (
-          <p className="text-xs text-amber-600 mt-3 bg-amber-50 rounded-lg px-3 py-2">
-            You have {draftCount} draft topic{draftCount > 1 ? 's' : ''}. Approve and publish them so students can see them.
-          </p>
-        )}
-      </section>
+      </div>
       </div>
     </div>
   );
