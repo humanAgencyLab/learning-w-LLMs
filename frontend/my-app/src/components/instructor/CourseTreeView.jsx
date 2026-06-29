@@ -110,7 +110,9 @@ function MilestoneRow({ milestone }) {
 }
 
 function ModuleNode({ module: mod, quizByModuleId }) {
-  const [open, setOpen] = useState(true);
+  // B3 fix (June 2026 audit): default modules COLLAPSED so the tree opens at
+  // module level — milestones stay hidden until an instructor expands a module.
+  const [open, setOpen] = useState(false);
   const quiz = quizByModuleId.get(mod.moduleId) || null;
   return (
     <div className="ml-6">

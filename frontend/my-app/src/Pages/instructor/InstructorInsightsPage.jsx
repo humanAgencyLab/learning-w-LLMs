@@ -5,35 +5,28 @@ import CourseTreeView from '../../components/instructor/CourseTreeView';
 import MilestoneBarDrilldown from '../../components/instructor/charts/MilestoneBarDrilldown';
 import TopicStudentHeatmap from '../../components/instructor/charts/TopicStudentHeatmap';
 import InsightCards from '../../components/instructor/InsightCards';
-import PerformanceKPIStrip from '../../components/instructor/performance/PerformanceKPIStrip';
 import ScoreDistributionChart from '../../components/instructor/performance/ScoreDistributionChart';
 import CompletionFunnel from '../../components/instructor/performance/CompletionFunnel';
 import QuizByTopicTable from '../../components/instructor/performance/QuizByTopicTable';
 import RiskDistributionChart from '../../components/instructor/RiskDistributionChart';
+import CollapsibleSection from '../../components/instructor/CollapsibleSection';
+import TopHardestTopics from '../../components/instructor/TopHardestTopics';
 import { riskMeta, flagLabel, driverPhrase, FLAG_CHIPS, CLASS_OVERRIDE_BORDER } from '../../components/instructor/riskLevel';
 
 /**
- * Phase F Insights page (Risk Insights v2):
- *   Header → KPI strip → InsightCards → ScoreDistribution → CompletionFunnel →
- *   CourseTree → Milestone drilldown → QuizByTopic → Heatmap →
- *   RiskDistributionChart (with topic + snapshot filters) →
- *   AtRiskPanel (continuous score + level, filter chips).
+ * Insights page IA v2 (Proposal A) — task-organized:
+ *   [Compact KPIs] [Hot Signal narrative]
+ *   == What should I cover in lecture? ==   (TopHardestTopics)
+ *   == Who should I reach before class? ==  (compact risk chart + at-risk panel)
+ *   == Course Health ==  (collapsed; sub-expanders for the reference charts)
  */
 
-function SectionCard({ title, eyebrow, children, right, innerRef }) {
+function KpiTile({ label, value, title }) {
   return (
-    <section ref={innerRef} className="bg-white border border-gray-200 rounded-xl p-5 scroll-mt-6">
-      <div className="flex items-start justify-between mb-4 gap-4">
-        <div className="min-w-0">
-          {eyebrow && (
-            <p className="text-[11px] uppercase tracking-wide text-indigo-600 font-semibold mb-0.5">{eyebrow}</p>
-          )}
-          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-        </div>
-        {right}
-      </div>
-      {children}
-    </section>
+    <div className="bg-white border border-gray-200 rounded-xl p-4" title={title}>
+      <p className="text-2xl font-bold text-gray-900">{value}</p>
+      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+    </div>
   );
 }
 
@@ -47,7 +40,6 @@ function relativeDays(d) {
   return months === 1 ? '1 month ago' : `${months} months ago`;
 }
 
-// Filter chips (Step 4): single-select level + multi-select flag.
 function FilterChips({ levelFilter, setLevelFilter, flagFilters, setFlagFilters }) {
   const toggleFlag = (key) =>
     setFlagFilters((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
@@ -172,23 +164,29 @@ export default function InstructorInsightsPage() {
   const [heatmap, setHeatmap] = useState({ topics: [], students: [] });
   const [performance, setPerformance] = useState(null);
   const [performanceAvailable, setPerformanceAvailable] = useState(true);
+  const [analytics, setAnalytics] = useState(null); // session-completion KPI
   const [courseTitle, setCourseTitle] = useState('');
   const [includeSynthetic, setIncludeSynthetic] = useState(true);
 
   // Risk panel/chart filter state.
-  const [levelFilter, setLevelFilter] = useState(null);   // single-select level
-  const [flagFilters, setFlagFilters] = useState([]);     // multi-select flags
-  const [topicFilter, setTopicFilter] = useState(null);   // single topicId
-  const [snapshot, setSnapshot] = useState(null);         // up-to-topic N
-  const [distData, setDistData] = useState(null);         // re-scored rows when a topic/snapshot filter is active
+  const [levelFilter, setLevelFilter] = useState(null);
+  const [flagFilters, setFlagFilters] = useState([]);
+  const [topicFilter, setTopicFilter] = useState(null);
+  const [snapshot, setSnapshot] = useState(null);
+  const [distData, setDistData] = useState(null);
   const [distLoading, setDistLoading] = useState(false);
 
-  const treeRef = useRef(null);
-  const milestonesRef = useRef(null);
+  // Course Health expand state (controlled so "View all topic data" can open it).
+  const [courseHealthOpen, setCourseHealthOpen] = useState(false);
+  const [heatmapOpen, setHeatmapOpen] = useState(false);
   const heatmapRef = useRef(null);
-  const atRiskRef = useRef(null);
+  const whoToReachRef = useRef(null);
+  const courseHealthRef = useRef(null);
+  // InsightCards keeps its "View chart" deep-links (component unchanged). In the
+  // new IA the at-risk card scrolls to Section 2; tree/milestones/heatmap cards
+  // scroll to the (collapsed) Course Health section where those charts now live.
   const chartRefs = useMemo(
-    () => ({ tree: treeRef, milestones: milestonesRef, heatmap: heatmapRef, atRisk: atRiskRef }),
+    () => ({ atRisk: whoToReachRef, tree: courseHealthRef, milestones: courseHealthRef, heatmap: courseHealthRef }),
     [],
   );
 
@@ -196,7 +194,7 @@ export default function InstructorInsightsPage() {
     setLoading(true);
     setError('');
     try {
-      const [courseRes, treeRes, msRes, riskRes, hmRes, perfRes] = await Promise.all([
+      const [courseRes, treeRes, msRes, riskRes, hmRes, perfRes, analyticsRes] = await Promise.all([
         instructorApi.getCourse(courseId),
         instructorApi.getCourseTree(courseId, { includeSynthetic }),
         instructorApi.getMilestoneStats(courseId, { includeSynthetic }),
@@ -206,6 +204,7 @@ export default function InstructorInsightsPage() {
           console.warn('[insights] performance summary unavailable:', e?.message);
           return null;
         }),
+        instructorApi.getCourseAnalytics(courseId).catch(() => null),
       ]);
       setCourseTitle(courseRes?.data?.course?.title || courseRes?.data?.title || '');
       setTree(treeRes?.data || null);
@@ -216,6 +215,7 @@ export default function InstructorInsightsPage() {
       const perfPayload = perfRes?.data || null;
       setPerformance(perfPayload);
       setPerformanceAvailable(Boolean(perfPayload));
+      setAnalytics(analyticsRes?.data || null);
     } catch (e) {
       setError(e?.message || 'Failed to load insights');
     } finally {
@@ -238,6 +238,7 @@ export default function InstructorInsightsPage() {
   }, [courseId, includeSynthetic, topicFilter, snapshot]);
 
   const publishedN = riskTopics.length;
+  const enrolledCount = performance?.enrollmentCount ?? heatmap.students.length;
   const baseRows = (topicFilter || snapshot) && distData ? (distData.rows || []) : riskRows;
   const atRiskCount = baseRows.filter((r) => r.riskLevel !== 'healthy').length;
   const filtersActive = !!levelFilter || flagFilters.length > 0;
@@ -246,6 +247,18 @@ export default function InstructorInsightsPage() {
     .filter((r) => !levelFilter || r.riskLevel === levelFilter)
     .filter((r) => flagFilters.length === 0 || flagFilters.some((f) => (r.flags || []).includes(f)))
     .sort((a, b) => b.riskScore - a.riskScore);
+
+  // Headline at-risk (Critical + High), matches the dashboard tile.
+  const headlineAtRisk = riskRows.filter((r) => r.atRisk).length;
+  const sessionCompletion = analytics && analytics.sessionCount > 0
+    ? Math.round((analytics.completedSessionCount / analytics.sessionCount) * 100)
+    : null;
+
+  const openHeatmapDeepLink = () => {
+    setCourseHealthOpen(true);
+    setHeatmapOpen(true);
+    setTimeout(() => heatmapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
@@ -272,12 +285,22 @@ export default function InstructorInsightsPage() {
 
       {error && <div className="p-3 bg-rose-50 border border-rose-200 rounded text-sm text-rose-700">{error}</div>}
 
-      <PerformanceKPIStrip loading={loading} performance={performance} hardestModuleRef={milestonesRef} />
+      {/* Compact KPIs */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <KpiTile label="Total students" value={enrolledCount} />
+        <KpiTile
+          label="Session completion"
+          value={sessionCompletion == null ? '—' : `${sessionCompletion}%`}
+          title="Percentage of student sessions that reached the 'completed' phase"
+        />
+        <KpiTile
+          label="At-risk"
+          value={headlineAtRisk}
+          title="Students at highest urgency: Critical or High risk. Watch-tier students appear in the panel below, not in this count."
+        />
+      </div>
 
-      {!performanceAvailable && !loading && (
-        <div className="text-xs text-gray-500 -mt-3">Performance data unavailable right now — the charts below still render.</div>
-      )}
-
+      {/* Hot Signal narrative (unchanged) */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-semibold text-gray-900">What stands out</h2>
@@ -287,81 +310,141 @@ export default function InstructorInsightsPage() {
       </section>
 
       {loading ? (
-        <div className="text-sm text-gray-500">Loading charts…</div>
+        <div className="text-sm text-gray-500">Loading insights…</div>
       ) : (
         <>
-          {performance && (
-            <SectionCard eyebrow="Where the class lands" title="Score distribution">
-              <ScoreDistributionChart scoreDistribution={performance.scoreDistribution} />
-            </SectionCard>
-          )}
-
-          {performance && (
-            <SectionCard eyebrow="Where students drop off" title="Completion funnel">
-              <CompletionFunnel funnel={performance.funnel} enrollmentCount={performance.enrollmentCount} />
-            </SectionCard>
-          )}
-
-          <SectionCard innerRef={treeRef} title="Course structure with attempt rollups">
-            <CourseTreeView tree={tree} moduleDifficulty={performance?.moduleDifficulty || []} />
-          </SectionCard>
-
-          <SectionCard innerRef={milestonesRef} title="Milestone difficulty">
-            <MilestoneBarDrilldown milestones={milestones} />
-          </SectionCard>
-
-          {performance && (
-            <SectionCard eyebrow="Quizzes that aren't clicking yet" title="Quiz difficulty by topic">
-              <QuizByTopicTable quizByTopic={performance.quizByTopic} />
-            </SectionCard>
-          )}
-
-          <SectionCard innerRef={heatmapRef} title="Topic × student heatmap">
-            <TopicStudentHeatmap topics={heatmap.topics} students={heatmap.students} />
-          </SectionCard>
-
-          {/* Risk distribution (Step 5) */}
-          <SectionCard eyebrow="Class composition" title="Risk distribution">
-            <RiskDistributionChart
-              rows={baseRows}
-              topics={riskTopics}
-              publishedN={publishedN}
-              topicFilter={topicFilter}
-              onTopicFilter={(t) => { setTopicFilter(t); if (t) setSnapshot(null); }}
-              snapshot={snapshot}
-              onSnapshot={(n) => setSnapshot(n)}
-              activeLevel={levelFilter}
-              onSelectLevel={(lvl) => setLevelFilter((prev) => (prev === lvl ? null : lvl))}
-              loading={distLoading}
+          {/* ===== What should I cover in lecture? ===== */}
+          <section className="space-y-3">
+            <h2 className="text-lg font-bold text-gray-900">What should I cover in lecture?</h2>
+            <TopHardestTopics
+              heatmap={heatmap}
+              moduleDifficulty={performance?.moduleDifficulty || []}
+              enrolledCount={enrolledCount}
+              onViewAllTopicData={openHeatmapDeepLink}
             />
-          </SectionCard>
+          </section>
 
-          {/* At-risk panel (Steps 3, 4, 7) */}
-          <SectionCard innerRef={atRiskRef} title="Students flagged as at-risk">
-            <FilterChips
-              levelFilter={levelFilter}
-              setLevelFilter={setLevelFilter}
-              flagFilters={flagFilters}
-              setFlagFilters={setFlagFilters}
-            />
-            <p className="text-xs text-gray-500 mb-3">
-              {filtersActive
-                ? `Showing ${panelRows.length} of ${atRiskCount} at-risk students`
-                : `Showing ${atRiskCount} at-risk students (Critical + High + Watch)`}
-              {(topicFilter || snapshot) && <span className="text-indigo-600"> · re-scored for the current chart filter</span>}
-            </p>
-            {panelRows.length === 0 ? (
-              <p className="text-sm text-gray-500">
-                {atRiskCount === 0 ? 'No students currently flagged as at-risk in this course.' : 'No students match the current filters.'}
+          {/* ===== Who should I reach before class? ===== */}
+          <section className="space-y-3 scroll-mt-6" ref={whoToReachRef}>
+            <h2 className="text-lg font-bold text-gray-900">Who should I reach before class?</h2>
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <RiskDistributionChart
+                compact
+                rows={baseRows}
+                topics={riskTopics}
+                publishedN={publishedN}
+                topicFilter={topicFilter}
+                snapshot={snapshot}
+                activeLevel={levelFilter}
+                onSelectLevel={(lvl) => setLevelFilter((prev) => (prev === lvl ? null : lvl))}
+                loading={distLoading}
+              />
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <FilterChips
+                levelFilter={levelFilter}
+                setLevelFilter={setLevelFilter}
+                flagFilters={flagFilters}
+                setFlagFilters={setFlagFilters}
+              />
+              <p className="text-xs text-gray-500 mb-3">
+                {filtersActive
+                  ? `Showing ${panelRows.length} of ${atRiskCount} at-risk students`
+                  : `Showing ${atRiskCount} at-risk students (Critical + High + Watch)`}
+                {(topicFilter || snapshot) && <span className="text-indigo-600"> · re-scored for the current chart filter</span>}
               </p>
-            ) : (
-              <div className={`space-y-2 ${distLoading ? 'opacity-50 transition-opacity' : ''}`}>
-                {panelRows.map((r) => (
-                  <RiskRow key={r.studentId} r={r} courseId={courseId} publishedN={publishedN} />
-                ))}
-              </div>
-            )}
-          </SectionCard>
+              {panelRows.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  {atRiskCount === 0 ? 'No students currently flagged as at-risk in this course.' : 'No students match the current filters.'}
+                </p>
+              ) : (
+                <div className={`space-y-2 ${distLoading ? 'opacity-50 transition-opacity' : ''}`}>
+                  {panelRows.map((r) => (
+                    <RiskRow key={r.studentId} r={r} courseId={courseId} publishedN={publishedN} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* ===== Course Health (collapsed) ===== */}
+          <CollapsibleSection
+            title="Course Health"
+            subtitle="reference charts"
+            open={courseHealthOpen}
+            onToggle={setCourseHealthOpen}
+            innerRef={courseHealthRef}
+          >
+            <div className="space-y-3">
+              <CollapsibleSection title="Score distribution">
+                {performance
+                  ? <ScoreDistributionChart scoreDistribution={performance.scoreDistribution} />
+                  : <p className="text-sm text-gray-500">Performance data unavailable.</p>}
+              </CollapsibleSection>
+
+              <CollapsibleSection title="Completion funnel">
+                {performance
+                  ? <CompletionFunnel funnel={performance.funnel} enrollmentCount={performance.enrollmentCount} />
+                  : <p className="text-sm text-gray-500">Performance data unavailable.</p>}
+              </CollapsibleSection>
+
+              <CollapsibleSection title="Course structure">
+                <CourseTreeView tree={tree} moduleDifficulty={performance?.moduleDifficulty || []} />
+              </CollapsibleSection>
+
+              <CollapsibleSection
+                title="Topic × student heatmap"
+                open={heatmapOpen}
+                onToggle={setHeatmapOpen}
+                innerRef={heatmapRef}
+              >
+                {/* Topic + snapshot filters live here (moved from the inline chart).
+                    Changing them re-scores the "Who should I reach" chart + panel above. */}
+                <div className="flex items-center gap-2 flex-wrap mb-3">
+                  <span className="text-xs text-gray-500">Re-score risk by:</span>
+                  <select
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                    value={topicFilter || ''}
+                    onChange={(e) => { const v = e.target.value || null; setTopicFilter(v); if (v) setSnapshot(null); }}
+                    title="Score the class against a single topic"
+                  >
+                    <option value="">All published topics</option>
+                    {riskTopics.map((t) => (
+                      <option key={t.topicId} value={t.topicId}>{t.title}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white disabled:opacity-50"
+                    value={snapshot || ''}
+                    onChange={(e) => setSnapshot(e.target.value ? parseInt(e.target.value, 10) : null)}
+                    disabled={!!topicFilter}
+                    title="See the class as it was after only the first N topics"
+                  >
+                    <option value="">Current</option>
+                    {Array.from({ length: publishedN }, (_, i) => i + 1).map((k) => (
+                      <option key={k} value={k}>Up to topic {k}</option>
+                    ))}
+                  </select>
+                  {(topicFilter || snapshot) && (
+                    <button type="button" className="text-[11px] text-blue-600 hover:text-blue-800" onClick={() => { setTopicFilter(null); setSnapshot(null); }}>
+                      Reset
+                    </button>
+                  )}
+                </div>
+                <TopicStudentHeatmap topics={heatmap.topics} students={heatmap.students} />
+              </CollapsibleSection>
+
+              <CollapsibleSection title="Quiz difficulty by topic">
+                {performance
+                  ? <QuizByTopicTable quizByTopic={performance.quizByTopic} />
+                  : <p className="text-sm text-gray-500">Performance data unavailable.</p>}
+              </CollapsibleSection>
+
+              <CollapsibleSection title="Milestone difficulty">
+                <MilestoneBarDrilldown milestones={milestones} />
+              </CollapsibleSection>
+            </div>
+          </CollapsibleSection>
         </>
       )}
     </div>
