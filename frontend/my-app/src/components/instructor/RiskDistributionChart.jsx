@@ -20,6 +20,7 @@ export default function RiskDistributionChart({
   activeLevel = null,
   onSelectLevel,
   loading = false,
+  compact = false,
 }) {
   const data = useMemo(() => {
     const counts = { healthy: 0, watch: 0, high: 0, critical: 0 };
@@ -42,6 +43,7 @@ export default function RiskDistributionChart({
     <div>
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
         <p className="text-xs text-gray-500">{subtitle}</p>
+        {!compact && (
         <div className="flex items-center gap-2">
           <select
             className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white"
@@ -67,6 +69,7 @@ export default function RiskDistributionChart({
             ))}
           </select>
         </div>
+        )}
       </div>
 
       <div style={{ width: '100%', height: 240 }} className={loading ? 'opacity-40 transition-opacity' : 'transition-opacity'}>
