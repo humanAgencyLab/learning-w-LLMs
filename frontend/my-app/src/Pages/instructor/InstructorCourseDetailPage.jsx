@@ -253,8 +253,22 @@ export default function InstructorCourseDetailPage() {
   }, [courseId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Land at the top of the page on mount. The chat auto-scroll below previously
+  // used scrollIntoView, which scrolls EVERY ancestor scroll container (incl.
+  // the page's `h-full overflow-y-auto`), dragging the viewport down on render.
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+
+  // Auto-scroll the chat history to the latest message — scoped to the chat's
+  // OWN scroll container (`.chat-history-scroll`) so it never moves the page.
+  useEffect(() => {
+    const end = chatEndRef.current;
+    if (!end) return;
+    const container = end.closest('.chat-history-scroll');
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
   }, [chatMessages]);
 
   const saveInstructions = async () => {
@@ -634,7 +648,7 @@ export default function InstructorCourseDetailPage() {
         </p>
 
         {chatMessages.length > 0 && (
-          <div className="max-h-96 overflow-y-auto space-y-2 mb-3 border border-gray-100 rounded-xl p-3 bg-gray-50/50">
+          <div className="chat-history-scroll max-h-96 overflow-y-auto space-y-2 mb-3 border border-gray-100 rounded-xl p-3 bg-gray-50/50">
             {chatMessages.map((m, i) => (
               <ChatBubble key={i} role={m.role} content={m.content} />
             ))}
