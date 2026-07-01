@@ -26,21 +26,21 @@ function MilestoneBadges({ milestone }) {
   const ratio = fmtRatio(attempts, studentCount);
   return (
     <span className="inline-flex items-center gap-2 flex-wrap justify-end">
-      <Pill className={`font-semibold ${passRateColor(attempts ? passRate : null)}`}>
+      <Pill className={`font-semibold ${passRateColor(attempts ? passRate : null)}`} title="Share of milestone-check attempts on this milestone that passed">
         {attempts ? `${passRate}% pass` : 'no data'}
       </Pill>
       {attempts > 0 && maxAttemptsByOne > 0 && (
-        <Pill className="bg-slate-100 text-slate-600" title="Highest attempt count by any single student on this milestone">
+        <Pill className="bg-slate-100 text-slate-600" title="Most attempts by any single student on this milestone">
           max {maxAttemptsByOne}
         </Pill>
       )}
       {attempts > 0 && ratio && (
-        <Pill className="bg-slate-100 text-slate-600" title="Total attempts ÷ students who tried (1.0 = everyone passed first try)">
+        <Pill className="bg-slate-100 text-slate-600" title="Average attempts per student on this milestone">
           ratio {ratio}
         </Pill>
       )}
       {autoAdvanced > 0 && (
-        <Pill className="bg-rose-100 text-rose-700" title="Times the system force-advanced a student past this milestone">
+        <Pill className="bg-rose-100 text-rose-700" title="Students who were moved past this milestone without meeting the criteria. A high count is a warning signal">
           {autoAdvanced} auto-advance
         </Pill>
       )}
@@ -64,17 +64,17 @@ function ModuleBadges({ quiz }) {
     <span className="inline-flex items-center gap-2 flex-wrap justify-end">
       <Pill
         className={`font-semibold ${passRateColor(passRate)}`}
-        title="Percentage of all quiz attempts on this module that scored at or above the passing threshold"
+        title="Share of students who passed this module's quiz"
       >
-        {passRate != null ? `${passRate}% attempt pass` : 'no data'}
+        {passRate != null ? `${passRate}% student pass` : 'no data'}
       </Pill>
       {maxAttemptsByOne > 0 && (
-        <Pill className="bg-slate-100 text-slate-600" title="Highest quiz attempts by any single student on this module">
+        <Pill className="bg-slate-100 text-slate-600" title="Most quiz attempts by any single student on this module">
           max {maxAttemptsByOne}
         </Pill>
       )}
       {ratio && (
-        <Pill className="bg-slate-100 text-slate-600" title="Total quiz attempts ÷ students who tried">
+        <Pill className="bg-slate-100 text-slate-600" title="Average quiz attempts per student on this module">
           ratio {ratio}
         </Pill>
       )}
@@ -86,11 +86,11 @@ function TopicBadges({ totals }) {
   const { attempts, passRate } = totals || {};
   return (
     <span className="inline-flex items-center gap-2">
-      <Pill className={`font-semibold ${passRateColor(attempts ? passRate : null)}`}>
+      <Pill className={`font-semibold ${passRateColor(attempts ? passRate : null)}`} title="Share of milestone-check attempts on this topic that passed">
         {attempts ? `${passRate}% pass` : 'no data'}
       </Pill>
       {attempts > 0 && (
-        <Pill className="bg-slate-100 text-slate-600">
+        <Pill className="bg-slate-100 text-slate-600" title="Total milestone-check attempts across all students on this topic">
           {attempts} attempt{attempts !== 1 ? 's' : ''}
         </Pill>
       )}
@@ -187,14 +187,19 @@ export default function CourseTreeView({ tree, moduleDifficulty = [] }) {
   }
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between text-xs text-gray-500">
-        <span>
-          Course total:{' '}
-          <span className="font-semibold text-gray-700">
-            {tree.totals.attempts} attempts
-          </span>{' '}
-          · {tree.totals.passRate}% pass rate
-        </span>
+      <div>
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>
+            Course total:{' '}
+            <span className="font-semibold text-gray-700">
+              {tree.totals.attempts} attempts
+            </span>{' '}
+            · {tree.totals.passRate}% pass rate
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 mt-2">
+          Topic and milestone pass rates count attempts on the milestone reflection checks. Module pass rate counts students who passed the module quiz. Max and ratio show highest and average attempts per student. Auto-advance counts students moved past without meeting the criteria.
+        </p>
       </div>
       {tree.topics.map((t) => (
         <TopicNode key={t.courseTopicId} topic={t} quizByModuleId={quizByModuleId} />
