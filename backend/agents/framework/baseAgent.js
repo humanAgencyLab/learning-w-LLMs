@@ -137,7 +137,7 @@ async function runAgentWithTools({
   messages = [],
   tools = [],
   maxIterations = 5,
-  maxTokens = 1200,
+  maxTokens = 2000,
   temperature = 0.2,
   onToolCall,
   timeoutMs = DEFAULT_AGENT_TIMEOUT_MS,
@@ -231,11 +231,28 @@ async function runAgentWithTools({
     }
   }
 
+  // Iteration budget exhausted. Instead of a bare failure, surface what the
+  // agent DID learn from the tool-call log. Summarized server-side (no extra
+  // LLM round — that would risk burning another iteration).
+  const summaryLines = toolCallsLog.slice(0, 8).map((entry) => {
+    const label = entry.name || 'tool';
+    if (entry.error) return `• ${label}: error — ${entry.error}`;
+    return `• ${label}: ${oneLineDigest(entry.resultSample)}`;
+  });
+  const summary = summaryLines.length ? summaryLines.join('\n') : '(no tool calls completed)';
   return {
-    content: 'I ran out of tool-call iterations while trying to answer that. Try asking a narrower question.',
+    content: `I couldn't finish the full analysis, but here's what I did find:\n${summary}\n\nAsk a narrower follow-up if you want me to go deeper on any of these.`,
     toolCalls: toolCallsLog,
     iterations: maxIterations,
   };
+}
+
+// One-line digest of a tool result sample (already a truncated JSON string from
+// safeSample) for the iteration-limit fallback.
+function oneLineDigest(sample) {
+  if (sample == null) return 'no data';
+  const s = String(sample).replace(/\s+/g, ' ').trim();
+  return s.length > 120 ? `${s.slice(0, 120)}…` : s;
 }
 
 function safeSample(value) {
