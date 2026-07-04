@@ -47,31 +47,31 @@ export default function HotSignalCard({ courseId, includeSynthetic = true }) {
   }, [courseId, includeSynthetic]);
 
   return (
-    <div className="border border-indigo-100 bg-gradient-to-br from-indigo-50/60 to-white rounded-xl p-4 flex items-start gap-4">
-      <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
+    <div className="bg-assistant-tintSoft border border-assistant-tintDeep rounded-2xl p-4 flex flex-col">
+      <div className="flex items-center gap-2">
+        <span className="w-5 h-5 rounded-md bg-assistant text-white flex items-center justify-center shrink-0">
+          <svg className="w-[11px] h-[11px]" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />
+          </svg>
+        </span>
+        <span className="font-mono uppercase text-[10px] tracking-[.08em] text-assistant-deep font-semibold">Hot signal</span>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[11px] uppercase tracking-wide text-indigo-700/80 font-semibold">Hot signal</p>
-        {state.loading ? (
-          <div className="h-4 w-3/4 bg-indigo-100/70 rounded animate-pulse mt-1" />
-        ) : state.error ? (
-          <p className="text-sm text-rose-700 mt-0.5">{state.error}</p>
-        ) : state.degraded ? (
-          // Phase F: graceful-degrade fallback. The CTA still goes to the
-          // Insights page where the charts + KPI strip carry the load.
-          <p className="text-sm text-gray-700 mt-0.5 leading-snug italic">
-            AI summary unavailable right now — open Insights for the live numbers.
-          </p>
-        ) : (
-          <p className="text-sm text-gray-800 mt-0.5 leading-snug">{state.text || '—'}</p>
-        )}
-      </div>
+      {state.loading ? (
+        <div className="h-4 w-3/4 bg-assistant-tintDeep rounded animate-pulse mt-2 mb-auto" />
+      ) : state.error ? (
+        <p className="text-xs text-risk-critical mt-2 mb-auto leading-relaxed">{state.error}</p>
+      ) : state.degraded ? (
+        // Phase F: graceful-degrade fallback. The CTA still goes to the
+        // Insights page where the charts + KPI strip carry the load.
+        <p className="text-xs text-assistant-text mt-2 mb-auto leading-relaxed italic">
+          AI summary unavailable right now — open Insights for the live numbers.
+        </p>
+      ) : (
+        <p className="text-xs text-assistant-text mt-2 mb-auto leading-relaxed">{state.text || '—'}</p>
+      )}
       <Link
         to={`/instructor/courses/${courseId}/insights`}
-        className="text-xs font-medium text-indigo-700 bg-white border border-indigo-200 hover:bg-indigo-50 px-2.5 py-1 rounded-lg shrink-0"
+        className="self-start mt-2 text-xs font-bold text-assistant hover:underline"
       >
         Open in Insights →
       </Link>
