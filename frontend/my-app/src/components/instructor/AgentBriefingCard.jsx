@@ -67,55 +67,45 @@ export default function AgentBriefingCard({ includeSynthetic = true }) {
   };
 
   return (
-    <div className="border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white rounded-2xl p-5 shadow-sm">
-      <div className="flex items-start gap-4">
-        <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+    <div className="bg-surface border border-hairline rounded-2xl p-5 shadow-card">
+      <div className="flex items-center gap-2.5">
+        <span className="w-[26px] h-[26px] rounded-lg bg-assistant-tint text-assistant flex items-center justify-center shrink-0">
+          <svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />
           </svg>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-[11px] uppercase tracking-wide text-indigo-700/80 font-semibold">
-              Today&apos;s briefing
-            </p>
-            <span className="text-[10px] text-gray-400">&middot; grounded in your data</span>
-          </div>
-          {state.loading ? (
-            <div className="space-y-2 mt-2">
-              <div className="h-3.5 w-full bg-indigo-100/70 rounded animate-pulse" />
-              <div className="h-3.5 w-[92%] bg-indigo-100/70 rounded animate-pulse" />
-              <div className="h-3.5 w-[70%] bg-indigo-100/70 rounded animate-pulse" />
-            </div>
-          ) : state.error ? (
-            <p className="text-sm text-rose-700 mt-1.5">{state.error}</p>
-          ) : state.degraded ? (
-            // Soft fallback when the agent timed out or the upstream is
-            // unhealthy. The numbers on the dashboard are still live; we
-            // just don't have the narrative paragraph right now.
-            <p className="text-[15px] text-gray-700 mt-1.5 leading-relaxed italic">
-              AI summary is taking longer than usual — the numbers on this dashboard are live. Try the Insights Assistant for a specific question.
-            </p>
-          ) : (
-            <p className="text-[15px] text-gray-800 mt-1.5 leading-relaxed">
-              {state.text || '—'}
-            </p>
-          )}
-
-          <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onAskFollowUp}
-              className="text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg"
-            >
-              Ask follow-up →
-            </button>
-            <span className="text-[11px] text-gray-400">
-              Opens the Insights Assistant with a pre-seeded question.
-            </span>
-          </div>
-        </div>
+        </span>
+        <span className="text-[14.5px] font-bold text-ink-900">Today&apos;s briefing</span>
+        <span className="font-mono text-[10px] tracking-wide uppercase text-ink-200">grounded in your data</span>
       </div>
+
+      {state.loading ? (
+        <div className="space-y-2 mt-3.5">
+          <div className="h-3.5 w-full bg-assistant-tint rounded animate-pulse" />
+          <div className="h-3.5 w-[92%] bg-assistant-tint rounded animate-pulse" />
+          <div className="h-3.5 w-[70%] bg-assistant-tint rounded animate-pulse" />
+        </div>
+      ) : state.error ? (
+        <p className="text-sm text-risk-critical mt-3.5">{state.error}</p>
+      ) : state.degraded ? (
+        // Soft fallback when the agent timed out or the upstream is
+        // unhealthy. The numbers on the dashboard are still live; we
+        // just don't have the narrative paragraph right now.
+        <p className="text-[15px] text-ink-600 mt-3.5 leading-relaxed italic">
+          AI summary is taking longer than usual — the numbers on this dashboard are live. Try the Insights Assistant for a specific question.
+        </p>
+      ) : (
+        <p className="text-[15px] text-ink-600 mt-3.5 leading-relaxed">
+          {state.text || '—'}
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={onAskFollowUp}
+        className="mt-4 text-[13.5px] font-semibold text-assistant hover:underline"
+      >
+        Ask a follow-up →
+      </button>
     </div>
   );
 }

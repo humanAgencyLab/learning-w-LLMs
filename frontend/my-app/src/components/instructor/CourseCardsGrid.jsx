@@ -91,6 +91,9 @@ export default function CourseCardsGrid({ perCourse = [], loading = false }) {
         // to its own target instead of the body.
         const onCardClick = () => navigate(authoringHref);
         const onCardKey = (e) => {
+          // Only act on keys pressed on the card itself — Enter on the inner
+          // "Insights →" link must activate the link, not hijack to authoring.
+          if (e.target !== e.currentTarget) return;
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             navigate(authoringHref);
@@ -104,27 +107,35 @@ export default function CourseCardsGrid({ perCourse = [], loading = false }) {
             tabIndex={0}
             onClick={onCardClick}
             onKeyDown={onCardKey}
-            className="group bg-white border border-gray-200 hover:border-indigo-300 hover:shadow-md transition rounded-xl p-5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            className="group bg-surface border border-hairline hover:border-brand-tintBorder shadow-card hover:shadow-card-hover transition rounded-2xl p-5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-tintBorder"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="font-semibold text-gray-900 truncate group-hover:text-indigo-700">
+                <p className="font-bold text-ink-900 truncate group-hover:text-brand">
                   {c.title || 'Untitled course'}
                 </p>
                 <div className="flex items-center gap-2 mt-1">
                   {statusPill(c.status)}
-                  <span className="text-[11px] text-gray-500 truncate">
+                  <span className="text-[11px] text-ink-400 truncate">
                     {c.attempts || 0} attempts
                   </span>
+                  {c.atRiskCount > 0 && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-risk-criticalTint text-risk-critical border border-risk-criticalBorder">
+                      {c.atRiskCount} need attention
+                    </span>
+                  )}
                 </div>
               </div>
-              <Link
-                to={insightsHref}
-                onClick={(e) => e.stopPropagation()}
-                className="text-[11px] font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 px-2 py-1 rounded-lg shrink-0"
-              >
-                Insights →
-              </Link>
+              <span className="flex items-center gap-2 shrink-0">
+                <Link
+                  to={insightsHref}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-[11px] font-medium text-brand bg-brand-tint hover:bg-brand-tintBorder border border-brand-tintBorder px-2 py-1 rounded-lg"
+                >
+                  Insights →
+                </Link>
+                <span className="text-ink-100 text-lg leading-none">›</span>
+              </span>
             </div>
 
             <div className="flex gap-3 mt-4">
