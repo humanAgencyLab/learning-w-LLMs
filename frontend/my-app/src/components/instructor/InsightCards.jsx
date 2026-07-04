@@ -26,6 +26,15 @@ const CHART_LABELS = {
   atRisk: 'at-risk students',
 };
 
+// PR-3 card accent: dot + kicker colored by what the finding points at.
+const CARD_ACCENTS = {
+  atRisk: { dot: 'bg-risk-critical', text: 'text-risk-critical' },
+  milestones: { dot: 'bg-risk-high', text: 'text-risk-high' },
+  heatmap: { dot: 'bg-brand', text: 'text-brand' },
+  tree: { dot: 'bg-approve-strong', text: 'text-approve' },
+  none: { dot: 'bg-assistant', text: 'text-assistant' },
+};
+
 function Skeleton() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -138,42 +147,41 @@ export default function InsightCards({ courseId, chartRefs = {}, includeSyntheti
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {state.cards.map((card) => {
         const hasChart = card.chartRef && card.chartRef !== 'none';
         const chartLabel = hasChart ? CHART_LABELS[card.chartRef] || card.chartRef : null;
+        const accent = CARD_ACCENTS[card.chartRef] || CARD_ACCENTS.none;
         return (
           <div
             key={card.id}
-            className="bg-white border border-gray-200 hover:border-indigo-200 rounded-xl p-4 flex flex-col"
+            className="bg-surface border border-hairline rounded-2xl shadow-card p-5 flex flex-col"
           >
-            <div className="flex items-start gap-2">
-              <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0 text-[11px] font-bold">
-                ✦
-              </span>
-              <p className="font-semibold text-gray-900 text-[15px] leading-snug">
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${accent.dot}`} />
+              <p className={`font-mono uppercase tracking-wide text-[11px] font-bold ${accent.text}`}>
                 {card.title}
               </p>
             </div>
-            <p className="text-sm text-gray-700 mt-2 leading-relaxed flex-1">
+            <p className="text-sm text-ink-600 mt-2.5 leading-relaxed flex-1">
               {card.body}
             </p>
 
-            <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <div className="flex items-center gap-3 mt-3 flex-wrap">
               {hasChart ? (
                 <button
                   type="button"
                   onClick={() => scrollToChart(card.chartRef)}
-                  className="text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 px-2.5 py-1 rounded-lg"
+                  className="text-sm font-semibold text-brand hover:underline"
                   title={`Scroll to the ${chartLabel}`}
                 >
-                  View {chartLabel} ↓
+                  View {chartLabel} →
                 </button>
               ) : null}
               <button
                 type="button"
                 onClick={() => askAboutCard(card)}
-                className="text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 px-2.5 py-1 rounded-lg"
+                className="text-sm font-semibold text-ink-400 hover:text-ink-900"
               >
                 Ask about this
               </button>

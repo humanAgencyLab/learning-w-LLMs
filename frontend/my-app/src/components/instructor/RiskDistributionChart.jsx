@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Cell, LabelList, ResponsiveContainer, Tooltip,
 } from 'recharts';
@@ -22,6 +22,12 @@ export default function RiskDistributionChart({
   loading = false,
   compact = false,
 }) {
+  // E-Ins-1 fix: Recharts' Tooltip can stay stuck visible after the cursor
+  // leaves the chart (well-known recharts issue). We track hover on the OUTER
+  // wrapper div (not inside ResponsiveContainer) and hard-hide the tooltip
+  // wrapper the moment the pointer leaves.
+  const [hovering, setHovering] = useState(false);
+
   const data = useMemo(() => {
     const counts = { healthy: 0, watch: 0, high: 0, critical: 0 };
     for (const r of rows) counts[r.riskLevel] = (counts[r.riskLevel] || 0) + 1;
@@ -42,7 +48,7 @@ export default function RiskDistributionChart({
   return (
     <div>
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-        <p className="text-xs text-gray-500">{subtitle}</p>
+        <p className="text-xs text-ink-400">{subtitle}</p>
         {!compact && (
         <div className="flex items-center gap-2">
           <select
@@ -72,12 +78,28 @@ export default function RiskDistributionChart({
         )}
       </div>
 
-      <div style={{ width: '100%', height: 240 }} className={loading ? 'opacity-40 transition-opacity' : 'transition-opacity'}>
+      <div
+        style={{ width: '100%', height: 240 }}
+        className={loading ? 'opacity-40 transition-opacity' : 'transition-opacity'}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        onFocus={() => setHovering(true)}
+        onBlur={() => setHovering(false)}
+      >
         <ResponsiveContainer>
           <BarChart data={data} margin={{ top: 18, right: 8, left: 0, bottom: 4 }}>
             <XAxis dataKey="label" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
             <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={28} />
-            <Tooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} formatter={(v) => [`${v} student${v === 1 ? '' : 's'}`, 'Count']} />
+            <Tooltip
+              cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+              // Force-HIDE only when the pointer/focus is outside the chart —
+              // never force-show. wrapperStyle spreads LAST in recharts'
+              // TooltipBoundingBox, so an unconditional visibility would
+              // override recharts' own active/hasPayload logic and paint an
+              // empty tooltip box over axis labels / margins.
+              wrapperStyle={hovering ? undefined : { visibility: 'hidden' }}
+              formatter={(v) => [`${v} student${v === 1 ? '' : 's'}`, 'Count']}
+            />
             <Bar dataKey="count" radius={[4, 4, 0, 0]} onClick={(d) => onSelectLevel?.(d.level)} cursor="pointer" isAnimationActive={false}>
               {data.map((d) => (
                 <Cell
@@ -93,7 +115,7 @@ export default function RiskDistributionChart({
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <p className="text-[11px] text-gray-400 mt-1">Click a bar to filter the list below by that level; click it again to clear.</p>
+      <p className="text-[11px] text-ink-300 mt-1">Click a bar to filter the list below by that level; click it again to clear.</p>
     </div>
   );
 }
