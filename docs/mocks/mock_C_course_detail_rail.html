@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Course Detail — Study Assist (proposed)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { font-family: inherit; }
+  .kpi-num { font-size: 26px; font-weight: 700; color: #111827; line-height: 1; }
+  .kpi-label { font-size: 12px; color: #6b7280; margin-top: 4px; }
+  .hot { background: linear-gradient(180deg, #eef0ff 0%, #f5f6ff 100%); border: 1px solid #dfe3ff; }
+  .pill { padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .pill-published { background: #dcfce7; color: #166534; }
+  .pill-draft { background: #f3f4f6; color: #6b7280; }
+</style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+<div class="flex min-h-screen">
+
+  <!-- SIDEBAR -->
+  <aside class="w-52 bg-white border-r border-gray-200 flex flex-col shrink-0">
+    <div class="p-5 flex items-center gap-2">
+      <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-sm font-bold">✿</div>
+      <span class="font-bold text-gray-900">Teach</span>
+    </div>
+    <nav class="px-3 mt-2 space-y-1">
+      <a href="#" class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-50 text-sm">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2h-4a2 2 0 01-2-2v-5H10v5a2 2 0 01-2 2H4a2 2 0 01-2-2V9z"/></svg>
+        Dashboard
+      </a>
+      <a href="#" class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-indigo-50 text-indigo-700 font-semibold text-sm">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h13a3 3 0 013 3v13H7a3 3 0 01-3-3V4z"/></svg>
+        Courses
+      </a>
+      <a href="#" class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-50 text-sm">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        Students
+      </a>
+      <a href="#" class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-50 text-sm">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        Insights
+      </a>
+    </nav>
+    <div class="mt-auto p-3 space-y-2">
+      <a href="#" class="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50 text-sm">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Student view
+      </a>
+      <div class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200">
+        <div class="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-semibold">J</div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-semibold text-gray-900 truncate">Java Tutor</div>
+          <div class="text-[11px] text-gray-500">Instructor</div>
+        </div>
+        <button class="text-gray-400 hover:text-gray-700"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="flex-1 p-10 relative">
+
+    <!-- Breadcrumb -->
+    <div class="text-xs text-gray-500 mb-2">
+      <a href="#" class="hover:text-gray-800">← All courses</a>
+    </div>
+
+    <!-- Header -->
+    <div class="flex items-start justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">CPS 1231-Mid Semester</h1>
+        <div class="flex items-center gap-2.5 mt-2">
+          <span class="text-sm text-gray-500">Access code:</span>
+          <span class="font-mono font-semibold text-sm bg-gray-100 border border-gray-200 px-2 py-0.5 rounded">BDAC1D</span>
+          <button class="text-xs text-indigo-600 hover:underline font-medium">Copy</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 relative">
+        <button class="text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 flex items-center gap-1.5">View insights
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+        <div class="relative group">
+          <button class="text-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 px-2.5 py-2 rounded-lg border border-gray-200" title="Course actions">⋯</button>
+          <!-- Menu -->
+          <div class="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-1.5 w-56 text-sm z-10 hidden group-hover:block">
+            <button class="block w-full text-left px-3.5 py-2 hover:bg-gray-50">Course settings…</button>
+            <button class="block w-full text-left px-3.5 py-2 hover:bg-gray-50">Duplicate course</button>
+            <button class="block w-full text-left px-3.5 py-2 hover:bg-gray-50">Export analytics</button>
+            <hr class="my-1.5 border-gray-100">
+            <button class="block w-full text-left px-3.5 py-2 hover:bg-red-50 text-red-700">Delete course…</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPI + Hot Signal row -->
+    <div class="grid grid-cols-5 gap-3 mb-6">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4"><div class="kpi-num">20</div><div class="kpi-label">Enrolled</div></div>
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4"><div class="kpi-num">76</div><div class="kpi-label">Sessions</div></div>
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4"><div class="kpi-num">88.2%</div><div class="kpi-label">Session completion</div></div>
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4"><div class="kpi-num">15</div><div class="kpi-label">Topics · 7 published</div></div>
+      <div class="hot rounded-2xl p-4 flex items-start gap-2">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-[10px] tracking-wider uppercase text-indigo-700 font-semibold">Hot Signal</div>
+          <p class="text-xs text-gray-800 leading-snug mt-0.5">Introduction to Computer Science milestone is struggling with a 51.5% pass rate after 33 attempts.</p>
+          <a href="#" class="text-xs text-indigo-700 font-medium hover:underline">Open in Insights →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Two-column: Topics | Rail -->
+    <div class="grid grid-cols-3 gap-5">
+
+      <!-- LEFT: Topics -->
+      <div class="col-span-2">
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm">
+          <div class="flex items-baseline justify-between p-5 border-b border-gray-100">
+            <h2 class="font-semibold text-gray-900">Topics <span class="text-gray-400 font-normal">(15)</span></h2>
+            <button class="text-sm text-indigo-700 font-medium hover:underline">+ Add topic</button>
+          </div>
+          <div class="divide-y divide-gray-100">
+
+            <div class="p-4 hover:bg-gray-50">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-900">Introduction to Computer Science</span>
+                    <span class="pill pill-published">published</span>
+                  </div>
+                  <div class="text-sm text-gray-600 mt-0.5">Understand the basics of computer science and Java programming</div>
+                  <div class="text-xs text-gray-500 mt-1"><span class="text-indigo-600">Syllabus:</span> Unit 1 — Computer Hardware and Software, Generations of Programming Languages, Eclipse installation</div>
+                  <div class="text-xs text-gray-400 mt-1">1 module · 3 milestones</div>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button class="text-xs text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium">Edit</button>
+                  <button class="text-gray-400 hover:text-gray-700 text-lg px-1.5" title="More actions">⋯</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4 hover:bg-gray-50">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-900">Number Systems</span>
+                    <span class="pill pill-published">published</span>
+                  </div>
+                  <div class="text-sm text-gray-600 mt-0.5">Understand number systems and data representation</div>
+                  <div class="text-xs text-gray-500 mt-1"><span class="text-indigo-600">Syllabus:</span> Unit 2 — Number Systems, Data Representation, Console Input and Errors</div>
+                  <div class="text-xs text-gray-400 mt-1">1 module · 3 milestones</div>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button class="text-xs text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium">Edit</button>
+                  <button class="text-gray-400 hover:text-gray-700 text-lg px-1.5">⋯</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4 hover:bg-gray-50">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-900">Variables and Data Types</span>
+                    <span class="pill pill-published">published</span>
+                  </div>
+                  <div class="text-sm text-gray-600 mt-0.5">Understand variables and data types in Java</div>
+                  <div class="text-xs text-gray-500 mt-1"><span class="text-indigo-600">Syllabus:</span> Unit 3 — Variables, data types, and arithmetic operators</div>
+                  <div class="text-xs text-gray-400 mt-1">1 module · 3 milestones</div>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button class="text-xs text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium">Edit</button>
+                  <button class="text-gray-400 hover:text-gray-700 text-lg px-1.5">⋯</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4 hover:bg-gray-50">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-900">Conditional Statements</span>
+                    <span class="pill pill-published">published</span>
+                  </div>
+                  <div class="text-sm text-gray-600 mt-0.5">Understand conditional statements in Java</div>
+                  <div class="text-xs text-gray-500 mt-1"><span class="text-indigo-600">Syllabus:</span> Unit 4 — Conditional Statements</div>
+                  <div class="text-xs text-gray-400 mt-1">1 module · 3 milestones</div>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button class="text-xs text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium">Edit</button>
+                  <button class="text-gray-400 hover:text-gray-700 text-lg px-1.5">⋯</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4 hover:bg-gray-50 bg-gray-50/40">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-900">Repetition Statements</span>
+                    <span class="pill pill-draft">draft</span>
+                  </div>
+                  <div class="text-sm text-gray-600 mt-0.5">Understand repetition statements in Java</div>
+                  <div class="text-xs text-gray-500 mt-1"><span class="text-indigo-600">Syllabus:</span> Unit 8 — Repetition Statements Chapter 5 (5.1 – 5.6)</div>
+                  <div class="text-xs text-gray-400 mt-1">1 module · 3 milestones</div>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button class="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 font-medium">Approve</button>
+                  <button class="text-xs text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 font-medium">Edit</button>
+                  <button class="text-gray-400 hover:text-gray-700 text-lg px-1.5">⋯</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-3 text-center text-xs text-gray-500">10 more topics below — 3 published, 7 draft</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT rail (sticky) -->
+      <aside class="col-span-1 space-y-4 self-start sticky top-6">
+
+        <a href="#" class="block bg-white rounded-2xl border border-gray-200 shadow-sm p-4 hover:border-indigo-300">
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="font-semibold text-gray-900 text-sm">Student Progress</div>
+              <div class="text-xs text-gray-500 mt-0.5">View per-student progress, quiz results, and identify at-risk students</div>
+            </div>
+            <span class="text-gray-400"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span>
+          </div>
+        </a>
+
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
+          <div class="flex justify-between items-center mb-2">
+            <div class="font-semibold text-gray-900 text-sm">AI Teaching Instructions</div>
+            <span class="text-[10px] text-gray-400 uppercase tracking-wider">auto-sized</span>
+          </div>
+          <p class="text-xs text-gray-500 mb-2">Guide how the AI teaches your students. These instructions apply to all topics in this course.</p>
+          <textarea class="w-full text-sm border border-gray-200 rounded-lg p-3 leading-relaxed focus:ring-2 focus:ring-indigo-500 focus:outline-none" rows="10">This is CPS 1231 Fundamentals of Computer Science, a first programming course using Java. The authoritative textbook is Liang, Introduction to Java Programming, 12th Edition (hereafter "the textbook"). Students are typically first-year majors and non-majors with no prior programming experience.
+
+Teach with concrete Java examples first, then abstract to concepts. Prefer running through short code snippets over pseudocode. When students struggle, walk them back to a simpler example rather than restating the abstraction.
+
+Reference the textbook chapter for the current topic when relevant. Do not solve homework problems directly; guide students toward the solution.</textarea>
+          <div class="flex justify-end mt-2">
+            <button class="text-sm bg-gray-900 text-white px-4 py-1.5 rounded-lg font-medium hover:bg-gray-800">Save</button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
+          <div class="font-semibold text-gray-900 text-sm mb-1">Course Materials</div>
+          <p class="text-xs text-gray-500 mb-3">Upload up to <span class="font-semibold">10 files</span> per course (9 slots left). Mark one or more as <span class="font-semibold">Syllabus</span>; others are optional Reference for the AI.</p>
+          <button class="text-sm text-indigo-700 border border-indigo-200 bg-indigo-50 px-3 py-1.5 rounded-lg font-medium hover:bg-indigo-100 mb-3">+ Upload files</button>
+          <div class="border border-gray-200 rounded-lg p-2.5 flex items-center gap-2 text-sm">
+            <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+            <div class="flex-1 min-w-0">
+              <div class="truncate">Fund-of-Computer-Science Syll…</div>
+              <div class="text-xs text-gray-500">3,405 words · Syllabus (primary)</div>
+            </div>
+            <button class="text-xs text-red-600 hover:underline">Remove</button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
+          <div class="font-semibold text-gray-900 text-sm mb-1">Topic Plan Chat</div>
+          <p class="text-xs text-gray-500 mb-2">Describe how you want topics structured, then click <span class="font-semibold">Modify</span>. Drafts are replaced; approved/published topics stay.</p>
+          <div class="chat-history-scroll max-h-40 overflow-y-auto space-y-2 mb-2 border-t border-gray-100 pt-2">
+            <div class="text-xs">
+              <div class="text-[10px] uppercase tracking-wider text-indigo-700 font-semibold mb-1">AI</div>
+              <div class="bg-gray-50 rounded-lg p-2 text-gray-700 leading-relaxed">Generated 15 topics from your primary syllabus, mapping to 1–2 weeks of class time each: Introduction to Computer Science → Number Systems → Variables → …</div>
+            </div>
+          </div>
+          <input class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder='e.g. "Add a topic on neural networks"'>
+          <button class="w-full mt-2 bg-amber-500 text-white text-sm font-semibold py-2 rounded-lg hover:bg-amber-600">Modify</button>
+          <p class="text-[11px] text-gray-500 mt-2 leading-snug">Modify replaces all draft topics. Approved/published topics are never changed.</p>
+        </div>
+
+      </aside>
+    </div>
+
+    <!-- Floating assistant -->
+    <button class="fixed bottom-6 right-6 bg-indigo-600 text-white pl-4 pr-3 py-3 rounded-full shadow-xl hover:bg-indigo-700 flex items-center gap-2 text-sm font-semibold">
+      <span class="w-2 h-2 rounded-full bg-indigo-200"></span>
+      Insights Assistant
+      <span class="bg-indigo-500 text-indigo-100 text-[10px] font-medium px-2 py-0.5 rounded-full ml-1">Course scope</span>
+    </button>
+
+  </main>
+</div>
+
+</body>
+</html>

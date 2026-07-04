@@ -1,0 +1,1797 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="b6772d7d-fcf1-4357-89e8-c244109f5202"></script>
+<script src="f2a8bef1-3367-4bb3-9c3f-6f784972c991"></script>
+<script src="a5ce960a-1b80-4d96-9ded-30e6a47e8139"></script>
+</head>
+<body>
+
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<style>/* cyrillic-ext */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("11fefe29-4ac0-4b73-81d5-a69af3dc2661") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("157bbadb-1abc-409c-a25e-4cf4e3b66c6e") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("c8b157e1-96b4-47db-a9d6-7106d47f23f0") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("3ecee982-1c58-4bf7-bd64-7c8e8e7b99ed") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("b2329d6e-ddc6-4d7b-82c3-a5a2822de103") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("406578f8-7312-4ac3-b24a-7f265d1d134b") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("11fefe29-4ac0-4b73-81d5-a69af3dc2661") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("157bbadb-1abc-409c-a25e-4cf4e3b66c6e") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("c8b157e1-96b4-47db-a9d6-7106d47f23f0") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("3ecee982-1c58-4bf7-bd64-7c8e8e7b99ed") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("b2329d6e-ddc6-4d7b-82c3-a5a2822de103") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("406578f8-7312-4ac3-b24a-7f265d1d134b") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("11fefe29-4ac0-4b73-81d5-a69af3dc2661") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("157bbadb-1abc-409c-a25e-4cf4e3b66c6e") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("c8b157e1-96b4-47db-a9d6-7106d47f23f0") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("3ecee982-1c58-4bf7-bd64-7c8e8e7b99ed") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("b2329d6e-ddc6-4d7b-82c3-a5a2822de103") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("406578f8-7312-4ac3-b24a-7f265d1d134b") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("2d8fbb23-23bb-4565-b81b-33b274117f55") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("b573a236-020b-4e5d-b4b5-c3acf80afc43") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("44c77501-87cb-4d18-8e1b-48e84639e9df") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("bc50994e-1c01-4704-a2ae-78b4d57c112c") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("2d8fbb23-23bb-4565-b81b-33b274117f55") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("b573a236-020b-4e5d-b4b5-c3acf80afc43") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("44c77501-87cb-4d18-8e1b-48e84639e9df") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("bc50994e-1c01-4704-a2ae-78b4d57c112c") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("2d8fbb23-23bb-4565-b81b-33b274117f55") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("b573a236-020b-4e5d-b4b5-c3acf80afc43") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("44c77501-87cb-4d18-8e1b-48e84639e9df") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("bc50994e-1c01-4704-a2ae-78b4d57c112c") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("2d8fbb23-23bb-4565-b81b-33b274117f55") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("b573a236-020b-4e5d-b4b5-c3acf80afc43") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("44c77501-87cb-4d18-8e1b-48e84639e9df") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("bc50994e-1c01-4704-a2ae-78b4d57c112c") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("2d8fbb23-23bb-4565-b81b-33b274117f55") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("b573a236-020b-4e5d-b4b5-c3acf80afc43") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("44c77501-87cb-4d18-8e1b-48e84639e9df") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("bc50994e-1c01-4704-a2ae-78b4d57c112c") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: #f6f7f9; color: #0f1729; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+::selection { background: #cfe0ff; color: #0f1729; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-thumb { background: #d5d9e0; border: 3px solid #f6f7f9; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #b8bec9; }
+@keyframes riseIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: none; } }
+@keyframes popIn { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+<div style="display:flex; height:100vh; overflow:hidden; position:relative;">
+
+  <aside style="width:248px; flex-shrink:0; height:100vh; background:#ffffff; border-right:1px solid #e8eaee; display:flex; flex-direction:column; padding:18px 14px 16px; z-index:30;">
+    <div style="display:flex; align-items:center; gap:11px; padding:4px 6px 2px;">
+      <div style="width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg,#3b82f6,#2563eb); display:flex; align-items:center; justify-content:center; box-shadow:0 3px 8px rgba(37,99,235,.32);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M12 1.8c.6 3.4 2.2 5 5.6 5.6-3.4.6-5 2.2-5.6 5.6-.6-3.4-2.2-5-5.6-5.6 3.4-.6 5-2.2 5.6-5.6Z"></path><circle cx="18" cy="17" r="2.4"></circle></svg>
+      </div>
+      <div>
+        <div style="font-weight:800; font-size:16px; color:#0f1729; letter-spacing:-.02em; line-height:1.1;">Study Assist</div>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#9aa2b1; margin-top:2px;">Teach · Instructor</div>
+      </div>
+    </div>
+
+    <button onclick="{{ onOpenPalette }}" style="display:flex; align-items:center; gap:9px; margin:16px 4px 8px; padding:9px 11px; background:#f6f7f9; border:1px solid #e8eaee; border-radius:9px; cursor:pointer; color:#8891a0;" style-hover="border-color:#cfe0ff; background:#fbfcfe;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+      <span style="font-size:12.5px; flex:1; text-align:left;">Search students</span>
+      <span style="font-family:'JetBrains Mono',monospace; font-size:9.5px; border:1px solid #dfe2e8; border-radius:4px; padding:1px 5px; color:#aab1bd;">⌘K</span>
+    </button>
+
+    <nav style="display:flex; flex-direction:column; gap:2px; margin-top:6px;">
+      <button data-view="front" onclick="{{ onNav }}" style="{{ navFront }}" style-hover="background:#f2f4f7;">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.7V21h14V9.7"></path></svg>
+        <span>Dashboard</span>
+      </button>
+      <button data-view="courses" onclick="{{ onNav }}" style="{{ navCourses }}" style-hover="background:#f2f4f7;">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5C10.5 5 8 4.6 4 4.6V19c4 0 5.6.4 8 2 2.4-1.6 4-2 8-2V4.6c-4 0-5.5.4-8 1.9Z"></path><path d="M12 6.5V21"></path></svg>
+        <span>Courses</span>
+      </button>
+    </nav>
+
+    <div style="flex:1;"></div>
+
+    <div style="border-top:1px solid #eef0f3; padding-top:12px;">
+      <button onclick="{{ onStudentView }}" style="display:flex; align-items:center; gap:9px; width:100%; padding:8px 12px; background:none; border:none; cursor:pointer; color:#6b7385; font-family:'Plus Jakarta Sans'; font-size:13px; font-weight:500; border-radius:9px;" style-hover="background:#f2f4f7; color:#0f1729;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M11 6 5 12l6 6"></path></svg>
+        <span>Student view</span>
+      </button>
+      <div style="display:flex; align-items:center; gap:10px; margin-top:6px; padding:8px 10px; border-radius:10px;">
+        <div style="width:32px; height:32px; border-radius:50%; background:#dbe6ff; color:#2563eb; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">JT</div>
+        <div style="flex:1; line-height:1.2;">
+          <div style="font-size:13px; font-weight:600; color:#0f1729;">Java Tutor</div>
+          <div style="font-size:11px; color:#98a0b0;">Instructor</div>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b0b7c3" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5"></path><path d="M21 12H9"></path></svg>
+      </div>
+    </div>
+  </aside>
+
+  <main style="flex:1; height:100vh; overflow-y:auto; background:#f6f7f9;">
+    <div style="max-width:1180px; margin:0 auto; padding:30px 40px 130px;">
+
+      <sc-if value="{{ isFront }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:20px; animation:fadeIn .4s ease both;">
+            <div>
+              <h1 style="font-size:27px; font-weight:800; color:#0f1729; letter-spacing:-.025em; margin:0;">Instructor Dashboard</h1>
+              <p style="font-size:14px; color:#6b7385; margin:6px 0 0;">{{ subtitleLine }}</p>
+            </div>
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; padding-bottom:3px;">
+              <span style="font-size:12.5px; color:#6b7385; font-weight:500;">Include synthetic cohort</span>
+              <span onclick="{{ onToggleSynthetic }}" style="{{ switchTrack }}"><span style="{{ switchKnob }}"></span></span>
+            </label>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1.85fr 1fr; gap:16px; margin-top:22px; animation:riseIn .5s cubic-bezier(.2,.7,.2,1) both;">
+            <div style="background:#ffffff; border:1px solid #e8eaee; border-radius:15px; padding:20px 22px; box-shadow:0 1px 2px rgba(16,24,40,.04);">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span style="width:26px; height:26px; border-radius:8px; background:#eef0fe; display:flex; align-items:center; justify-content:center;">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="#4f46e5"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"></path></svg>
+                </span>
+                <span style="font-size:14.5px; font-weight:700; color:#0f1729;">Today’s briefing</span>
+                <span style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:#a9aec0;">grounded in your data</span>
+              </div>
+              <p style="font-size:15px; line-height:1.62; color:#3a4256; margin:14px 0 0;">{{ briefRest }}</p>
+              <p style="font-size:15px; line-height:1.62; color:#3a4256; margin:9px 0 0;">{{ briefS2 }}</p>
+              <p style="font-size:15px; line-height:1.62; color:#3a4256; margin:9px 0 0;">{{ briefS3 }}</p>
+              <button onclick="{{ openAssistant }}" style="margin-top:15px; background:none; border:none; padding:0; cursor:pointer; color:#4f46e5; font-family:'Plus Jakarta Sans'; font-weight:600; font-size:13.5px;" style-hover="text-decoration:underline;">Ask a follow-up →</button>
+            </div>
+
+            <div style="background:#ffffff; border:1px solid #f4c9c2; border-radius:15px; padding:20px 22px; box-shadow:0 1px 2px rgba(16,24,40,.04); position:relative; overflow:hidden; display:flex; flex-direction:column;">
+              <div style="position:absolute; left:0; top:0; bottom:0; width:4px; background:#d92d20;"></div>
+              <div style="font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:#b42318; font-weight:600;">Need attention now</div>
+              <div style="display:flex; align-items:flex-end; gap:10px; margin-top:8px;">
+                <span style="font-size:52px; font-weight:800; line-height:.9; color:#b42318; letter-spacing:-.03em;">{{ needsAttentionCount }}</span>
+                <span style="font-size:13px; color:#89707a; line-height:1.35; padding-bottom:5px;">students · Critical&nbsp;+&nbsp;High<br>across {{ coursesCount }} courses</span>
+              </div>
+              <div style="margin-top:16px; padding-top:14px; border-top:1px solid #f6ddd8; display:flex; flex-direction:column; gap:1px;">
+                <sc-for list="{{ attentionMini }}" as="a" hint-placeholder-count="3">
+                  <div onclick="{{ a.onOpen }}" style="display:flex; align-items:center; gap:9px; padding:6px 7px; border-radius:8px; cursor:pointer;" style-hover="background:#fdeeeb;">
+                    <span style="color:{{ a.color }}; font-size:9px;">{{ a.glyph }}</span>
+                    <span style="font-size:13px; font-weight:600; color:#0f1729; flex:1;">{{ a.name }}</span>
+                    <span style="font-size:11px; color:#98a0b0;">{{ a.courseShort }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="font-size:12px; color:#a9aec0; margin-top:10px;">+ {{ watchCountTotal }} more in the Watch tier</div>
+              <button onclick="{{ onFocusAttention }}" style="margin-top:auto; padding-top:14px; width:100%; background:none; border:none; cursor:pointer; text-align:left;">
+                <span style="display:block; background:#b42318; color:#fff; border-radius:9px; padding:10px; font-family:'Plus Jakarta Sans'; font-weight:600; font-size:13.5px; text-align:center;" style-hover="background:#912016;">Review the watchlist →</span>
+              </button>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:16px; animation:riseIn .5s cubic-bezier(.2,.7,.2,1) .05s both;">
+            <sc-for list="{{ figures }}" as="f" hint-placeholder-count="4">
+              <div style="background:#ffffff; border:1px solid #e8eaee; border-radius:13px; padding:15px 17px; box-shadow:0 1px 2px rgba(16,24,40,.03);">
+                <div style="font-size:11.5px; color:#8891a0; font-weight:600; letter-spacing:.01em;">{{ f.label }}</div>
+                <div style="display:flex; align-items:baseline; gap:5px; margin-top:7px;">
+                  <span style="font-size:27px; font-weight:800; color:#0f1729; letter-spacing:-.02em; font-variant-numeric:tabular-nums;">{{ f.value }}</span>
+                  <span style="font-size:12px; color:#aab1bd; font-weight:600;">{{ f.unit }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="background:#ffffff; border:1px solid #e8eaee; border-radius:15px; margin-top:22px; box-shadow:0 1px 2px rgba(16,24,40,.04); animation:riseIn .5s cubic-bezier(.2,.7,.2,1) .1s both;">
+            <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:16px; padding:20px 22px 14px; border-bottom:1px solid #eef0f3;">
+              <div>
+                <h2 style="font-size:18px; font-weight:800; color:#0f1729; letter-spacing:-.02em; margin:0;">Watchlist</h2>
+                <p style="font-size:13px; color:#6b7385; margin:4px 0 0;">Students to reach before class · one risk definition, everywhere</p>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:10.5px; color:#a9aec0; font-weight:600; letter-spacing:.02em; margin-bottom:6px; text-transform:uppercase;">Filter by tier</div>
+                <div style="display:inline-flex; background:#f2f4f7; border-radius:9px; padding:3px;">
+                  <sc-for list="{{ wlTabs }}" as="t" hint-placeholder-count="3">
+                    <button data-f="{{ t.key }}" onclick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }} <span style="opacity:.6;">{{ t.count }}</span></button>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <div style="padding:6px 12px 12px;">
+              <sc-for list="{{ watchGroups }}" as="g" hint-placeholder-count="2">
+                <div style="margin-top:12px;">
+                  <div style="display:flex; align-items:center; gap:10px; padding:8px 10px 6px;">
+                    <span style="color:{{ g.color }}; font-size:11px;">{{ g.glyph }}</span>
+                    <span style="font-size:11.5px; letter-spacing:.04em; text-transform:uppercase; color:#0f1729; font-weight:700;">{{ g.label }}</span>
+                    <span style="font-size:11.5px; font-weight:700; color:{{ g.color }};">{{ g.count }}</span>
+                    <span style="height:1px; flex:1; background:#eef0f3;"></span>
+                    <span style="font-size:12.5px; color:#98a0b0;">{{ g.note }}</span>
+                  </div>
+                  <sc-for list="{{ g.items }}" as="s" hint-placeholder-count="3">
+                    <div onclick="{{ s.onOpen }}" style="display:grid; grid-template-columns:38px 1fr auto; gap:14px; align-items:center; padding:12px 12px; border-radius:11px; cursor:pointer; border-left:3px solid {{ s.color }};" style-hover="background:#f8f9fb;">
+                      <div style="width:38px; height:38px; border-radius:50%; background:{{ s.tint }}; color:{{ s.color }}; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;">{{ s.initials }}</div>
+                      <div>
+                        <div style="display:flex; align-items:baseline; gap:9px; flex-wrap:wrap;">
+                          <span style="font-size:15px; font-weight:700; color:#0f1729;">{{ s.name }}</span>
+                          <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#a9aec0;">@{{ s.handle }}</span>
+                          <span style="font-size:10.5px; font-weight:600; color:#6b7385; background:#f2f4f7; border-radius:5px; padding:2px 7px;">{{ s.courseShort }}</span>
+                        </div>
+                        <div style="font-size:12px; color:#8891a0; margin-top:4px; font-variant-numeric:tabular-nums;">{{ s.summary }}</div>
+                        <div style="display:flex; gap:6px; margin-top:7px; flex-wrap:wrap;">
+                          <sc-for list="{{ s.chips }}" as="c" hint-placeholder-count="1">
+                            <span style="{{ c.style }}">{{ c.label }}</span>
+                          </sc-for>
+                        </div>
+                      </div>
+                      <div style="display:flex; align-items:center; gap:14px;">
+                        <div style="text-align:right;">
+                          <div style="display:flex; align-items:baseline; gap:2px; justify-content:flex-end;">
+                            <span style="font-size:22px; font-weight:800; color:{{ s.color }}; font-variant-numeric:tabular-nums;">{{ s.score }}</span>
+                            <span style="font-size:11px; color:#b0b7c3;">/100</span>
+                          </div>
+                          <div style="font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:{{ s.color }}; font-weight:700; margin-top:3px;">{{ s.glyph }} {{ s.tierLabel }}</div>
+                        </div>
+                        <span style="border:1px solid #e2e5ea; border-radius:8px; padding:6px 12px; font-size:12.5px; font-weight:600; color:#3a4256;" style-hover="border-color:#2563eb; color:#2563eb;">Monitor</span>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="margin-top:24px; animation:riseIn .5s cubic-bezier(.2,.7,.2,1) .15s both;">
+            <h2 style="font-size:16px; font-weight:800; color:#0f1729; letter-spacing:-.01em; margin:0 0 14px;">Your courses</h2>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+              <sc-for list="{{ courseCards }}" as="c" hint-placeholder-count="2">
+                <div onclick="{{ c.onOpen }}" style="background:#ffffff; border:1px solid #e8eaee; border-radius:15px; padding:20px 22px; cursor:pointer; box-shadow:0 1px 2px rgba(16,24,40,.04);" style-hover="border-color:#cfe0ff; box-shadow:0 4px 14px rgba(37,99,235,.08);">
+                  <div style="display:flex; align-items:flex-start; justify-content:space-between;">
+                    <div>
+                      <div style="font-size:17px; font-weight:800; color:#0f1729; letter-spacing:-.01em;">{{ c.title }}</div>
+                      <div style="font-size:12px; color:#98a0b0; margin-top:5px;">Code <span style="font-family:'JetBrains Mono',monospace; color:#6b7385;">{{ c.code }}</span> · {{ c.published }}</div>
+                    </div>
+                    <span style="font-size:12.5px; font-weight:600; color:#2563eb;">Insights →</span>
+                  </div>
+                  <div style="display:flex; height:8px; margin:18px 0 7px; gap:2px; border-radius:5px; overflow:hidden;">
+                    <sc-for list="{{ c.heat }}" as="h" hint-placeholder-count="3">
+                      <span style="height:100%; background:{{ h.color }}; width:{{ h.w }};"></span>
+                    </sc-for>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; font-size:10.5px; font-weight:600; color:#98a0b0; margin-bottom:16px;">
+                    <span>{{ c.healthy }} healthy</span><span>{{ c.watch }} watch</span><span style="color:#b42318;">{{ c.attention }} attention</span>
+                  </div>
+                  <div style="display:grid; grid-template-columns:repeat(4,1fr); border-top:1px solid #eef0f3; padding-top:13px;">
+                    <sc-for list="{{ c.stats }}" as="st" hint-placeholder-count="4">
+                      <div style="{{ st.wrap }}">
+                        <div style="font-size:10px; font-weight:600; letter-spacing:.02em; text-transform:uppercase; color:#a9aec0;">{{ st.label }}</div>
+                        <div style="font-size:19px; font-weight:800; color:{{ st.color }}; margin-top:3px; font-variant-numeric:tabular-nums;">{{ st.value }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isReport }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; animation:fadeIn .4s ease both;">
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:#2563eb; font-weight:600;">Insights</div>
+              <h1 style="font-size:26px; font-weight:800; color:#0f1729; letter-spacing:-.025em; margin:8px 0 0;">{{ reportTitle }}</h1>
+              <p style="font-size:13.5px; color:#6b7385; margin:6px 0 0;">{{ reportDeck }}</p>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="display:flex; align-items:center; gap:6px; font-size:11.5px; color:#6b7385; background:#eef4ff; border:1px solid #d3e0ff; border-radius:8px; padding:6px 11px;"><span style="width:7px; height:7px; border-radius:50%; background:#2563eb;"></span>{{ reportSyntheticChip }}</span>
+              <button onclick="{{ onEditCourse }}" style="background:#fff; border:1px solid #e2e5ea; border-radius:9px; padding:8px 14px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:13px; font-weight:600; color:#3a4256;" style-hover="border-color:#2563eb; color:#2563eb;">Edit course</button>
+              <button onclick="{{ onOpenStudentsView }}" style="background:#fff; border:1px solid #e2e5ea; border-radius:9px; padding:8px 14px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:13px; font-weight:600; color:#3a4256;" style-hover="border-color:#2563eb; color:#2563eb;">Students</button>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-top:20px; animation:riseIn .5s cubic-bezier(.2,.7,.2,1) both;">
+            <sc-for list="{{ reportKpis }}" as="k" hint-placeholder-count="5">
+              <div style="{{ k.wrap }}">
+                <div style="font-size:11px; font-weight:600; color:#8891a0;">{{ k.label }}</div>
+                <div style="display:flex; align-items:baseline; gap:4px; margin-top:7px;">
+                  <span style="font-size:25px; font-weight:800; color:{{ k.color }}; letter-spacing:-.02em; font-variant-numeric:tabular-nums;">{{ k.value }}</span>
+                </div>
+                <div style="font-size:10px; font-weight:600; letter-spacing:.02em; text-transform:uppercase; color:#aab1bd; margin-top:5px;">{{ k.unit }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="margin-top:26px; animation:riseIn .5s cubic-bezier(.2,.7,.2,1) .05s both;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+              <h2 style="font-size:16px; font-weight:800; color:#0f1729; letter-spacing:-.01em; margin:0;">What stands out</h2>
+              <span style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:#a9aec0;">grounded in this course’s data</span>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+              <sc-for list="{{ findings }}" as="f" hint-placeholder-count="4">
+                <div style="background:#fff; border:1px solid #e8eaee; border-radius:13px; padding:17px 19px; box-shadow:0 1px 2px rgba(16,24,40,.03);">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="width:8px; height:8px; border-radius:50%; background:{{ f.color }};"></span>
+                    <span style="font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:{{ f.color }};">{{ f.kicker }}</span>
+                  </div>
+                  <p style="font-size:14px; line-height:1.5; color:#3a4256; margin:10px 0 12px;">{{ f.text }}</p>
+                  <button onclick="{{ f.onClick }}" style="background:none; border:none; padding:0; cursor:pointer; color:#2563eb; font-family:'Plus Jakarta Sans'; font-weight:600; font-size:12.5px;" style-hover="text-decoration:underline;">{{ f.link }} →</button>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="margin-top:28px; animation:riseIn .5s cubic-bezier(.2,.7,.2,1) .1s both;">
+            <h2 style="font-size:16px; font-weight:800; color:#0f1729; letter-spacing:-.01em; margin:0 0 4px;">Who should I reach?</h2>
+            <p style="font-size:13px; color:#6b7385; margin:0 0 16px;">Class composition by risk · click a bar to filter the list</p>
+            <div style="display:grid; grid-template-columns:320px 1fr; gap:26px; align-items:start;">
+              <div style="background:#fff; border:1px solid #e8eaee; border-radius:14px; padding:20px 20px 15px; box-shadow:0 1px 2px rgba(16,24,40,.03);">
+                <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:14px; height:172px;">
+                  <sc-for list="{{ bars }}" as="b" hint-placeholder-count="4">
+                    <div onclick="{{ b.onClick }}" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; cursor:pointer;">
+                      <span style="font-size:18px; font-weight:800; color:{{ b.color }}; font-variant-numeric:tabular-nums;">{{ b.count }}</span>
+                      <div style="width:100%; height:{{ b.h }}; background:{{ b.bg }}; margin-top:6px; border-radius:5px 5px 0 0; outline:{{ b.ring }}; outline-offset:2px;"></div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex; gap:14px; margin-top:9px;">
+                  <sc-for list="{{ bars }}" as="b" hint-placeholder-count="4">
+                    <div style="flex:1; text-align:center; font-size:9.5px; font-weight:600; letter-spacing:.03em; text-transform:uppercase; color:{{ b.color }};">{{ b.glyph }} {{ b.label }}</div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div>
+                <div style="display:flex; flex-wrap:wrap; gap:22px; margin-bottom:8px;">
+                  <div>
+                    <div style="font-size:10px; font-weight:600; letter-spacing:.03em; text-transform:uppercase; color:#a9aec0; margin-bottom:7px;">By tier</div>
+                    <div style="display:inline-flex; background:#f2f4f7; border-radius:9px; padding:3px;">
+                      <sc-for list="{{ tierAxis }}" as="t" hint-placeholder-count="3">
+                        <button onclick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }} <span style="opacity:.6;">{{ t.count }}</span></button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-size:10px; font-weight:600; letter-spacing:.03em; text-transform:uppercase; color:#a9aec0; margin-bottom:7px;">By reason</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:7px;">
+                      <sc-for list="{{ reasonAxis }}" as="r" hint-placeholder-count="4">
+                        <button onclick="{{ r.onClick }}" style="{{ r.style }}">{{ r.label }} <span style="opacity:.55;">{{ r.count }}</span></button>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+
+                <sc-for list="{{ reportGroups }}" as="g" hint-placeholder-count="2">
+                  <div style="margin-top:14px;">
+                    <div style="display:flex; align-items:center; gap:10px; padding:6px 4px;">
+                      <span style="color:{{ g.color }}; font-size:11px;">{{ g.glyph }}</span>
+                      <span style="font-size:11px; letter-spacing:.03em; text-transform:uppercase; color:#0f1729; font-weight:700;">{{ g.label }}</span>
+                      <span style="font-size:11px; font-weight:700; color:{{ g.color }};">{{ g.count }}</span>
+                      <span style="height:1px; flex:1; background:#eef0f3;"></span>
+                      <span style="font-size:12px; color:#98a0b0;">{{ g.note }}</span>
+                    </div>
+                    <sc-for list="{{ g.items }}" as="s" hint-placeholder-count="3">
+                      <div onclick="{{ s.onOpen }}" style="display:grid; grid-template-columns:34px 1fr auto; gap:13px; align-items:center; padding:11px 10px; border-radius:11px; cursor:pointer; border-left:3px solid {{ s.color }};" style-hover="background:#f8f9fb;">
+                        <div style="width:34px; height:34px; border-radius:50%; background:{{ s.tint }}; color:{{ s.color }}; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">{{ s.initials }}</div>
+                        <div>
+                          <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;">
+                            <span style="font-size:14.5px; font-weight:700; color:#0f1729;">{{ s.name }}</span>
+                            <span style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#a9aec0;">@{{ s.handle }}</span>
+                          </div>
+                          <div style="font-size:11.5px; color:#8891a0; margin-top:3px; font-variant-numeric:tabular-nums;">{{ s.summary }}</div>
+                          <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
+                            <sc-for list="{{ s.chips }}" as="c" hint-placeholder-count="1">
+                              <span style="{{ c.style }}">{{ c.label }}</span>
+                            </sc-for>
+                          </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:12px;">
+                          <div style="text-align:right;">
+                            <div style="display:flex; align-items:baseline; gap:2px; justify-content:flex-end;">
+                              <span style="font-size:19px; font-weight:800; color:{{ s.color }}; font-variant-numeric:tabular-nums;">{{ s.score }}</span>
+                              <span style="font-size:10px; color:#b0b7c3;">/100</span>
+                            </div>
+                            <div style="font-size:9px; letter-spacing:.05em; text-transform:uppercase; color:{{ s.color }}; font-weight:700; margin-top:2px;">{{ s.glyph }} {{ s.tierLabel }}</div>
+                          </div>
+                          <span style="color:#c3c9d4; font-size:17px;">›</span>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ reportEmpty }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:24px; text-align:center; color:#98a0b0; font-size:14px;">No students match these filters.</div>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:28px; background:#fff; border:1px solid #e8eaee; border-radius:14px; box-shadow:0 1px 2px rgba(16,24,40,.03); animation:riseIn .5s cubic-bezier(.2,.7,.2,1) .15s both;">
+            <button onclick="{{ toggleHealth }}" style="width:100%; display:flex; align-items:center; justify-content:space-between; background:none; border:none; cursor:pointer; padding:18px 22px;">
+              <div style="display:flex; align-items:baseline; gap:12px;">
+                <span style="font-size:16px; font-weight:800; color:#0f1729;">Course health</span>
+                <span style="font-size:12.5px; color:#98a0b0;">{{ healthPreview }}</span>
+              </div>
+              <span style="width:26px; height:26px; border-radius:7px; background:#f2f4f7; color:#6b7385; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700;">{{ healthChevron }}</span>
+            </button>
+            <sc-if value="{{ healthOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:0 22px 22px; animation:fadeIn .3s ease both;">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                  <div style="border:1px solid #eef0f3; border-radius:12px; padding:16px 18px;">
+                    <div style="font-size:13px; font-weight:700; color:#0f1729; margin-bottom:2px;">Score distribution</div>
+                    <div style="font-size:11.5px; color:#98a0b0; margin-bottom:14px;">20 students represented</div>
+                    <div style="display:flex; align-items:flex-end; gap:16px; height:130px; padding:0 4px;">
+                      <sc-for list="{{ scoreBars }}" as="d" hint-placeholder-count="5">
+                        <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%;">
+                          <span style="font-size:12px; font-weight:700; color:#3a4256;">{{ d.n }}</span>
+                          <div style="width:100%; height:{{ d.h }}; background:{{ d.bg }}; margin-top:6px; border-radius:5px 5px 0 0;"></div>
+                          <span style="font-size:9.5px; color:#98a0b0; margin-top:7px; font-family:'JetBrains Mono',monospace;">{{ d.band }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="border:1px solid #eef0f3; border-radius:12px; padding:16px 18px;">
+                    <div style="font-size:13px; font-weight:700; color:#0f1729; margin-bottom:2px;">Completion funnel</div>
+                    <div style="font-size:11.5px; color:#98a0b0; margin-bottom:14px;">20 enrolled · published topics only</div>
+                    <sc-for list="{{ funnel }}" as="f" hint-placeholder-count="4">
+                      <div style="display:flex; align-items:center; gap:12px; padding:6px 0;">
+                        <span style="width:96px; font-size:11.5px; color:#6b7385; font-weight:500;">{{ f.label }}</span>
+                        <div style="flex:1; height:20px; background:#f2f4f7; border-radius:5px; overflow:hidden;"><div style="height:100%; width:{{ f.w }}; background:{{ f.color }}; border-radius:5px;"></div></div>
+                        <span style="width:74px; text-align:right; font-size:11.5px; font-weight:600; color:#3a4256; font-variant-numeric:tabular-nums;">{{ f.countLabel }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="border:1px solid #eef0f3; border-radius:12px; padding:16px 18px; margin-top:16px;">
+                  <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px;">
+                    <span style="font-size:13px; font-weight:700; color:#0f1729;">Course structure</span>
+                    <span style="font-size:11.5px; color:#98a0b0;">268 attempts · 79.1% pass</span>
+                  </div>
+                  <sc-for list="{{ pubTopics }}" as="t" hint-placeholder-count="7">
+                    <div style="display:grid; grid-template-columns:1fr auto; gap:16px; align-items:center; padding:11px 0; border-top:1px solid #f2f4f7;">
+                      <div>
+                        <div style="display:flex; align-items:baseline; gap:9px;">
+                          <span style="font-size:14px; font-weight:600; color:#0f1729;">{{ t.name }}</span>
+                          <span style="font-size:9px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:#6b7385; background:#f2f4f7; border-radius:5px; padding:2px 6px;">{{ t.kind }}</span>
+                        </div>
+                        <div style="font-size:11px; color:#a9aec0; margin-top:3px;">{{ t.unit }}</div>
+                      </div>
+                      <div style="display:flex; align-items:center; gap:14px;">
+                        <div style="width:110px; height:6px; background:#f2f4f7; border-radius:4px; overflow:hidden;"><div style="height:100%; width:{{ t.barW }}; background:{{ t.passColor }};"></div></div>
+                        <span style="width:48px; text-align:right; font-size:12px; font-weight:700; color:{{ t.passColor }}; font-variant-numeric:tabular-nums;">{{ t.pass }}</span>
+                        <span style="width:76px; text-align:right; font-size:11px; color:#a9aec0; font-variant-numeric:tabular-nums;">{{ t.attempts }}</span>
+                      </div>
+                    </div>
+                  </sc-for>
+                  <button onclick="{{ toggleDrafts }}" style="margin-top:12px; background:none; border:none; padding:0; cursor:pointer; color:#2563eb; font-family:'Plus Jakarta Sans'; font-weight:600; font-size:12.5px;" style-hover="text-decoration:underline;">{{ draftsToggleLabel }}</button>
+                  <sc-if value="{{ draftsOpen }}" hint-placeholder-val="{{ false }}">
+                    <div style="margin-top:8px; animation:fadeIn .25s ease both;">
+                      <sc-for list="{{ draftTopics }}" as="t" hint-placeholder-count="8">
+                        <div style="display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-top:1px solid #f2f4f7;">
+                          <div>
+                            <span style="font-size:13.5px; color:#6b7385;">{{ t.name }}</span>
+                            <div style="font-size:11px; color:#c3c9d4; margin-top:2px;">{{ t.unit }}</div>
+                          </div>
+                          <span style="font-size:10px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:#b0b7c3; background:#f6f7f9; border-radius:5px; padding:3px 8px;">Draft · no data</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isDesk }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <button onclick="{{ onBackToDash }}" style="display:flex; align-items:center; gap:6px; background:none; border:none; padding:0; cursor:pointer; color:#2563eb; font-family:'Plus Jakarta Sans'; font-size:13px; font-weight:600;" style-hover="text-decoration:underline;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 6-6 6 6 6"></path></svg> All courses
+          </button>
+
+          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-top:12px; animation:fadeIn .4s ease both;">
+            <div>
+              <h1 style="font-size:26px; font-weight:800; color:#0f1729; letter-spacing:-.025em; margin:0;">{{ deskTitle }}</h1>
+              <div style="display:flex; align-items:center; gap:12px; margin-top:9px;">
+                <span style="display:flex; align-items:center; gap:7px; font-size:12px; color:#6b7385;">Access code <span style="font-family:'JetBrains Mono',monospace; font-weight:600; color:#0f1729; background:#f2f4f7; border-radius:6px; padding:2px 8px;">{{ deskCode }}</span></span>
+                <button onclick="{{ onCopyCode }}" style="background:none; border:none; padding:0; cursor:pointer; color:#2563eb; font-family:'Plus Jakarta Sans'; font-size:12.5px; font-weight:600;" style-hover="text-decoration:underline;">Copy</button>
+                <span style="width:1px; height:14px; background:#e2e5ea;"></span>
+                <span style="font-size:12px; color:#6b7385;">{{ deskStatusLine }}</span>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <button onclick="{{ onViewInsightsBtn }}" style="background:#2563eb; color:#fff; border:none; border-radius:9px; padding:9px 15px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:13px; font-weight:600;" style-hover="background:#1d4ed8;">View insights →</button>
+              <div style="position:relative;">
+                <button onclick="{{ toggleDeskMenu }}" style="width:38px; height:38px; border:1px solid #e2e5ea; border-radius:9px; background:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; color:#6b7385;" style-hover="border-color:#cbd2dc;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="19" cy="12" r="1.7"></circle></svg>
+                </button>
+                <sc-if value="{{ deskMenuOpen }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute; right:0; top:44px; z-index:20; width:186px; background:#fff; border:1px solid #e2e5ea; border-radius:11px; box-shadow:0 12px 30px rgba(16,24,40,.16); padding:6px; animation:popIn .15s ease both;">
+                    <button onclick="{{ onDuplicateCourse }}" style="display:block; width:100%; text-align:left; background:none; border:none; padding:9px 11px; border-radius:8px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:13px; color:#3a4256;" style-hover="background:#f6f7f9;">Duplicate course</button>
+                    <button onclick="{{ onCopyCode }}" style="display:block; width:100%; text-align:left; background:none; border:none; padding:9px 11px; border-radius:8px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:13px; color:#3a4256;" style-hover="background:#f6f7f9;">Copy access code</button>
+                    <div style="height:1px; background:#eef0f3; margin:5px 2px;"></div>
+                    <button onclick="{{ onDeleteCourse }}" style="display:block; width:100%; text-align:left; background:none; border:none; padding:9px 11px; border-radius:8px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:13px; color:#b42318;" style-hover="background:#fef3f2;">Delete course</button>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(4,1fr) 1.5fr; gap:12px; margin-top:20px; animation:riseIn .5s cubic-bezier(.2,.7,.2,1) both;">
+            <sc-for list="{{ deskKpis }}" as="k" hint-placeholder-count="4">
+              <div style="background:#fff; border:1px solid #e8eaee; border-radius:13px; padding:15px 16px; box-shadow:0 1px 2px rgba(16,24,40,.03);">
+                <div style="font-size:11px; font-weight:600; color:#8891a0;">{{ k.label }}</div>
+                <div style="font-size:23px; font-weight:800; color:#0f1729; margin-top:6px; letter-spacing:-.02em; font-variant-numeric:tabular-nums;">{{ k.value }}</div>
+                <div style="font-size:10px; font-weight:600; letter-spacing:.02em; text-transform:uppercase; color:#aab1bd; margin-top:4px;">{{ k.unit }}</div>
+              </div>
+            </sc-for>
+            <div style="background:#f4f2ff; border:1px solid #ddd6fe; border-radius:13px; padding:15px 17px; display:flex; flex-direction:column;">
+              <div style="display:flex; align-items:center; gap:7px;">
+                <span style="width:20px; height:20px; border-radius:6px; background:#4f46e5; display:flex; align-items:center; justify-content:center;"><svg width="11" height="11" viewBox="0 0 24 24" fill="#fff"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"></path></svg></span>
+                <span style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:#4338ca; font-weight:600;">Hot signal</span>
+              </div>
+              <p style="font-size:12px; line-height:1.45; color:#4a4568; margin:8px 0 auto;">{{ hotSignalText }}</p>
+              <button onclick="{{ onOpenInsights }}" style="align-self:flex-start; margin-top:8px; background:none; border:none; padding:0; cursor:pointer; color:#4f46e5; font-family:'Plus Jakarta Sans'; font-size:12px; font-weight:700;" style-hover="text-decoration:underline;">Open in Insights →</button>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1.7fr 1fr; gap:20px; margin-top:22px; align-items:start;">
+            <div style="animation:riseIn .5s cubic-bezier(.2,.7,.2,1) .05s both;">
+              <div style="background:#fff; border:1px solid #e8eaee; border-radius:15px; box-shadow:0 1px 2px rgba(16,24,40,.03); overflow:hidden;">
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:17px 20px; border-bottom:1px solid #eef0f3;">
+                  <div style="font-size:16px; font-weight:800; color:#0f1729;">Topics <span style="color:#98a0b0; font-weight:600;">15</span></div>
+                  <button onclick="{{ onAddTopic }}" style="display:flex; align-items:center; gap:6px; background:none; border:none; cursor:pointer; color:#2563eb; font-family:'Plus Jakarta Sans'; font-size:13px; font-weight:600;" style-hover="text-decoration:underline;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg> Add topic</button>
+                </div>
+
+                <div style="padding:6px 12px 10px;">
+                  <div style="font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#98a0b0; padding:12px 8px 6px;">Published · 7</div>
+                  <sc-for list="{{ deskPublished }}" as="t" hint-placeholder-count="7">
+                    <div style="border-radius:11px;" style-hover="background:#fafbfc;">
+                      <div onclick="{{ t.onToggle }}" style="display:flex; align-items:center; gap:12px; padding:12px 8px; cursor:pointer;">
+                        <span style="width:22px; height:22px; border-radius:6px; background:#f2f4f7; color:#8891a0; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; flex-shrink:0;">{{ t.chev }}</span>
+                        <div style="flex:1;">
+                          <div style="display:flex; align-items:center; gap:9px;">
+                            <span style="font-size:14.5px; font-weight:700; color:#0f1729;">{{ t.name }}</span>
+                            <span style="font-size:9.5px; font-weight:600; letter-spacing:.03em; text-transform:uppercase; padding:2px 7px; border-radius:5px; {{ t.badgeStyle }}">{{ t.badgeLabel }}</span>
+                          </div>
+                          <div style="font-size:11.5px; color:#98a0b0; margin-top:3px;">{{ t.meta }}</div>
+                        </div>
+                        <button onclick="{{ t.onEdit }}" style="border:1px solid #e2e5ea; background:#fff; border-radius:8px; padding:6px 13px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:12.5px; font-weight:600; color:#3a4256;" style-hover="border-color:#2563eb; color:#2563eb;">Edit</button>
+                        <div style="position:relative;">
+                          <button onclick="{{ t.onMenu }}" style="width:32px; height:32px; border:1px solid #e2e5ea; border-radius:8px; background:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; color:#8891a0;" style-hover="border-color:#cbd2dc;"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button>
+                          <sc-if value="{{ t.menuOpen }}" hint-placeholder-val="{{ false }}">
+                            <div style="position:absolute; right:0; top:38px; z-index:20; width:150px; background:#fff; border:1px solid #e2e5ea; border-radius:10px; box-shadow:0 12px 30px rgba(16,24,40,.16); padding:5px; animation:popIn .15s ease both;">
+                              <button onclick="{{ t.onPrimary }}" style="display:block; width:100%; text-align:left; background:none; border:none; padding:8px 10px; border-radius:7px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:12.5px; color:#3a4256;" style-hover="background:#f6f7f9;">{{ t.primaryAction }}</button>
+                              <button onclick="{{ t.onDelete }}" style="display:block; width:100%; text-align:left; background:none; border:none; padding:8px 10px; border-radius:7px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:12.5px; color:#b42318;" style-hover="background:#fef3f2;">Delete</button>
+                            </div>
+                          </sc-if>
+                        </div>
+                      </div>
+                      <sc-if value="{{ t.expanded }}" hint-placeholder-val="{{ false }}">
+                        <div style="padding:2px 8px 16px 42px; animation:fadeIn .25s ease both;">
+                          <div style="font-size:12px; color:#6b7385; margin-bottom:10px;">{{ t.unit }}</div>
+                          <div style="font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#98a0b0; margin-bottom:6px;">Milestones</div>
+                          <sc-for list="{{ t.milestones }}" as="m" hint-placeholder-count="3">
+                            <div style="display:flex; align-items:center; gap:9px; padding:5px 0;">
+                              <span style="width:5px; height:5px; border-radius:50%; background:#2563eb;"></span>
+                              <span style="font-size:13px; color:#3a4256;">{{ m }}</span>
+                            </div>
+                          </sc-for>
+                          <div style="font-size:12px; color:#6b7385; margin-top:10px; padding:9px 12px; background:#f6f7f9; border-radius:9px;">Quiz · {{ t.quizLine }}</div>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+
+                  <div style="font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#98a0b0; padding:16px 8px 6px; border-top:1px solid #eef0f3; margin-top:8px;">Drafts · 8</div>
+                  <sc-for list="{{ deskDrafts }}" as="t" hint-placeholder-count="8">
+                    <div style="border-radius:11px;" style-hover="background:#fafbfc;">
+                      <div onclick="{{ t.onToggle }}" style="display:flex; align-items:center; gap:12px; padding:12px 8px; cursor:pointer;">
+                        <span style="width:22px; height:22px; border-radius:6px; background:#f2f4f7; color:#8891a0; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; flex-shrink:0;">{{ t.chev }}</span>
+                        <div style="flex:1;">
+                          <div style="display:flex; align-items:center; gap:9px;">
+                            <span style="font-size:14.5px; font-weight:700; color:#344256;">{{ t.name }}</span>
+                            <span style="font-size:9.5px; font-weight:600; letter-spacing:.03em; text-transform:uppercase; padding:2px 7px; border-radius:5px; {{ t.badgeStyle }}">{{ t.badgeLabel }}</span>
+                          </div>
+                          <div style="font-size:11.5px; color:#98a0b0; margin-top:3px;">{{ t.meta }}</div>
+                        </div>
+                        <button onclick="{{ t.onPrimary }}" style="border:1px solid #b8ecca; background:#ecfdf3; border-radius:8px; padding:6px 13px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:12.5px; font-weight:600; color:#067647;" style-hover="background:#dcf5e6;">Approve</button>
+                        <div style="position:relative;">
+                          <button onclick="{{ t.onMenu }}" style="width:32px; height:32px; border:1px solid #e2e5ea; border-radius:8px; background:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; color:#8891a0;" style-hover="border-color:#cbd2dc;"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button>
+                          <sc-if value="{{ t.menuOpen }}" hint-placeholder-val="{{ false }}">
+                            <div style="position:absolute; right:0; top:38px; z-index:20; width:150px; background:#fff; border:1px solid #e2e5ea; border-radius:10px; box-shadow:0 12px 30px rgba(16,24,40,.16); padding:5px; animation:popIn .15s ease both;">
+                              <button onclick="{{ t.onEdit }}" style="display:block; width:100%; text-align:left; background:none; border:none; padding:8px 10px; border-radius:7px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:12.5px; color:#3a4256;" style-hover="background:#f6f7f9;">Edit</button>
+                              <button onclick="{{ t.onDelete }}" style="display:block; width:100%; text-align:left; background:none; border:none; padding:8px 10px; border-radius:7px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:12.5px; color:#b42318;" style-hover="background:#fef3f2;">Delete</button>
+                            </div>
+                          </sc-if>
+                        </div>
+                      </div>
+                      <sc-if value="{{ t.expanded }}" hint-placeholder-val="{{ false }}">
+                        <div style="padding:2px 8px 16px 42px; animation:fadeIn .25s ease both;">
+                          <div style="font-size:12px; color:#6b7385; margin-bottom:10px;">{{ t.unit }}</div>
+                          <div style="font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#98a0b0; margin-bottom:6px;">Milestones</div>
+                          <sc-for list="{{ t.milestones }}" as="m" hint-placeholder-count="3">
+                            <div style="display:flex; align-items:center; gap:9px; padding:5px 0;">
+                              <span style="width:5px; height:5px; border-radius:50%; background:#98a0b0;"></span>
+                              <span style="font-size:13px; color:#3a4256;">{{ m }}</span>
+                            </div>
+                          </sc-for>
+                          <div style="font-size:12px; color:#6b7385; margin-top:10px; padding:9px 12px; background:#f6f7f9; border-radius:9px;">Quiz · {{ t.quizLine }}</div>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+
+            <div style="position:sticky; top:0; display:flex; flex-direction:column; gap:16px; animation:riseIn .5s cubic-bezier(.2,.7,.2,1) .1s both;">
+              <div style="background:#fff; border:1px solid #e8eaee; border-radius:14px; padding:18px 19px; box-shadow:0 1px 2px rgba(16,24,40,.03);">
+                <div style="font-size:14px; font-weight:800; color:#0f1729;">AI teaching instructions</div>
+                <p style="font-size:12px; color:#8891a0; margin:5px 0 12px; line-height:1.45;">How the assistant teaches every topic in this course.</p>
+                <textarea value="{{ instructions }}" oninput="{{ onInstructions }}" style="width:100%; min-height:172px; border:1px solid #e2e5ea; border-radius:10px; padding:12px 13px; outline:none; resize:vertical; font-family:'Plus Jakarta Sans'; font-size:13px; color:#0f1729; line-height:1.55;"></textarea>
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-top:11px;">
+                  <button onclick="{{ onSaveInstructions }}" style="background:#0f1729; color:#fff; border:none; border-radius:9px; padding:9px 18px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:13px; font-weight:600;" style-hover="background:#2563eb;">Save</button>
+                  <span style="font-size:11.5px; color:#aab1bd;">Applies to all topics</span>
+                </div>
+              </div>
+
+              <div style="background:#fff; border:1px solid #e8eaee; border-radius:14px; padding:18px 19px; box-shadow:0 1px 2px rgba(16,24,40,.03);">
+                <div style="font-size:14px; font-weight:800; color:#0f1729;">Course materials</div>
+                <p style="font-size:12px; color:#8891a0; margin:5px 0 12px; line-height:1.45;">Up to 10 files · 9 slots left. Mark one as syllabus.</p>
+                <div style="display:flex; align-items:center; gap:11px; padding:11px 13px; border:1px solid #eef0f3; border-radius:10px;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8891a0" stroke-width="1.8"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>
+                  <div style="flex:1;">
+                    <div style="font-size:13px; font-weight:600; color:#0f1729;">Fund-of-Computer-Science-Syllabus</div>
+                    <div style="font-size:11px; color:#a9aec0;">3,405 words</div>
+                  </div>
+                  <span style="font-size:9.5px; font-weight:600; letter-spacing:.03em; text-transform:uppercase; color:#2563eb; background:#eef4ff; border:1px solid #d3e0ff; border-radius:5px; padding:2px 7px;">Syllabus</span>
+                </div>
+                <button onclick="{{ onAddTopic }}" style="width:100%; margin-top:10px; border:1px dashed #cbd2dc; background:#fbfcfe; border-radius:10px; padding:10px; cursor:pointer; color:#6b7385; font-family:'Plus Jakarta Sans'; font-size:12.5px; font-weight:600;" style-hover="border-color:#2563eb; color:#2563eb;">Upload files</button>
+              </div>
+
+              <div style="background:#fff; border:1px solid #e8eaee; border-radius:14px; padding:18px 19px; box-shadow:0 1px 2px rgba(16,24,40,.03);">
+                <div style="font-size:14px; font-weight:800; color:#0f1729;">Topic plan chat</div>
+                <p style="font-size:12px; color:#8891a0; margin:5px 0 12px; line-height:1.45;">Describe how topics should be structured, then Modify.</p>
+                <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:12px;">
+                  <sc-for list="{{ deskChat }}" as="m" hint-placeholder-count="2">
+                    <div style="max-width:88%; {{ m.wrap }} padding:10px 12px;">
+                      <div style="font-size:9.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:{{ m.labelColor }}; margin-bottom:4px;">{{ m.label }}</div>
+                      <div style="font-size:12.5px; color:#3a4256; line-height:1.5;">{{ m.text }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+                <input placeholder="e.g. Add a topic on recursion" style="width:100%; border:1px solid #e2e5ea; border-radius:9px; padding:10px 12px; outline:none; font-family:'Plus Jakarta Sans'; font-size:12.5px; color:#0f1729; margin-bottom:9px;">
+                <button onclick="{{ onModify }}" style="width:100%; background:#4f46e5; color:#fff; border:none; border-radius:9px; padding:10px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:13px; font-weight:600;" style-hover="background:#4338ca;">Modify draft topics</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isStudents }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:16px; animation:fadeIn .4s ease both;">
+            <div>
+              <h1 style="font-size:27px; font-weight:800; color:#0f1729; letter-spacing:-.025em; margin:0;">Students</h1>
+              <p style="font-size:14px; color:#6b7385; margin:6px 0 0;">{{ studentsCount }} across 2 courses · {{ studentsSummary }}</p>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:20px; flex-wrap:wrap;">
+            <div style="display:inline-flex; background:#f2f4f7; border-radius:9px; padding:3px;">
+              <sc-for list="{{ stuTabs }}" as="t" hint-placeholder-count="4">
+                <button onclick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }} <span style="opacity:.6;">{{ t.count }}</span></button>
+              </sc-for>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #e2e5ea; border-radius:9px; padding:8px 12px; min-width:260px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#98a0b0" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+              <input placeholder="Search students…" value="{{ stuQuery }}" oninput="{{ onStuQuery }}" style="flex:1; border:none; outline:none; background:transparent; font-family:'Plus Jakarta Sans'; font-size:13.5px; color:#0f1729;">
+            </div>
+          </div>
+
+          <div style="margin-top:16px; background:#fff; border:1px solid #e8eaee; border-radius:15px; box-shadow:0 1px 2px rgba(16,24,40,.03); overflow:hidden; animation:riseIn .5s cubic-bezier(.2,.7,.2,1) both;">
+            <sc-for list="{{ studentsList }}" as="s" hint-placeholder-count="10">
+              <div style="border-top:1px solid #f2f4f7;">
+                <div style="display:grid; grid-template-columns:40px 1fr auto auto auto auto; gap:16px; align-items:center; padding:13px 18px;">
+                  <div style="width:40px; height:40px; border-radius:50%; background:{{ s.tint }}; color:{{ s.color }}; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;">{{ s.initials }}</div>
+                  <div>
+                    <div style="display:flex; align-items:baseline; gap:9px; flex-wrap:wrap;">
+                      <span style="font-size:15px; font-weight:700; color:#0f1729;">{{ s.name }}</span>
+                      <span style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#a9aec0;">@{{ s.handle }}</span>
+                      <span style="font-size:10.5px; font-weight:600; color:#6b7385; background:#f2f4f7; border-radius:5px; padding:2px 7px;">{{ s.courseShort }}</span>
+                    </div>
+                    <div style="font-size:11.5px; color:#98a0b0; margin-top:3px;">{{ s.joined }}</div>
+                  </div>
+                  <div style="text-align:right; font-size:12px; color:#6b7385; font-variant-numeric:tabular-nums;">{{ s.topicsLabel }}<br><span style="color:#aab1bd;">{{ s.pts }}</span></div>
+                  <span style="{{ s.riskBadgeStyle }}">{{ s.riskBadgeText }}</span>
+                  <span style="font-size:11.5px; font-weight:700; color:{{ s.tpassColor }}; background:{{ s.tpassBg }}; border:1px solid {{ s.tpassBorder }}; border-radius:7px; padding:5px 10px; white-space:nowrap;">{{ s.tpassLabel }}</span>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <button onclick="{{ s.onOpen }}" style="border:1px solid #e2e5ea; background:#fff; border-radius:8px; padding:7px 15px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:12.5px; font-weight:600; color:#3a4256;" style-hover="border-color:#2563eb; color:#2563eb;">Monitor</button>
+                    <button onclick="{{ s.onToggleExpand }}" style="width:32px; height:32px; border:1px solid #e2e5ea; border-radius:8px; background:#fff; cursor:pointer; color:#8891a0; font-size:16px; font-weight:600; display:flex; align-items:center; justify-content:center;" style-hover="border-color:#cbd2dc;">{{ s.chev }}</button>
+                  </div>
+                </div>
+                <sc-if value="{{ s.expanded }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:2px 18px 18px 74px; animation:fadeIn .25s ease both;">
+                    <div style="font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#98a0b0; margin-bottom:8px;">Topic progress</div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 28px;">
+                      <sc-for list="{{ s.topicsProgress }}" as="tp" hint-placeholder-count="7">
+                        <div style="display:flex; align-items:center; gap:10px; padding:4px 0;">
+                          <span style="flex:1; font-size:12.5px; color:#3a4256;">{{ tp.name }}</span>
+                          <div style="width:70px; height:5px; background:#f2f4f7; border-radius:4px; overflow:hidden;"><div style="height:100%; width:{{ tp.barW }}; background:{{ tp.color }};"></div></div>
+                          <span style="width:58px; text-align:right; font-size:10.5px; font-weight:600; color:{{ tp.color }};">{{ tp.statusLabel }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+            <sc-if value="{{ studentsEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:34px; text-align:center; color:#98a0b0; font-size:14px; border-top:1px solid #f2f4f7;">No students match your filters.</div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isCourses }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <h1 style="font-size:27px; font-weight:800; color:#0f1729; letter-spacing:-.025em; margin:0; animation:fadeIn .4s ease both;">Your courses</h1>
+          <p style="font-size:14px; color:#6b7385; margin:6px 0 0;">Create a course, then add a syllabus to generate topics.</p>
+          <div style="display:flex; gap:12px; margin-top:20px; animation:riseIn .5s cubic-bezier(.2,.7,.2,1) both;">
+            <input value="{{ newCourse }}" oninput="{{ onNewCourse }}" placeholder="New course name, e.g. CPS 1231 — Fall" style="flex:1; border:1px solid #e2e5ea; border-radius:11px; padding:13px 15px; outline:none; font-family:'Plus Jakarta Sans'; font-size:14px; color:#0f1729;">
+            <button onclick="{{ onCreateCourse }}" style="background:#2563eb; color:#fff; border:none; border-radius:11px; padding:0 22px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:14px; font-weight:700;" style-hover="background:#1d4ed8;">Create course</button>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:12px; margin-top:20px; animation:riseIn .5s cubic-bezier(.2,.7,.2,1) .05s both;">
+            <sc-for list="{{ courseList }}" as="c" hint-placeholder-count="2">
+              <div onclick="{{ c.onOpen }}" style="display:flex; align-items:center; gap:16px; background:#fff; border:1px solid #e8eaee; border-radius:14px; padding:18px 20px; cursor:pointer; box-shadow:0 1px 2px rgba(16,24,40,.03);" style-hover="border-color:#cfe0ff; box-shadow:0 4px 14px rgba(37,99,235,.08);">
+                <div style="width:44px; height:44px; border-radius:11px; background:#eef4ff; color:#2563eb; display:flex; align-items:center; justify-content:center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5C10.5 5 8 4.6 4 4.6V19c4 0 5.6.4 8 2 2.4-1.6 4-2 8-2V4.6c-4 0-5.5.4-8 1.9Z"></path><path d="M12 6.5V21"></path></svg></div>
+                <div style="flex:1;">
+                  <div style="font-size:16px; font-weight:800; color:#0f1729;">{{ c.title }}</div>
+                  <div style="font-size:12px; color:#98a0b0; margin-top:3px;">Code <span style="font-family:'JetBrains Mono',monospace; color:#6b7385;">{{ c.code }}</span> · {{ c.enrolled }} enrolled · {{ c.published }}</div>
+                </div>
+                <sc-if value="{{ c.attention }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:11px; font-weight:700; color:#b42318; background:#fef3f2; border:1px solid #fecdca; border-radius:6px; padding:4px 10px;">{{ c.attention }} need attention</span>
+                </sc-if>
+                <span style="color:#c3c9d4; font-size:19px;">›</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isMonitor }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <button onclick="{{ onBackFromMonitor }}" style="display:flex; align-items:center; gap:6px; background:none; border:none; padding:0; cursor:pointer; color:#2563eb; font-family:'Plus Jakarta Sans'; font-size:13px; font-weight:600;" style-hover="text-decoration:underline;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 6-6 6 6 6"></path></svg> Back to students
+          </button>
+          <div style="display:flex; align-items:flex-start; gap:15px; margin-top:14px; animation:fadeIn .4s ease both;">
+            <div style="width:52px; height:52px; border-radius:50%; background:{{ monitor.tint }}; color:{{ monitor.color }}; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px;">{{ monitor.initials }}</div>
+            <div style="flex:1;">
+              <h1 style="font-size:25px; font-weight:800; color:#0f1729; letter-spacing:-.02em; margin:0;">{{ monitor.name }}</h1>
+              <div style="font-size:12.5px; color:#98a0b0; margin-top:3px;">{{ monitor.metaLine }}</div>
+              <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">
+                <sc-for list="{{ monitor.chips }}" as="c" hint-placeholder-count="2">
+                  <span style="{{ c.style }}">{{ c.label }}</span>
+                </sc-for>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:{{ monitor.color }}; font-weight:700;">{{ monitor.glyph }} {{ monitor.tierLabel }}</div>
+              <div style="font-size:26px; font-weight:800; color:{{ monitor.color }}; font-variant-numeric:tabular-nums;">{{ monitor.score }}<span style="font-size:12px; color:#b0b7c3;">/100</span></div>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1.7fr 1fr; gap:20px; margin-top:22px; align-items:start;">
+            <div style="animation:riseIn .5s cubic-bezier(.2,.7,.2,1) .05s both;">
+              <div style="background:#fff; border:1px solid #e8eaee; border-radius:15px; box-shadow:0 1px 2px rgba(16,24,40,.03); overflow:hidden;">
+                <div style="padding:17px 20px 14px; border-bottom:1px solid #eef0f3;">
+                  <div style="font-size:16px; font-weight:800; color:#0f1729;">Topics</div>
+                  <div style="font-size:12.5px; color:#98a0b0; margin-top:2px;">Open the latest session for any topic</div>
+                </div>
+                <div style="padding:6px 12px 12px;">
+                  <sc-for list="{{ monitor.topics }}" as="t" hint-placeholder-count="7">
+                    <div style="display:flex; align-items:center; gap:14px; padding:12px 8px; border-top:1px solid #f2f4f7;">
+                      <div style="flex:1;">
+                        <div style="font-size:14px; font-weight:600; color:#0f1729;">{{ t.name }}</div>
+                        <div style="font-size:11px; color:#a9aec0; margin-top:2px;">{{ t.updated }}</div>
+                      </div>
+                      <div style="width:96px; height:6px; background:#f2f4f7; border-radius:4px; overflow:hidden;"><div style="height:100%; width:{{ t.barW }}; background:{{ t.color }};"></div></div>
+                      <span style="width:74px; text-align:right; font-size:11px; font-weight:600; color:{{ t.color }};">{{ t.statusLabel }}</span>
+                      <button onclick="{{ t.onViewSession }}" style="border:1px solid #e2e5ea; background:#fff; border-radius:8px; padding:6px 12px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:12px; font-weight:600; color:#3a4256;" style-hover="border-color:#2563eb; color:#2563eb;">View session</button>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+
+            <div style="position:sticky; top:0; display:flex; flex-direction:column; gap:16px; animation:riseIn .5s cubic-bezier(.2,.7,.2,1) .1s both;">
+              <div style="background:#fff; border:1px solid #e8eaee; border-radius:14px; padding:18px 19px; box-shadow:0 1px 2px rgba(16,24,40,.03);">
+                <div style="font-size:14px; font-weight:800; color:#0f1729; margin-bottom:12px;">Instructor notes</div>
+                <div style="display:inline-flex; background:#f2f4f7; border-radius:9px; padding:3px; margin-bottom:12px;">
+                  <button onclick="{{ onMonNoteCourse }}" style="{{ monNoteCourseStyle }}">Course note</button>
+                  <button onclick="{{ onMonNoteTopic }}" style="{{ monNoteTopicStyle }}">Topic note</button>
+                </div>
+                <textarea placeholder="{{ monNoteLabel }}" style="width:100%; min-height:96px; border:1px solid #e2e5ea; border-radius:10px; padding:11px 12px; outline:none; resize:vertical; font-family:'Plus Jakarta Sans'; font-size:13px; color:#0f1729; line-height:1.5;"></textarea>
+                <button onclick="{{ onSaveMonitorNote }}" style="margin-top:10px; background:#2563eb; color:#fff; border:none; border-radius:9px; padding:9px 18px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:13px; font-weight:600;" style-hover="background:#1d4ed8;">Save note</button>
+              </div>
+
+              <div style="background:#fff; border:1px solid #e8eaee; border-radius:14px; padding:18px 19px; box-shadow:0 1px 2px rgba(16,24,40,.03);">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+                  <span style="font-size:14px; font-weight:800; color:#0f1729;">Risk trend</span>
+                  <span style="font-size:12px; font-weight:600; color:{{ monitor.trendColor }};">{{ monitor.trendLabel }}</span>
+                </div>
+                <div style="display:flex; align-items:flex-end; gap:6px; height:52px; margin-top:10px;">
+                  <sc-for list="{{ monitor.trend }}" as="b" hint-placeholder-count="6">
+                    <div style="flex:1; height:{{ b.h }}; background:{{ b.color }}; border-radius:3px 3px 0 0;"></div>
+                  </sc-for>
+                </div>
+                <div style="font-size:12px; color:#6b7385; margin-top:12px; padding-top:12px; border-top:1px solid #eef0f3;">Persistence <span style="font-weight:700; color:#0f1729;">{{ monitor.persistence }}/100</span> — {{ monitor.persistenceNote }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </main>
+
+  <button onclick="{{ openAssistant }}" style="position:fixed; right:26px; bottom:24px; z-index:35; display:flex; align-items:center; gap:10px; background:#4f46e5; color:#fff; border:none; border-radius:999px; padding:12px 18px; cursor:pointer; box-shadow:0 8px 24px rgba(79,70,229,.34); font-family:'Plus Jakarta Sans'; font-weight:700; font-size:14px;" style-hover="background:#4338ca;">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="#fff"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"></path></svg>
+    Insights Assistant
+    <span style="background:rgba(255,255,255,.2); border-radius:6px; padding:2px 8px; font-size:10.5px; font-weight:600;">All courses</span>
+  </button>
+
+  <sc-if value="{{ assistantOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed; right:26px; bottom:82px; z-index:60; width:380px; background:#ffffff; border:1px solid #e2e5ea; border-radius:16px; box-shadow:0 20px 50px rgba(16,24,40,.22); overflow:hidden; animation:popIn .2s cubic-bezier(.2,.7,.2,1) both;">
+      <div style="display:flex; align-items:center; gap:9px; padding:15px 16px; border-bottom:1px solid #eef0f3;">
+        <span style="width:24px; height:24px; border-radius:7px; background:#eef0fe; display:flex; align-items:center; justify-content:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="#4f46e5"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"></path></svg></span>
+        <span style="font-weight:700; font-size:14px; color:#0f1729; flex:1;">Insights Assistant</span>
+        <span style="font-size:10px; font-weight:600; color:#6b7385; background:#f2f4f7; border-radius:6px; padding:3px 8px;">All courses</span>
+        <button onclick="{{ closeAssistant }}" style="background:none; border:none; cursor:pointer; color:#98a0b0; font-size:18px; line-height:1; padding:0 2px;">×</button>
+      </div>
+      <div style="padding:16px; max-height:280px; overflow:auto;">
+        <div style="font-size:13px; color:#6b7385; line-height:1.55;">{{ assistantAnswer }}</div>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:.04em; text-transform:uppercase; color:#b0b7c3; margin:14px 0 8px;">Try asking</div>
+        <div style="display:flex; flex-direction:column; gap:7px;">
+          <sc-for list="{{ assistantSuggestions }}" as="q" hint-placeholder-count="3">
+            <button onclick="{{ q.onClick }}" style="text-align:left; background:#f6f7f9; border:1px solid #e8eaee; border-radius:9px; padding:9px 11px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:12.5px; color:#3a4256;" style-hover="border-color:#cfe0ff; background:#fbfcfe;">{{ q.text }}</button>
+          </sc-for>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; padding:12px 14px; border-top:1px solid #eef0f3;">
+        <input placeholder="Ask about your courses…" style="flex:1; border:1px solid #e2e5ea; border-radius:9px; padding:9px 11px; outline:none; font-family:'Plus Jakarta Sans'; font-size:13px; color:#0f1729;">
+        <button style="background:#4f46e5; border:none; border-radius:9px; width:36px; height:36px; cursor:pointer; color:#fff; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="m6 11 6-6 6 6"></path></svg></button>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ paletteOpen }}" hint-placeholder-val="{{ false }}">
+    <div onclick="{{ closePalette }}" style="position:fixed; inset:0; z-index:80; background:rgba(15,23,41,.34); display:flex; align-items:flex-start; justify-content:center; padding-top:12vh; animation:fadeIn .15s ease both;">
+      <div onclick="{{ stop }}" style="width:min(560px,92vw); background:#fff; border-radius:16px; box-shadow:0 24px 60px rgba(16,24,40,.28); overflow:hidden; animation:popIn .18s cubic-bezier(.2,.7,.2,1) both;">
+        <div style="display:flex; align-items:center; gap:12px; padding:16px 18px; border-bottom:1px solid #eef0f3;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#98a0b0" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+          <input autofocus="" placeholder="Search any student across your courses…" value="{{ query }}" oninput="{{ onQuery }}" style="flex:1; border:none; outline:none; background:transparent; font-family:'Plus Jakarta Sans'; font-size:16px; color:#0f1729;">
+          <span style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#aab1bd; border:1px solid #dfe2e8; border-radius:4px; padding:2px 6px;">ESC</span>
+        </div>
+        <div style="max-height:46vh; overflow:auto; padding:6px;">
+          <sc-for list="{{ paletteResults }}" as="r" hint-placeholder-count="4">
+            <div onclick="{{ r.onOpen }}" style="display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:10px; cursor:pointer;" style-hover="background:#f6f7f9;">
+              <span style="width:32px; height:32px; border-radius:50%; background:{{ r.tint }}; color:{{ r.color }}; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">{{ r.initials }}</span>
+              <div style="flex:1;">
+                <div style="font-size:14.5px; font-weight:600; color:#0f1729;">{{ r.name }}</div>
+                <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#a9aec0;">@{{ r.handle }} · {{ r.courseShort }}</div>
+              </div>
+              <span style="font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:{{ r.color }};">{{ r.glyph }} {{ r.tierLabel }}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ noResults }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:26px 18px; text-align:center; color:#98a0b0; font-size:14px;">No students match “{{ query }}”.</div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ drawerOpen }}" hint-placeholder-val="{{ false }}">
+    <div onclick="{{ closeDrawer }}" style="position:fixed; inset:0; z-index:70; background:rgba(15,23,41,.3); animation:fadeIn .18s ease both;">
+      <div onclick="{{ stop }}" style="position:absolute; right:0; top:0; bottom:0; width:min(468px,94vw); background:#ffffff; box-shadow:-8px 0 40px rgba(16,24,40,.18); overflow-y:auto; animation:slideIn .26s cubic-bezier(.2,.7,.2,1) both;">
+        <div style="padding:22px 24px 18px; border-bottom:1px solid #eef0f3;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:12px; color:#98a0b0;">{{ drawer.courseTitle }}</span>
+            <button onclick="{{ closeDrawer }}" style="background:none; border:none; cursor:pointer; color:#98a0b0; font-size:22px; line-height:1;">×</button>
+          </div>
+          <div style="display:flex; align-items:center; gap:13px; margin-top:12px;">
+            <div style="width:46px; height:46px; border-radius:50%; background:{{ drawer.tint }}; color:{{ drawer.color }}; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px;">{{ drawer.initials }}</div>
+            <div style="flex:1;">
+              <div style="font-size:20px; font-weight:800; color:#0f1729; letter-spacing:-.01em;">{{ drawer.name }}</div>
+              <div style="font-size:12px; color:#98a0b0; margin-top:2px;">{{ drawer.metaLine }}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:{{ drawer.color }}; font-weight:700;">{{ drawer.glyph }} {{ drawer.tierLabel }}</div>
+              <div style="font-size:22px; font-weight:800; color:{{ drawer.color }}; font-variant-numeric:tabular-nums;">{{ drawer.score }}<span style="font-size:11px; color:#b0b7c3;">/100</span></div>
+            </div>
+          </div>
+          <div style="display:flex; gap:6px; margin-top:14px; flex-wrap:wrap;">
+            <sc-for list="{{ drawer.chips }}" as="c" hint-placeholder-count="2">
+              <span style="{{ c.style }}">{{ c.label }}</span>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); border-bottom:1px solid #eef0f3;">
+          <sc-for list="{{ drawer.stats }}" as="st" hint-placeholder-count="3">
+            <div style="{{ st.wrap }}">
+              <div style="font-size:10px; font-weight:600; letter-spacing:.02em; text-transform:uppercase; color:#a9aec0;">{{ st.label }}</div>
+              <div style="font-size:19px; font-weight:800; color:{{ st.color }}; margin-top:4px; font-variant-numeric:tabular-nums;">{{ st.value }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="padding:18px 24px; border-bottom:1px solid #eef0f3;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+            <span style="font-size:13px; font-weight:700; color:#0f1729;">Risk trend</span>
+            <span style="font-size:12px; font-weight:600; color:{{ drawer.trendColor }};">{{ drawer.trendLabel }}</span>
+          </div>
+          <div style="display:flex; align-items:flex-end; gap:6px; height:52px;">
+            <sc-for list="{{ drawer.trend }}" as="b" hint-placeholder-count="6">
+              <div style="flex:1; height:{{ b.h }}; background:{{ b.color }}; border-radius:3px 3px 0 0;"></div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="padding:18px 24px; border-bottom:1px solid #eef0f3;">
+          <div style="font-size:13px; font-weight:700; color:#0f1729; margin-bottom:12px;">Topic progress</div>
+          <sc-for list="{{ drawer.topics }}" as="t" hint-placeholder-count="5">
+            <div style="display:flex; align-items:center; gap:12px; padding:7px 0;">
+              <span style="flex:1; font-size:13px; color:#3a4256;">{{ t.name }}</span>
+              <div style="width:90px; height:6px; background:#eef0f3; border-radius:4px; overflow:hidden;"><div style="height:100%; width:{{ t.barW }}; background:{{ t.color }};"></div></div>
+              <span style="width:64px; text-align:right; font-size:11px; font-weight:600; color:{{ t.color }};">{{ t.statusLabel }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="padding:18px 24px;">
+          <div style="font-size:13px; font-weight:700; color:#0f1729; margin-bottom:10px;">Instructor note</div>
+          <textarea placeholder="Write a note about this student…" style="width:100%; min-height:80px; border:1px solid #e2e5ea; border-radius:10px; padding:11px 12px; outline:none; resize:vertical; font-family:'Plus Jakarta Sans'; font-size:13px; color:#0f1729; line-height:1.5;"></textarea>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px;">
+            <button onclick="{{ onSaveNote }}" style="background:#2563eb; color:#fff; border:none; border-radius:9px; padding:9px 18px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-weight:600; font-size:13px;" style-hover="background:#1d4ed8;">Save note</button>
+            <button onclick="{{ onOpenMonitor }}" style="background:none; border:none; cursor:pointer; color:#2563eb; font-weight:600; font-size:13px;" style-hover="text-decoration:underline;">Open full session →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ toastShow }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed; left:50%; bottom:30px; transform:translateX(-50%); z-index:90; background:#0f1729; color:#fff; padding:11px 18px; border-radius:10px; font-size:13px; font-weight:500; box-shadow:0 10px 30px rgba(16,24,40,.3); animation:popIn .2s ease both;">{{ toast }}</div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240,&quot;height&quot;:920}}">
+class Component extends DCLogic {
+  state = {
+    view: 'front',
+    synthetic: true,
+    wlFilter: 'all',
+    riskTier: null,
+    riskReason: null,
+    healthOpen: false,
+    draftsOpen: false,
+    expanded: {},
+    openMenu: null,
+    instructions: "This is CPS 1231 Fundamentals of Computer Science, a first programming course using Java. The authoritative textbook is Liang, Introduction to Java Programming, 10th Edition. Emphasize hands-on practice: every concept should be paired with a short code example students can run in Eclipse. Prefer plain language over jargon, and when a student struggles, re-explain with a real-world analogy before repeating the formal definition.",
+    paletteOpen: false,
+    query: '',
+    stuTier: null,
+    stuQuery: '',
+    monitorStudent: null,
+    monitorNoteTab: 'course',
+    newCourse: '',
+    assistantOpen: false,
+    drawer: null,
+    toast: '',
+  };
+
+  tierMeta = {
+    critical: { label: 'Critical', glyph: '\u25B2', color: '#b42318', dot: '#d92d20', tint: '#fef3f2', border: '#fecdca', rank: 0 },
+    high:     { label: 'High',     glyph: '\u25C6', color: '#c4320a', dot: '#f97316', tint: '#fff6ed', border: '#fdd2ab', rank: 1 },
+    watch:    { label: 'Watch',    glyph: '\u25CF', color: '#a16207', dot: '#eab308', tint: '#fefce8', border: '#fde68a', rank: 2 },
+    healthy:  { label: 'Healthy',  glyph: '\u25AC', color: '#067647', dot: '#17b26a', tint: '#ecfdf3', border: '#b8ecca', rank: 3 },
+  };
+
+  reasonMeta = {
+    'no-engagement': 'Not engaging',
+    'low-pass': 'Low pass rate',
+    'low-quiz': 'Low quiz score',
+    'stuck': 'Stuck on a topic',
+  };
+
+  courses = [
+    { id: 'mid',  title: 'CPS 1231 \u2014 Mid Semester',  short: 'Mid Semester',  code: 'BDAC1D', enrolled: 20, activeWeek: 14, attempts: 268, passRate: 79.1, completion: 88, published: 7, drafts: 8, sessions: 76 },
+    { id: 'full', title: 'CPS 1231 \u2014 Full Semester', short: 'Full Semester', code: '3A96AA', enrolled: 20, activeWeek: 16, attempts: 1102, passRate: 80.1, completion: 82, published: 12, drafts: 3, sessions: 300 },
+  ];
+
+  roster = [
+    { name: 'Nia Singh', handle: 'niasingh05', course: 'mid', tier: 'critical', score: 78, synthetic: false, quizzed: '1 of 7', touched: 1, avg: 20, reasons: ['no-engagement','low-pass','low-quiz'], persists: false, joined: '6/18/2026', last: 'inactive 7d', self: 'beginner' },
+    { name: 'Isabela Zhao', handle: 'isabelazhao15', course: 'mid', tier: 'high', score: 41, synthetic: false, quizzed: '1 of 7', touched: 1, avg: 40, reasons: ['no-engagement'], persists: true, joined: '6/18/2026', last: '2d ago', self: 'intermediate' },
+    { name: 'Mateo Alvarez', handle: 'mateoalv07', course: 'full', tier: 'high', score: 44, synthetic: false, quizzed: '4 of 12', touched: 5, avg: 38, reasons: ['low-quiz','stuck'], persists: false, joined: '6/18/2026', last: '3d ago', self: 'beginner' },
+    { name: 'Amara Das', handle: 'amaradas14', course: 'mid', tier: 'watch', score: 26, synthetic: false, quizzed: '3 of 7', touched: 3, avg: 52, reasons: ['no-engagement'], persists: true, joined: '6/18/2026', last: '1d ago', self: 'intermediate' },
+    { name: 'Linh Wilson', handle: 'linhwilson16', course: 'mid', tier: 'watch', score: 23, synthetic: false, quizzed: '3 of 7', touched: 3, avg: 73, reasons: ['no-engagement'], persists: false, joined: '6/18/2026', last: '1d ago', self: 'beginner' },
+    { name: 'Priya Nair', handle: 'priyanair12', course: 'full', tier: 'watch', score: 31, synthetic: false, quizzed: '6 of 12', touched: 7, avg: 58, reasons: ['low-pass'], persists: false, joined: '6/18/2026', last: '2d ago', self: 'beginner' },
+    { name: 'Ananya Wang', handle: 'ananyawang02', course: 'mid', tier: 'watch', score: 34, synthetic: true, quizzed: '0 of 7', touched: 1, avg: null, reasons: ['no-engagement'], persists: false, joined: '6/18/2026', last: '4d ago', self: 'intermediate' },
+    { name: 'Budi Kim', handle: 'budikim19', course: 'mid', tier: 'watch', score: 34, synthetic: true, quizzed: '1 of 7', touched: 1, avg: 60, reasons: ['no-engagement'], persists: false, joined: '6/18/2026', last: '4d ago', self: 'intermediate' },
+    { name: 'Haruto Rahimi', handle: 'harutorahimi03', course: 'mid', tier: 'watch', score: 34, synthetic: true, quizzed: '1 of 7', touched: 1, avg: 60, reasons: ['no-engagement'], persists: false, joined: '6/18/2026', last: '3d ago', self: 'intermediate' },
+    { name: 'Noah Yamamoto', handle: 'noahyamamoto00', course: 'mid', tier: 'watch', score: 34, synthetic: true, quizzed: '0 of 7', touched: 1, avg: null, reasons: ['no-engagement'], persists: false, joined: '6/18/2026', last: '5d ago', self: 'beginner' },
+    { name: 'Sophia Sharma', handle: 'sophiasharma11', course: 'mid', tier: 'watch', score: 23, synthetic: true, quizzed: '3 of 7', touched: 3, avg: 80, reasons: ['no-engagement'], persists: false, joined: '6/18/2026', last: '2d ago', self: 'intermediate' },
+    { name: 'Tariq Farouk', handle: 'tariqfarouk07', course: 'mid', tier: 'watch', score: 23, synthetic: true, quizzed: '3 of 7', touched: 3, avg: 67, reasons: ['no-engagement'], persists: false, joined: '6/18/2026', last: '2d ago', self: 'intermediate' },
+    { name: 'Diego Torres', handle: 'diegotorres08', course: 'full', tier: 'watch', score: 29, synthetic: true, quizzed: '5 of 12', touched: 6, avg: 61, reasons: ['no-engagement'], persists: false, joined: '6/18/2026', last: '3d ago', self: 'beginner' },
+    { name: 'Yuki Tanaka', handle: 'yukitanaka04', course: 'full', tier: 'watch', score: 27, synthetic: true, quizzed: '7 of 12', touched: 8, avg: 64, reasons: ['low-quiz'], persists: false, joined: '6/18/2026', last: '2d ago', self: 'intermediate' },
+    { name: 'Omar Haddad', handle: 'omarhaddad10', course: 'full', tier: 'watch', score: 25, synthetic: true, quizzed: '6 of 12', touched: 7, avg: 70, reasons: ['no-engagement'], persists: false, joined: '6/18/2026', last: '3d ago', self: 'beginner' },
+    { name: 'Grace Owusu', handle: 'graceowusu13', course: 'full', tier: 'watch', score: 22, synthetic: true, quizzed: '8 of 12', touched: 9, avg: 72, reasons: ['no-engagement'], persists: false, joined: '6/18/2026', last: '2d ago', self: 'beginner' },
+  ];
+
+  topics = [
+    { name: 'Introduction to Computer Science', status: 'published', pass: 68.4, attempts: 79, kind: 'Intro', modules: 1, milestones: 3, unit: 'Unit 1 \u00B7 Hardware, generations of languages, Eclipse setup' },
+    { name: 'Number Systems', status: 'published', pass: 85.4, attempts: 48, kind: 'Core', modules: 1, milestones: 3, unit: 'Unit 2 \u00B7 Number systems, data representation, console I/O' },
+    { name: 'Variables and Data Types', status: 'published', pass: 78.0, attempts: 60, kind: 'Core', modules: 1, milestones: 3, unit: 'Unit 3 \u00B7 Variables, data types, arithmetic operators' },
+    { name: 'Conditional Statements', status: 'published', pass: 82.4, attempts: 34, kind: 'Core', modules: 1, milestones: 3, unit: 'Unit 4 \u00B7 Conditional statements' },
+    { name: 'Logical Operators', status: 'published', pass: 89.5, attempts: 19, kind: 'Core', modules: 1, milestones: 3, unit: 'Unit 5 \u00B7 Logical operators, switch statements' },
+    { name: 'Mathematical Functions', status: 'published', pass: 76.2, attempts: 21, kind: 'Core', modules: 1, milestones: 3, unit: 'Unit 6 \u00B7 Math, character, and string functions' },
+    { name: 'Midterm Preparation', status: 'published', pass: 100, attempts: 17, kind: 'Review', modules: 1, milestones: 3, unit: 'Unit 7 \u00B7 Midterm preparation' },
+    { name: 'Repetition Statements', status: 'draft', pass: null, attempts: 0, kind: 'Core', modules: 1, milestones: 3, unit: 'Unit 8 \u00B7 Repetition statements (5.1\u20135.6)' },
+    { name: 'Loops', status: 'draft', pass: null, attempts: 0, kind: 'Core', modules: 1, milestones: 3, unit: 'Unit 9 \u00B7 For loop, nested loops, break and continue' },
+    { name: 'Methods', status: 'draft', pass: null, attempts: 0, kind: 'Core', modules: 1, milestones: 3, unit: 'Unit 10 \u00B7 Methods' },
+    { name: 'Method Overloading', status: 'draft', pass: null, attempts: 0, kind: 'Core', modules: 1, milestones: 3, unit: 'Unit 11 \u00B7 Method overloading, scope of variables' },
+    { name: 'Single Dimensional Arrays', status: 'draft', pass: null, attempts: 0, kind: 'Core', modules: 1, milestones: 3, unit: 'Unit 12 \u00B7 Single dimensional arrays' },
+    { name: 'Processing Arrays', status: 'draft', pass: null, attempts: 0, kind: 'Core', modules: 1, milestones: 3, unit: 'Unit 13 \u00B7 Processing arrays, main method arguments' },
+    { name: 'Arrays Sorting and Searching', status: 'draft', pass: null, attempts: 0, kind: 'Core', modules: 1, milestones: 3, unit: 'Unit 14 \u00B7 Arrays: sorting and searching' },
+    { name: 'Final Week Review', status: 'draft', pass: null, attempts: 0, kind: 'Review', modules: 1, milestones: 3, unit: 'Unit 15 \u00B7 Final week review, chapters 5\u20137' },
+  ];
+
+  healthyList = [
+    { n: 'Liam Adeyemi', c: 'mid' }, { n: 'Mateo Anderson', c: 'mid' }, { n: 'Kareem Wijaya', c: 'mid' }, { n: 'Nadia Kumar', c: 'mid' }, { n: 'Layla Tanaka', c: 'mid' }, { n: 'Hiroshi Silva', c: 'mid' }, { n: 'Ethan Khan', c: 'mid' }, { n: 'Sofia Martinez', c: 'mid' }, { n: 'Omar Nguyen', c: 'mid' }, { n: 'Aarav Gupta', c: 'mid' },
+    { n: 'Kai Nakamura', c: 'full' }, { n: 'Zara Ahmed', c: 'full' }, { n: 'Lucas Silva', c: 'full' }, { n: 'Mei Lin', c: 'full' }, { n: 'Arjun Patel', c: 'full' }, { n: 'Emma Rossi', c: 'full' }, { n: 'Diego Ramos', c: 'full' }, { n: 'Fatima Noor', c: 'full' }, { n: 'Jin Park', c: 'full' }, { n: 'Olivia Brooks', c: 'full' }, { n: 'Rahul Verma', c: 'full' }, { n: 'Sana Iqbal', c: 'full' }, { n: 'Leo Martins', c: 'full' }, { n: 'Hana Kim', c: 'full' },
+  ];
+  genHealthy() {
+    if (this._healthy) return this._healthy;
+    this._healthy = this.healthyList.map((h, i) => {
+      const topics = 13 + (i % 3);
+      const tpass = Math.min(100, 87 + (i % 14));
+      return { name: h.n, handle: h.n.toLowerCase().replace(/[^a-z]/g, '') + (10 + (i % 80)), course: h.c, tier: 'healthy', score: 8 + (i % 12), synthetic: false, quizzed: topics + ' of 15', touched: topics, avg: tpass, reasons: [], persists: false, joined: '6/18/2026', last: (1 + (i % 6)) + 'd ago', self: (i % 2) ? 'beginner' : 'intermediate' };
+    });
+    return this._healthy;
+  }
+  fullRoster() { return this.roster.concat(this.genHealthy()); }
+  activeRoster() { return this.fullRoster().filter(s => this.state.synthetic || !s.synthetic); }
+  initials(name) { return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase(); }
+  courseShort(id) { const c = this.courses.find(c => c.id === id); return c ? c.short : id; }
+  courseTitle(id) { const c = this.courses.find(c => c.id === id); return c ? c.title : id; }
+  summaryLine(s) { const avg = s.avg == null ? 'no quiz data' : ('avg ' + s.avg + '%'); return s.quizzed + ' quizzed \u00B7 ' + s.touched + ' touched \u00B7 ' + avg; }
+  chip(label, tier) { const t = this.tierMeta[tier]; return { label, style: "font-size:10px; font-weight:600; letter-spacing:.02em; padding:3px 9px; border-radius:6px; color:" + t.color + "; background:" + t.tint + "; border:1px solid " + t.border + ";" }; }
+  posChip(label) { return { label, style: "font-size:10px; font-weight:600; letter-spacing:.02em; padding:3px 9px; border-radius:6px; color:#067647; background:#ecfdf3; border:1px solid #b8ecca;" }; }
+  chipsFor(s, includePrimary) {
+    let rs = s.reasons;
+    if (!includePrimary) rs = rs.filter(r => r !== 'no-engagement');
+    const chips = rs.map(r => this.chip(this.reasonMeta[r], s.tier));
+    if (s.persists) chips.push(this.posChip('Persists \u2014 passes on retry'));
+    return chips;
+  }
+  decorateStudent(s, rank, includePrimary) {
+    const t = this.tierMeta[s.tier];
+    return {
+      name: s.name, handle: s.handle, rank,
+      courseShort: this.courseShort(s.course),
+      score: s.score, tierLabel: t.label, glyph: t.glyph, color: t.color, tint: t.tint,
+      initials: this.initials(s.name),
+      summary: this.summaryLine(s),
+      chips: this.chipsFor(s, includePrimary),
+      onOpen: () => this.setState({ drawer: s.handle, paletteOpen: false }),
+    };
+  }
+
+  componentDidMount() {
+    this._onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); this.setState(s => ({ paletteOpen: !s.paletteOpen, query: '' })); }
+      if (e.key === 'Escape') this.setState({ paletteOpen: false, openMenu: null, drawer: null, assistantOpen: false });
+    };
+    this._onClick = () => { if (this.state.openMenu) this.setState({ openMenu: null }); };
+    document.addEventListener('keydown', this._onKey);
+    document.addEventListener('click', this._onClick);
+  }
+  componentWillUnmount() {
+    document.removeEventListener('keydown', this._onKey);
+    document.removeEventListener('click', this._onClick);
+    if (this._toastT) clearTimeout(this._toastT);
+  }
+  showToast(msg) { this.setState({ toast: msg }); if (this._toastT) clearTimeout(this._toastT); this._toastT = setTimeout(() => this.setState({ toast: '' }), 2600); }
+
+  navStyle(active) {
+    return "display:flex; align-items:center; gap:11px; width:100%; text-align:left; padding:9px 12px; border-radius:10px; border:none; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:14px; font-weight:" + (active ? '700' : '500') + "; color:" + (active ? '#2563eb' : '#475467') + "; background:" + (active ? '#eef4ff' : 'transparent') + ";";
+  }
+  wlTabStyle(active) {
+    return "background:" + (active ? '#ffffff' : 'transparent') + "; color:" + (active ? '#0f1729' : '#6b7385') + "; border:none; border-radius:7px; padding:6px 12px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:12.5px; font-weight:600; box-shadow:" + (active ? '0 1px 2px rgba(16,24,40,.12)' : 'none') + ";";
+  }
+
+  basics(s) {
+    const topics = s.tier === 'critical' ? 5 : s.tier === 'high' ? 6 : s.tier === 'watch' ? (4 + (s.score % 4)) : s.touched;
+    const pts = topics * 17 + (s.score % 12);
+    const tpass = s.avg != null ? s.avg : (s.tier === 'critical' ? 30 : s.tier === 'high' ? 48 : 55);
+    return { topics, pts, tpass };
+  }
+  buildDrawer(s) {
+    const t = this.tierMeta[s.tier];
+    const b = this.basics(s);
+    const topicsDone = b.topics, pts = b.pts, tpass = b.tpass;
+    const declining = s.tier === 'critical' || s.tier === 'high';
+    const trendVals = declining ? [30, 33, 31, 46, 58] : [40, 42, 40, 36, 34];
+    const trend = trendVals.map(v => ({ h: v + 'px', color: declining ? '#f2b8b0' : '#bfe3cd' }));
+    const pub = this.topics.filter(tp => tp.status === 'published');
+    const topics = pub.map((tp, i) => {
+      let pct = s.tier === 'healthy' ? [100, 100, 90, 100, 80, 100, 90][i] : ((i * 27 + s.score + 10) % 115);
+      pct = Math.max(0, Math.min(100, Math.round(pct / 10) * 10));
+      const status = pct >= 100 ? 'Completed' : pct > 0 ? 'Learning ' + pct + '%' : 'Not started';
+      const color = pct >= 100 ? '#067647' : pct >= 40 ? '#2563eb' : '#98a0b0';
+      return { name: tp.name, statusLabel: status, barW: pct + '%', color };
+    });
+    return {
+      name: s.name, handle: s.handle, courseTitle: this.courseTitle(s.course),
+      metaLine: 'Joined ' + s.joined + ' \u00B7 ' + s.last + ' \u00B7 self-rated ' + s.self,
+      tierLabel: t.label, glyph: t.glyph, color: t.color, tint: t.tint, initials: this.initials(s.name), score: s.score,
+      chips: this.chipsFor(s, true),
+      stats: [
+        { label: 'Topics', value: topicsDone + '/15', color: '#0f1729', wrap: 'padding:16px 18px;' },
+        { label: 'Points', value: pts, color: '#0f1729', wrap: 'padding:16px 18px; border-left:1px solid #eef0f3;' },
+        { label: 'Topic pass', value: tpass + '%', color: tpass >= 60 ? '#067647' : '#b42318', wrap: 'padding:16px 18px; border-left:1px solid #eef0f3;' },
+      ],
+      trend, trendLabel: declining ? 'Declining \u00B7 +' + (s.tier === 'critical' ? 28 : 20) + ' pts / 28d' : 'Holding steady',
+      trendColor: declining ? '#b42318' : '#067647',
+      topics,
+    };
+  }
+
+  buildMonitor(s) {
+    const d = this.buildDrawer(s);
+    const dates = ['3/18', '3/24', '4/1', '4/7', '4/15', '4/22', '4/29'];
+    const topics = d.topics.map((tp, i) => ({ ...tp, updated: 'Updated ' + (dates[i] || '5/6') + '/2026', onViewSession: () => this.showToast('Opening \u201C' + tp.name + '\u201D session\u2026') }));
+    const persistence = s.tier === 'critical' ? 22 : s.tier === 'high' ? 44 : s.tier === 'watch' ? 58 : 84;
+    return { ...d, topics, persistence, persistenceNote: persistence < 50 ? 'rarely recovers after a failed attempt' : 'usually recovers after a setback' };
+  }
+
+  renderVals() {
+    const st = this.state;
+    const active = this.activeRoster();
+    const attention = active.filter(s => s.tier === 'critical' || s.tier === 'high').sort((a, b) => b.score - a.score);
+    const watch = active.filter(s => s.tier === 'watch').sort((a, b) => b.score - a.score);
+    const top = attention[0];
+
+    const briefRest = "Two courses, 40 students. Overall pass rate holds at 79.9% \u2014 steady since last week.";
+    const naWords = ['zero','one','two','three','four','five','six','seven','eight','nine','ten'];
+    const naWord = naWords[attention.length] || String(attention.length);
+    const naCap = naWord.charAt(0).toUpperCase() + naWord.slice(1);
+    const briefS2 = naCap + " student" + (attention.length !== 1 ? "s" : "") + " need" + (attention.length === 1 ? "s" : "") + " attention now" + (top ? (": " + top.name + " in " + this.courseShort(top.course) + " is the most urgent, with low engagement and a " + (top.avg != null ? top.avg + "% quiz average across a single attempt." : "handful of untouched quizzes.")) : ".");
+    const briefS3 = watch.length + " more sit in the Watch tier \u2014 early warnings, not emergencies \u2014 and nearly all share one cause: they haven\u2019t engaged with the material yet.";
+
+    const figures = [
+      { label: 'Courses', value: '2', unit: '' },
+      { label: 'Students', value: '40', unit: 'enrolled' },
+      { label: 'Sessions', value: '376', unit: 'total' },
+      { label: 'Pass rate', value: '79.9', unit: '%' },
+    ];
+
+    const wlTabs = [
+      { key: 'all', label: 'All', count: attention.length + watch.length },
+      { key: 'attention', label: 'Attention', count: attention.length },
+      { key: 'watch', label: 'Watch', count: watch.length },
+    ].map(t => ({ ...t, style: this.wlTabStyle(st.wlFilter === t.key), onClick: () => this.setState({ wlFilter: t.key }) }));
+
+    const groupOf = (key) => {
+      if (key === 'attention') return { key, label: 'Need attention now', glyph: '\u25B2', color: '#b42318', note: 'Critical + High \u2014 reach today', count: attention.length, items: attention.map((s, i) => this.decorateStudent(s, i + 1, true)) };
+      return { key, label: 'Watch tier', glyph: '\u25CF', color: '#a16207', note: 'Mostly disengagement', count: watch.length, items: watch.map((s, i) => this.decorateStudent(s, i + 1, false)) };
+    };
+    let watchGroups;
+    if (st.wlFilter === 'attention') watchGroups = [groupOf('attention')];
+    else if (st.wlFilter === 'watch') watchGroups = [groupOf('watch')];
+    else watchGroups = [groupOf('attention'), groupOf('watch')];
+
+    const courseCards = this.courses.map(c => {
+      const cr = active.filter(s => s.course === c.id);
+      const att = cr.filter(s => s.tier === 'critical' || s.tier === 'high').length;
+      const wch = cr.filter(s => s.tier === 'watch').length;
+      const hlt = c.enrolled - att - wch;
+      const pct = (n) => (Math.max(0, n) / c.enrolled * 100).toFixed(1) + '%';
+      return {
+        title: c.title, code: c.code,
+        published: c.published + ' of ' + (c.published + c.drafts) + ' topics published',
+        healthy: hlt, watch: wch, attention: att,
+        heat: [{ color: '#17b26a', w: pct(hlt) }, { color: '#eab308', w: pct(wch) }, { color: '#d92d20', w: pct(att) }],
+        stats: [
+          { label: 'Enrolled', value: c.enrolled, color: '#0f1729', wrap: 'padding-right:10px;' },
+          { label: 'Active/wk', value: c.activeWeek, color: '#0f1729', wrap: 'padding:0 10px; border-left:1px solid #eef0f3;' },
+          { label: 'Pass rate', value: c.passRate + '%', color: '#067647', wrap: 'padding:0 10px; border-left:1px solid #eef0f3;' },
+          { label: 'Attention', value: att, color: att > 0 ? '#b42318' : '#067647', wrap: 'padding-left:10px; border-left:1px solid #eef0f3;' },
+        ],
+        onOpen: () => this.setState({ view: 'report' }),
+      };
+    });
+
+    const q = st.query.trim().toLowerCase();
+    const results = (q ? this.fullRoster().filter(s => s.name.toLowerCase().includes(q) || s.handle.toLowerCase().includes(q)) : this.fullRoster().slice(0, 6))
+      .map(s => { const t = this.tierMeta[s.tier]; return { name: s.name, handle: s.handle, courseShort: this.courseShort(s.course), initials: this.initials(s.name), tierLabel: t.label, glyph: t.glyph, color: t.color, tint: t.tint, onOpen: () => this.setState({ drawer: s.handle, paletteOpen: false }) }; });
+
+    const assistantSuggestions = [
+      'Who are my most urgent students right now?',
+      'Which topic needs lecture attention?',
+      'Summarize this week\u2019s pass rates',
+    ].map(text => ({ text, onClick: () => {} }));
+
+    const drawerStudent = st.drawer ? this.roster.find(s => s.handle === st.drawer) : null;
+
+    // ===== COURSE INSIGHTS (Mid Semester) =====
+    const midCourse = this.courses[0];
+    const midActive = active.filter(s => s.course === 'mid');
+    const midAtt = midActive.filter(s => s.tier === 'critical' || s.tier === 'high').sort((a, b) => b.score - a.score);
+    const midWatch = midActive.filter(s => s.tier === 'watch').sort((a, b) => b.score - a.score);
+    const healthyCount = midCourse.enrolled - midAtt.length - midWatch.length;
+    const nHigh = midActive.filter(s => s.tier === 'high').length;
+    const nCrit = midActive.filter(s => s.tier === 'critical').length;
+
+    const reportKpis = [
+      { label: 'Students', value: String(midCourse.enrolled), unit: 'enrolled', color: '#0f1729' },
+      { label: 'Session completion', value: '88', unit: '%', color: '#0f1729' },
+      { label: 'Need attention', value: String(midAtt.length), unit: 'Critical + High', color: '#b42318', hero: true },
+      { label: 'On watch', value: String(midWatch.length), unit: 'early warning', color: '#a16207' },
+      { label: 'Pass rate', value: '79.1', unit: '%', color: '#067647' },
+    ].map(k => ({ ...k, wrap: "background:#fff; border:1px solid " + (k.hero ? '#f4c9c2' : '#e8eaee') + "; border-radius:13px; padding:15px 17px; box-shadow:0 1px 2px rgba(16,24,40,.03);" }));
+
+    const findings = [
+      { kicker: 'Hardest milestone', color: '#b42318', bg: '#fef3f2', text: '\u201CInstall and set up Eclipse for Java programming\u201D passes just 51.5% across 33 attempts \u2014 the toughest checkpoint in the course.', link: 'View milestone difficulty' },
+      { kicker: 'Most at risk', color: '#c4320a', bg: '#fff6ed', text: 'Nia Singh sits at a 20% quiz average on a single attempt with no engagement in 7 days \u2014 the one Critical student.', link: 'Open Nia\u2019s profile' },
+      { kicker: 'Weak topic', color: '#a16207', bg: '#fefce8', text: 'Introduction to Computer Science passes 68.4% \u2014 the lowest of your seven published topics, and where most attempts land.', link: 'Topic \u00D7 student heatmap' },
+      { kicker: 'Strong topic', color: '#067647', bg: '#ecfdf3', text: 'Midterm Preparation passes 100% across 17 attempts. Whatever you did there, keep doing it.', link: 'Topic \u00D7 student heatmap' },
+    ];
+    findings[1].onClick = () => this.setState({ drawer: 'niasingh05' });
+    findings.forEach(f => { if (!f.onClick) f.onClick = () => this.showToast('Opening ' + f.link + '\u2026'); });
+
+    const chartMax = Math.max(healthyCount, midWatch.length, nHigh, nCrit, 1);
+    const bars = [
+      { key: 'healthy', label: 'Healthy', glyph: '\u25AC', count: healthyCount, color: '#067647', bg: '#17b26a' },
+      { key: 'watch', label: 'Watch', glyph: '\u25CF', count: midWatch.length, color: '#a16207', bg: 'repeating-linear-gradient(45deg,#eab308 0,#eab308 4px,#f5d661 4px,#f5d661 8px)' },
+      { key: 'high', label: 'High', glyph: '\u25C6', count: nHigh, color: '#c4320a', bg: 'repeating-linear-gradient(-45deg,#f97316 0,#f97316 5px,#fca55d 5px,#fca55d 10px)' },
+      { key: 'critical', label: 'Critical', glyph: '\u25B2', count: nCrit, color: '#b42318', bg: '#d92d20' },
+    ].map(b => {
+      const activeBar = (st.riskTier === 'attention' && (b.key === 'high' || b.key === 'critical')) || st.riskTier === b.key;
+      const map = { healthy: null, watch: 'watch', high: 'attention', critical: 'attention' };
+      return { ...b, h: Math.round(14 + (b.count / chartMax) * 140) + 'px', ring: activeBar ? '2px solid #0f1729' : '2px solid transparent', onClick: () => { const v = map[b.key]; this.setState(s => ({ riskTier: s.riskTier === v ? null : v })); } };
+    });
+
+    const tierAxis = [
+      { key: null, label: 'All', count: midAtt.length + midWatch.length },
+      { key: 'attention', label: 'Attention', count: midAtt.length },
+      { key: 'watch', label: 'Watch', count: midWatch.length },
+    ].map(t => ({ ...t, style: this.wlTabStyle(st.riskTier === t.key), onClick: () => this.setState({ riskTier: t.key }) }));
+    const reasonAxis = ['no-engagement', 'low-pass', 'low-quiz', 'stuck'].map(k => {
+      const act = st.riskReason === k;
+      return { key: k, label: this.reasonMeta[k], count: midActive.filter(s => s.tier !== 'healthy' && s.reasons.includes(k)).length,
+        style: act ? "background:#2563eb; color:#fff; border:1px solid #2563eb; border-radius:8px; padding:6px 12px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:12px; font-weight:600;" : "background:#fff; color:#6b7385; border:1px solid #e2e5ea; border-radius:8px; padding:6px 12px; cursor:pointer; font-family:'Plus Jakarta Sans'; font-size:12px; font-weight:600;",
+        onClick: () => this.setState(s => ({ riskReason: s.riskReason === k ? null : k })) };
+    });
+
+    let midList = [...midAtt, ...midWatch];
+    if (st.riskTier === 'attention') midList = midList.filter(s => s.tier === 'critical' || s.tier === 'high');
+    if (st.riskTier === 'watch') midList = midList.filter(s => s.tier === 'watch');
+    if (st.riskReason) midList = midList.filter(s => s.reasons.includes(st.riskReason));
+    const grpAtt = midList.filter(s => s.tier === 'critical' || s.tier === 'high');
+    const grpWatch = midList.filter(s => s.tier === 'watch');
+    const reportGroups = [];
+    if (grpAtt.length) reportGroups.push({ key: 'att', label: 'Need attention now', glyph: '\u25B2', color: '#b42318', note: 'Critical + High \u2014 reach before class', count: grpAtt.length, items: grpAtt.map((s, i) => this.decorateStudent(s, i + 1, true)) });
+    if (grpWatch.length) reportGroups.push({ key: 'watch', label: 'Watch tier', glyph: '\u25CF', color: '#a16207', note: 'Nearly all share one cause: not engaging yet', count: grpWatch.length, items: grpWatch.map((s, i) => this.decorateStudent(s, i + 1, false)) });
+    const reportEmpty = midList.length === 0;
+
+    const scoreBars = [
+      { band: '0\u201359', n: 6, c: '#d92d20' }, { band: '60\u201369', n: 3, c: '#f97316' }, { band: '70\u201379', n: 1, c: '#eab308' }, { band: '80\u201389', n: 4, c: '#4ea674' }, { band: '90\u2013100', n: 6, c: '#17b26a' },
+    ].map(d => ({ ...d, h: Math.round(6 + (d.n / 6) * 108) + 'px', bg: d.c }));
+    const funnel = [
+      { label: 'Not started', n: 0, pct: 0, color: '#cdd2db' }, { label: 'In progress', n: 3, pct: 15, color: '#f97316' }, { label: 'Partly done', n: 14, pct: 70, color: '#2563eb' }, { label: 'Fully complete', n: 3, pct: 15, color: '#17b26a' },
+    ].map(f => ({ ...f, w: f.pct + '%', countLabel: f.n + (f.pct ? ' (' + f.pct + '%)' : '') }));
+    const pubTopics = this.topics.filter(t => t.status === 'published').map(t => ({ name: t.name, kind: t.kind, unit: t.unit, pass: t.pass.toFixed(1) + '%', attempts: t.attempts + ' attempts', barW: t.pass + '%', passColor: t.pass >= 85 ? '#067647' : (t.pass >= 75 ? '#a16207' : '#c4320a') }));
+    const draftTopics = this.topics.filter(t => t.status === 'draft').map(t => ({ name: t.name, unit: t.unit }));
+
+    // ===== COURSE DETAIL (Desk) =====
+    const deskKpis = [
+      { label: 'Enrolled', value: '20', unit: 'students' },
+      { label: 'Sessions', value: '76', unit: 'total' },
+      { label: 'Session completion', value: '88%', unit: '' },
+      { label: 'Topics', value: '15', unit: '7 published' },
+    ];
+    const deskTopics = this.topics.map((t, i) => {
+      const id = 'top' + i;
+      const pub = t.status === 'published';
+      return {
+        id, name: t.name, unit: t.unit, kind: t.kind, status: t.status,
+        meta: t.modules + ' module \u00B7 ' + t.milestones + ' milestones',
+        badgeLabel: pub ? 'Published' : 'Draft',
+        badgeStyle: pub ? "color:#067647; background:#ecfdf3; border:1px solid #b8ecca;" : "color:#6b7385; background:#f2f4f7; border:1px solid #e2e5ea;",
+        expanded: !!st.expanded[id],
+        chev: st.expanded[id] ? '\u2013' : '+',
+        onToggle: () => this.setState(s => ({ expanded: { ...s.expanded, [id]: !s.expanded[id] } })),
+        menuOpen: st.openMenu === id,
+        onMenu: (e) => { e.stopPropagation(); this.setState(s => ({ openMenu: s.openMenu === id ? null : id })); },
+        primaryAction: pub ? 'Unpublish' : 'Approve',
+        primaryColor: pub ? '#a16207' : '#067647',
+        onPrimary: () => this.showToast((pub ? 'Unpublished ' : 'Approved ') + t.name),
+        onDelete: () => this.showToast('Delete guarded \u2014 confirm to remove \u201C' + t.name + '\u201D'),
+        onEdit: () => this.showToast('Opening editor for \u201C' + t.name + '\u201D\u2026'),
+        milestones: ['Define the key ideas of this topic', 'Work through a guided code example', 'Pass the milestone mastery check'],
+        quizLine: '5 questions \u00B7 Remember \u00B7 30 / 50 / 20 easy\u00B7med\u00B7hard',
+      };
+    });
+    const deskPublished = deskTopics.filter(t => t.status === 'published');
+    const deskDrafts = deskTopics.filter(t => t.status === 'draft');
+    const deskChat = [
+      { role: 'you', text: 'Structure the course around the primary syllabus \u2014 about 1\u20132 weeks per topic, following the classic CS1 progression.' },
+      { role: 'ai', text: 'Created 15 topics from your syllabus, one per unit \u2014 Introduction to Computer Science (Unit 1) through Final Week Review (Unit 15). Seven are published; eight remain drafts for your review.' },
+    ].map(m => ({ ...m, label: m.role === 'you' ? 'You' : 'Assistant', labelColor: m.role === 'you' ? '#2563eb' : '#6b7385',
+      wrap: m.role === 'you' ? "align-self:flex-end; background:#eef4ff; border:1px solid #d3e0ff; border-radius:12px 12px 4px 12px;" : "align-self:flex-start; background:#f6f7f9; border:1px solid #e8eaee; border-radius:12px 12px 12px 4px;" }));
+
+    // ===== STUDENTS =====
+    const stuAttn = active.filter(s => s.tier === 'critical' || s.tier === 'high').length;
+    const stuWatchN = active.filter(s => s.tier === 'watch').length;
+    const stuHealthyN = active.filter(s => s.tier === 'healthy').length;
+    const stuTabs = [
+      { key: null, label: 'All', count: active.length },
+      { key: 'attention', label: 'Attention', count: stuAttn },
+      { key: 'watch', label: 'Watch', count: stuWatchN },
+      { key: 'healthy', label: 'Healthy', count: stuHealthyN },
+    ].map(t => ({ ...t, style: this.wlTabStyle(st.stuTier === t.key), onClick: () => this.setState({ stuTier: t.key }) }));
+    let stuList = active.slice();
+    if (st.stuTier === 'attention') stuList = stuList.filter(s => s.tier === 'critical' || s.tier === 'high');
+    else if (st.stuTier) stuList = stuList.filter(s => s.tier === st.stuTier);
+    const sq = st.stuQuery.trim().toLowerCase();
+    if (sq) stuList = stuList.filter(s => s.name.toLowerCase().includes(sq) || s.handle.toLowerCase().includes(sq));
+    stuList = stuList.sort((a, b) => this.tierMeta[a.tier].rank - this.tierMeta[b.tier].rank || b.score - a.score);
+    const studentsList = stuList.map(s => {
+      const t = this.tierMeta[s.tier];
+      const b = this.basics(s);
+      const id = 'stu_' + s.handle;
+      const expanded = !!st.expanded[id];
+      const tpassColor = b.tpass >= 85 ? '#067647' : b.tpass >= 60 ? '#a16207' : '#b42318';
+      const tpassBg = b.tpass >= 85 ? '#ecfdf3' : b.tpass >= 60 ? '#fefce8' : '#fef3f2';
+      const tpassBorder = b.tpass >= 85 ? '#b8ecca' : b.tpass >= 60 ? '#fde68a' : '#fecdca';
+      return {
+        name: s.name, handle: s.handle, courseShort: this.courseShort(s.course), initials: this.initials(s.name),
+        isRisk: s.tier !== 'healthy', tierLabel: t.label, glyph: t.glyph, color: t.color, tint: t.tint, border: t.border,
+        riskBadgeText: s.tier !== 'healthy' ? (t.glyph + ' ' + t.label) : 'On track',
+        riskBadgeStyle: s.tier !== 'healthy'
+          ? "font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:" + t.color + "; background:" + t.tint + "; border:1px solid " + t.border + "; border-radius:6px; padding:4px 9px; white-space:nowrap;"
+          : "font-size:10px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:#8891a0; background:#f2f4f7; border:1px solid #e8eaee; border-radius:6px; padding:4px 9px; white-space:nowrap;",
+        joined: 'Joined ' + s.joined + ' \u00B7 self-rated ' + s.self,
+        topicsLabel: b.topics + '/15 topics', pts: b.pts + ' pts',
+        tpassLabel: b.tpass + '% topic pass', tpassColor, tpassBg, tpassBorder,
+        expanded, chev: expanded ? '\u2013' : '+',
+        onToggleExpand: () => this.setState(ss => ({ expanded: { ...ss.expanded, [id]: !ss.expanded[id] } })),
+        topicsProgress: expanded ? this.buildDrawer(s).topics : [],
+        onOpen: () => this.setState({ drawer: s.handle }),
+      };
+    });
+
+    // ===== COURSES LIST + FULL MONITOR =====
+    const courseList = this.courses.map(c => {
+      const cr = active.filter(s => s.course === c.id);
+      const att = cr.filter(s => s.tier === 'critical' || s.tier === 'high').length;
+      const wch = cr.filter(s => s.tier === 'watch').length;
+      return { title: c.title, code: c.code, published: c.published + ' of ' + (c.published + c.drafts) + ' topics published', enrolled: c.enrolled, attention: att, watch: wch, onOpen: () => this.setState({ view: 'desk' }) };
+    });
+    const monStudent = st.monitorStudent ? this.fullRoster().find(s => s.handle === st.monitorStudent) : null;
+    const monitor = monStudent ? this.buildMonitor(monStudent) : {};
+
+    return {
+      isFront: st.view === 'front',
+      isReport: st.view === 'report',
+      isDesk: st.view === 'desk',
+      isStudents: st.view === 'students',
+      isCourses: st.view === 'courses',
+      isMonitor: st.view === 'monitor',
+      courseList,
+      newCourse: st.newCourse,
+      onNewCourse: (e) => this.setState({ newCourse: e.target.value }),
+      onCreateCourse: () => this.showToast('New course created \u2014 add a syllabus to generate topics'),
+      monitor,
+      onOpenMonitor: () => this.setState({ view: 'monitor', monitorStudent: st.drawer, drawer: null }),
+      onBackFromMonitor: () => this.setState({ view: 'students' }),
+      monNoteCourseStyle: this.wlTabStyle(st.monitorNoteTab === 'course'),
+      monNoteTopicStyle: this.wlTabStyle(st.monitorNoteTab === 'topic'),
+      onMonNoteCourse: () => this.setState({ monitorNoteTab: 'course' }),
+      onMonNoteTopic: () => this.setState({ monitorNoteTab: 'topic' }),
+      monNoteLabel: st.monitorNoteTab === 'course' ? 'Write a course-wide note about this student\u2026' : 'Write a note about this topic session\u2026',
+      onSaveMonitorNote: () => this.showToast('Note saved for this student'),
+      studentsSummary: stuAttn + ' need attention \u00B7 ' + stuWatchN + ' watch \u00B7 ' + stuHealthyN + ' healthy',
+      studentsCount: active.length,
+      stuTabs, studentsList,
+      stuQuery: st.stuQuery,
+      onStuQuery: (e) => this.setState({ stuQuery: e.target.value }),
+      studentsEmpty: studentsList.length === 0,
+      deskTitle: 'CPS 1231 \u2014 Mid Semester',
+      deskCode: 'BDAC1D',
+      deskStatusLine: 'Active \u00B7 7 of 15 topics published',
+      onCopyCode: () => this.showToast('Access code copied to clipboard'),
+      onViewInsightsBtn: () => this.setState({ view: 'report' }),
+      deskMenuOpen: st.openMenu === 'course',
+      toggleDeskMenu: (e) => { e.stopPropagation(); this.setState(s => ({ openMenu: s.openMenu === 'course' ? null : 'course' })); },
+      onDeleteCourse: () => this.showToast('Delete course \u2014 opens a confirmation dialog'),
+      onDuplicateCourse: () => this.showToast('Course duplicated as a draft'),
+      onBackToDash: () => this.setState({ view: 'front' }),
+      deskKpis,
+      hotSignalText: 'Students are struggling with the Introduction to Computer Science milestone \u2014 51.5% pass across 33 attempts so far.',
+      onOpenInsights: () => this.setState({ view: 'report' }),
+      instructions: st.instructions,
+      onInstructions: (e) => this.setState({ instructions: e.target.value }),
+      onSaveInstructions: () => this.showToast('Teaching instructions saved'),
+      deskPublished, deskDrafts, deskChat,
+      onModify: () => this.showToast('Regenerating draft topics from your instructions\u2026'),
+      onAddTopic: () => this.showToast('New topic added as a draft'),
+      reportTitle: 'CPS 1231 \u2014 Mid Semester',
+      reportDeck: '20 students \u00B7 268 attempts \u00B7 88% session completion \u00B7 7 of 15 topics published',
+      reportSyntheticChip: st.synthetic ? 'Includes synthetic cohort' : 'Real students only',
+      reportKpis, findings, bars, tierAxis, reasonAxis, reportGroups, reportEmpty,
+      onEditCourse: () => this.setState({ view: 'desk' }),
+      onOpenStudentsView: () => this.setState({ view: 'students' }),
+      healthOpen: st.healthOpen,
+      toggleHealth: () => this.setState(s => ({ healthOpen: !s.healthOpen })),
+      healthPreview: 'Score distribution \u00B7 Completion funnel \u00B7 Course structure',
+      healthChevron: st.healthOpen ? '\u2212' : '+',
+      scoreBars, funnel, pubTopics, draftTopics,
+      draftsOpen: st.draftsOpen,
+      toggleDrafts: () => this.setState(s => ({ draftsOpen: !s.draftsOpen })),
+      draftsToggleLabel: st.draftsOpen ? 'Hide drafts' : ('Show ' + draftTopics.length + ' drafts with no data yet'),
+
+      navFront: this.navStyle(st.view === 'front'),
+      navCourses: this.navStyle(st.view === 'desk' || st.view === 'courses' || st.view === 'monitor'),
+      navStudents: this.navStyle(st.view === 'students'),
+      navInsights: this.navStyle(st.view === 'report'),
+      onNav: (e) => this.setState({ view: e.currentTarget.dataset.view }),
+      onStudentView: () => this.showToast('Student view is a separate mode \u2014 switching\u2026'),
+      onOpenPalette: () => this.setState({ paletteOpen: true, query: '' }),
+
+      subtitleLine: 'Two courses \u00B7 40 students \u00B7 updated 7:00 AM',
+      onToggleSynthetic: (e) => { if (e && e.stopPropagation) e.stopPropagation(); this.setState(s => ({ synthetic: !s.synthetic })); },
+      switchTrack: "width:40px; height:22px; border-radius:999px; background:" + (st.synthetic ? '#2563eb' : '#cdd2db') + "; display:inline-flex; align-items:center; padding:2px; transition:background .18s; cursor:pointer;",
+      switchKnob: "width:18px; height:18px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); transform:translateX(" + (st.synthetic ? '18px' : '0') + "); transition:transform .18s;",
+
+      briefRest, briefS2, briefS3,
+      openAssistant: () => this.setState({ assistantOpen: true }),
+      closeAssistant: () => this.setState({ assistantOpen: false }),
+      assistantOpen: st.assistantOpen,
+      assistantAnswer: '3 students need attention now: Nia Singh (Critical), Isabela Zhao and Mateo Alvarez (High). Nia is the most urgent \u2014 20% quiz average, one attempt, no engagement in 7 days. The Watch tier (' + watch.length + ') is almost entirely disengagement rather than difficulty.',
+      assistantSuggestions,
+
+      needsAttentionCount: attention.length,
+      watchCountTotal: watch.length,
+      coursesCount: 2,
+      onFocusAttention: () => this.setState({ view: 'front', wlFilter: 'attention' }),
+      attentionMini: attention.slice(0, 3).map(s => ({ name: s.name, courseShort: this.courseShort(s.course), glyph: this.tierMeta[s.tier].glyph, color: this.tierMeta[s.tier].color, onOpen: () => this.setState({ drawer: s.handle }) })),
+      figures, wlTabs, watchGroups, courseCards,
+
+      paletteOpen: st.paletteOpen,
+      closePalette: () => this.setState({ paletteOpen: false }),
+      stop: (e) => e.stopPropagation(),
+      onQuery: (e) => this.setState({ query: e.target.value }),
+      query: st.query,
+      paletteResults: results,
+      noResults: q && results.length === 0,
+
+      drawerOpen: !!drawerStudent,
+      drawer: drawerStudent ? this.buildDrawer(drawerStudent) : {},
+      closeDrawer: () => this.setState({ drawer: null }),
+      onSaveNote: () => this.showToast('Note saved for this student.'),
+
+      toast: st.toast,
+      toastShow: !!st.toast,
+    };
+  }
+}
+</script>
+
+
+</body></html>
