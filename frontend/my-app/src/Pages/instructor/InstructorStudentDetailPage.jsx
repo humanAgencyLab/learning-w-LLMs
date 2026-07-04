@@ -1,8 +1,25 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useLocation } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
 import MessageContent from '../../components/chat/MessageContent';
 import RiskTrendCard from '../../components/instructor/RiskTrendCard';
+import { flagLabel } from '../../components/instructor/riskLevel';
+import useToastStore from '../../state/toastStore';
+
+// PR-7 tier visuals (avatar tint + kicker/score color) and factor-chip styles —
+// same palette as the Students table and the shared StudentRow.
+const TIER_VISUAL = {
+  critical: { label: 'Critical', glyph: '▲', tint: 'bg-risk-criticalTint', text: 'text-risk-critical' },
+  high: { label: 'High', glyph: '●', tint: 'bg-risk-highTint', text: 'text-risk-high' },
+  watch: { label: 'Watch', glyph: '●', tint: 'bg-risk-watchTint', text: 'text-risk-watch' },
+  healthy: { label: 'Healthy', glyph: '●', tint: 'bg-approve-tint', text: 'text-approve' },
+};
+const FACTOR_STYLES = {
+  no_engagement: 'bg-risk-criticalTint text-risk-critical',
+  low_pass_rate: 'bg-risk-highTint text-risk-high',
+  low_quiz_score: 'bg-amber-50 text-amber-700',
+  stuck_topic: 'bg-violet-50 text-violet-700',
+};
 
 function formatDateTime(ts) {
   if (!ts) return '';
@@ -409,6 +426,7 @@ function NotesPanel({ courseId, studentId, notesScope, scopeLabel, selectedTopic
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const showToast = useToastStore((s) => s.showToast);
 
   // Reload notes whenever scope changes
   useEffect(() => {
@@ -441,6 +459,7 @@ function NotesPanel({ courseId, studentId, notesScope, scopeLabel, selectedTopic
         note: notes.note,
       });
       setNotes((prev) => ({ ...prev, updatedAt: res.data?.updatedAt || prev.updatedAt }));
+      showToast('Note saved');
     } catch (e) {
       setError(e.message);
     } finally {
@@ -451,51 +470,47 @@ function NotesPanel({ courseId, studentId, notesScope, scopeLabel, selectedTopic
   const isCourseWide = notesScope === null;
 
   return (
-    <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100">
-        <p className="text-sm font-semibold text-gray-900">Instructor notes</p>
-        {/* Scope switcher */}
-        <div className="mt-2 flex gap-1">
-          <button
-            type="button"
-            onClick={() => onScopeChange(null)}
-            className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors ${
-              isCourseWide
-                ? 'border-blue-300 bg-blue-50 text-blue-700'
-                : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-            }`}
-          >
-            Course note
-          </button>
-          <button
-            type="button"
-            onClick={() => { if (selectedTopicId) onScopeChange(selectedTopicId); }}
-            disabled={!selectedTopicId}
-            className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors ${
-              !isCourseWide
-                ? 'border-blue-300 bg-blue-50 text-blue-700'
-                : 'border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed'
-            }`}
-          >
-            {scopeLabel ? `Topic note` : 'Topic note'}
-          </button>
-        </div>
-        {scopeLabel && (
-          <p className="mt-1 text-[11px] text-gray-400 truncate" title={scopeLabel}>
-            {isCourseWide ? `Topic: ${scopeLabel}` : scopeLabel}
-          </p>
-        )}
+    <div className="bg-surface border border-hairline rounded-2xl shadow-card p-5">
+      <p className="text-sm font-bold text-ink-900 mb-3">Instructor notes</p>
+      {/* Scope switcher — topic notes are REAL (course + topic scoped endpoint);
+          the Topic tab is disabled only until a topic session is selected. */}
+      <div className="inline-flex bg-surface-chip rounded-lg p-1 gap-0.5 mb-3">
+        <button
+          type="button"
+          onClick={() => onScopeChange(null)}
+          className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+            isCourseWide ? 'bg-surface text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-900'
+          }`}
+        >
+          Course note
+        </button>
+        <button
+          type="button"
+          onClick={() => { if (selectedTopicId) onScopeChange(selectedTopicId); }}
+          disabled={!selectedTopicId}
+          title={selectedTopicId ? undefined : 'Open a topic session first to write a topic-scoped note'}
+          className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+            !isCourseWide ? 'bg-surface text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-900 disabled:opacity-50 disabled:cursor-not-allowed'
+          }`}
+        >
+          Topic note
+        </button>
       </div>
+      {scopeLabel && (
+        <p className="text-[11px] text-ink-300 truncate -mt-1 mb-2" title={scopeLabel}>
+          {isCourseWide ? `Topic: ${scopeLabel}` : scopeLabel}
+        </p>
+      )}
 
       {error && (
-        <div className="px-4 py-3 text-sm text-red-700 bg-red-50 border-b border-red-100">
+        <div className="mb-3 px-3 py-2 text-sm text-risk-critical bg-risk-criticalTint rounded-lg">
           {error}
         </div>
       )}
 
-      <div className={`p-4 space-y-3 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+      <div className={`space-y-3 transition-opacity ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Tags (comma separated)</label>
+          <label className="block text-xs font-medium text-ink-500 mb-1">Tags (comma separated)</label>
           <input
             value={notes.tags.join(', ')}
             onChange={(e) => {
@@ -506,31 +521,31 @@ function NotesPanel({ courseId, studentId, notesScope, scopeLabel, selectedTopic
                 .slice(0, 20);
               setNotes((prev) => ({ ...prev, tags: next }));
             }}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
+            className="w-full border border-hairline-strong rounded-lg px-3 py-2 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand"
             placeholder="at-risk, needs help, strong"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Note</label>
+          <label className="block text-xs font-medium text-ink-500 mb-1">Note</label>
           <textarea
             value={notes.note}
             onChange={(e) => setNotes((prev) => ({ ...prev, note: e.target.value }))}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-[140px] focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
+            className="w-full border border-hairline-strong rounded-lg px-3 py-2.5 text-sm text-ink-900 leading-relaxed min-h-24 resize-y focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand"
             placeholder={isCourseWide ? 'Write a course-wide note about this student…' : 'Write a note about this topic session…'}
             maxLength={4000}
           />
         </div>
         <div className="flex items-center justify-between">
-          <p className="text-[11px] text-gray-400">
+          <p className="text-[11px] text-ink-300">
             {notes.updatedAt ? `Saved ${formatDateTime(notes.updatedAt)}` : 'Not saved yet'}
           </p>
           <button
             type="button"
             onClick={save}
             disabled={saving || loading}
-            className="text-sm px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-sm px-4 py-2 rounded-lg bg-brand hover:bg-brand-pressed text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? 'Saving…' : 'Save note'}
           </button>
         </div>
       </div>
@@ -613,10 +628,14 @@ export default function InstructorStudentDetailPage() {
   }, [courseId, studentId]);
 
   // When a topic session is selected, switch notes scope to that topic
+  const sessionViewerRef = useRef(null);
   const handleViewSession = (topicId, sessionId) => {
     setSelectedTopicId(topicId);
     setSelectedSessionId(sessionId);
     setNotesScope(topicId);
+    // The replay now renders full-width BELOW the two-column body — bring it
+    // into view so the click has visible feedback on long topic lists.
+    window.setTimeout(() => sessionViewerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
   };
 
   if (loading) {
@@ -642,26 +661,33 @@ export default function InstructorStudentDetailPage() {
     );
   }
 
+  const tier = TIER_VISUAL[detail?.risk?.riskLevel] || TIER_VISUAL.healthy;
+  const riskV2 = detail?.risk || null;
+
   return (
     <div className="p-8 max-w-6xl mx-auto">
-      <Link to={`/instructor/courses/${courseId}/students`} className="text-sm text-blue-600 hover:text-blue-800 inline-flex items-center gap-1">
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-        {courseName || 'Back to students'}
+      <Link
+        to={`/instructor/courses/${courseId}/students`}
+        title={courseName ? `Back to ${courseName} students` : undefined}
+        className="flex items-center gap-1.5 text-brand text-sm font-semibold hover:underline w-fit"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="m14 6-6 6 6 6" /></svg>
+        Back to students
       </Link>
 
       {/* B2: context banner when arriving from the Insights at-risk panel.
           Dismissible for the session; never shown on direct navigation. */}
       {incomingAtRiskFlags && incomingAtRiskFlags.length > 0 && !atRiskBannerDismissed && (
-        <div className="mt-4 flex items-start justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+        <div className="mt-4 flex items-start justify-between gap-3 rounded-lg border border-risk-criticalBorder bg-risk-criticalTint px-4 py-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-rose-800">You opened this student from the at-risk panel.</p>
+            <p className="text-sm font-medium text-risk-critical">You opened this student from the at-risk panel.</p>
             {detail?.risk && (
-              <p className="text-sm text-rose-800 mt-0.5">
+              <p className="text-sm text-risk-critical mt-0.5">
                 Risk level: <span className="font-semibold capitalize">{detail.risk.riskLevel}</span> ({detail.risk.riskScore}/100)
               </p>
             )}
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-rose-700">Flags:</span>
+              <span className="text-xs text-risk-critical">Flags:</span>
               {incomingAtRiskFlags.map((f) => (
                 <Pill key={f} tone="red">{String(f).replace(/_/g, ' ').toUpperCase()}</Pill>
               ))}
@@ -670,7 +696,7 @@ export default function InstructorStudentDetailPage() {
           <button
             type="button"
             onClick={() => setAtRiskBannerDismissed(true)}
-            className="flex-shrink-0 px-1 text-lg leading-none text-rose-400 hover:text-rose-600"
+            className="flex-shrink-0 px-1 text-lg leading-none text-risk-criticalAccent hover:text-risk-critical"
             title="Dismiss"
             aria-label="Dismiss at-risk banner"
           >
@@ -679,109 +705,123 @@ export default function InstructorStudentDetailPage() {
         </div>
       )}
 
-      <div className="mt-4 flex items-start justify-between gap-6">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900 truncate">{student.name}</h1>
-          <p className="text-sm text-gray-500 mt-1">
+      {/* Header — avatar · name/meta/chips · tier + score */}
+      <div className="mt-4 flex items-start gap-4 animate-fadeIn">
+        <span className={`w-[52px] h-[52px] rounded-full ${tier.tint} ${tier.text} flex items-center justify-center font-bold text-lg flex-shrink-0`}>
+          {(student.name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join('')}
+        </span>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-[25px] font-bold text-ink-900 tracking-tight leading-tight">{student.name}</h1>
+          <p className="text-xs text-ink-300 mt-1">
             Joined {new Date(student.joinedAt).toLocaleDateString()}
             {student.lastActiveAt && <> · Last active {formatDateTime(student.lastActiveAt)}</>}
+            {' · '}{detail.summary.completedTopics} of {detail.summary.totalTopics} topics · {detail.summary.totalPoints} pts
+            {detail.summary.topicPassRate != null && <> · {detail.summary.topicPassRate}% topic pass</>}
           </p>
-          {riskFlags.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {riskFlags.map((rf, idx) => (
-                <Pill key={idx} tone="red">
-                  {rf.type === 'inactive' ? `Inactive ${rf.daysInactive}d` : rf.type}
-                </Pill>
-              ))}
-            </div>
-          )}
-          {/* Persistence readout (Step 3) — positive signal, Monitor only.
-              OUT OF SCOPE: engagement-quality export / bonus grading is post-pilot. */}
-          {detail?.risk?.persistence_score != null && (
-            <p className="text-xs text-emerald-700 mt-2" title="Of the topics this student had to retry, the share they eventually passed">
-              Persistence: {detail.risk.persistence_score}/100 — {detail.risk.persistence_score >= 60 ? 'eventually passes most retries' : 'rarely recovers after a failed attempt'}
-            </p>
-          )}
-          {/* Class context override (Step 7) — instructor's classroom knowledge */}
+          <div className="flex gap-1.5 mt-2.5 flex-wrap items-center">
+            {(riskV2?.flags || []).map((f) => (
+              <span key={f} className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${FACTOR_STYLES[f] || 'bg-surface-chip text-ink-500'}`}>
+                {flagLabel(f)}
+              </span>
+            ))}
+            {riskFlags.map((rf, idx) => (
+              <span key={`legacy-${idx}`} className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-surface-chip text-ink-500">
+                {rf.type === 'inactive' ? `Inactive ${rf.daysInactive}d` : rf.type}
+              </span>
+            ))}
+            {riskV2?.persistence_score != null && (
+              <span
+                className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-approve-tint text-approve"
+                title="Of the topics this student had to retry, the share they eventually passed"
+              >
+                Persistence {riskV2.persistence_score}/100
+              </span>
+            )}
+          </div>
+          {/* Class context override (Risk v2 Step 7) — preserved verbatim */}
           <div className="mt-3 flex items-center gap-2 flex-wrap">
-            <label className="text-xs text-gray-500">Class context:</label>
+            <label className="text-xs text-ink-400">Class context:</label>
             <select
               value={classContext || ''}
               onChange={(e) => saveClassContext(e.target.value || null)}
               disabled={savingContext}
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white disabled:opacity-50"
+              className="text-xs border border-hairline rounded-lg px-2 py-1 bg-surface disabled:opacity-50"
               title="Encode what you know from class that the platform can't see"
             >
               <option value="">Not set</option>
               <option value="doing_well_in_class">Doing well in class — override at-risk flag</option>
               <option value="confirmed_at_risk">Confirmed at-risk in class — validates platform signal</option>
             </select>
-            {contextToast && <span className="text-xs text-green-600">{contextToast}</span>}
+            {contextToast && <span className="text-xs text-approve">{contextToast}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <Pill tone="blue">{detail.summary.completedTopics}/{detail.summary.totalTopics} topics</Pill>
-          <Pill tone="gray">{detail.summary.totalPoints} pts</Pill>
-          {detail.summary.topicPassRate != null && (
-            <Pill
-              tone={detail.summary.topicPassRate < 60 ? 'red' : 'green'}
-              title="Percentage of this course's topics where the student passed the final quiz"
-            >
-              {detail.summary.topicPassRate}% topic pass rate
-            </Pill>
-          )}
-        </div>
+        {riskV2 && (
+          <div className="text-right flex-shrink-0">
+            <p className={`font-mono uppercase text-[10px] tracking-[.06em] font-bold ${tier.text}`}>
+              {tier.glyph} {tier.label}
+            </p>
+            <p className={`text-[26px] font-bold tabular-nums leading-tight ${tier.text}`}>
+              {riskV2.riskScore}<span className="text-xs text-ink-150 font-semibold">/100</span>
+            </p>
+          </div>
+        )}
       </div>
 
       {error && (
-        <div className="mt-4 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+        <div className="mt-4 px-4 py-2.5 bg-risk-criticalTint border border-risk-criticalBorder rounded-lg text-sm text-risk-critical">
           {error}
         </div>
       )}
 
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Topics + sessions */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100">
-              <p className="text-sm font-semibold text-gray-900">Topics</p>
-              <p className="text-xs text-gray-500">Pick a topic to view the latest session messages.</p>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {topics.length === 0 ? (
-                <div className="px-4 py-8 text-sm text-gray-500 text-center">No sessions yet.</div>
-              ) : (
-                topics.map((t) => (
-                  <div key={t.courseTopicId} className="px-4 py-3 flex items-center gap-4">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 truncate">{t.topicTitle}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {t.phase} · {t.progressPct}% · Updated {formatDateTime(t.updatedAt)}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        Modules {t.passedModules}/{t.moduleCount} · Milestones {t.completedMilestones}/{t.totalMilestones}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleViewSession(t.courseTopicId, t.sessionId)}
-                      className={`text-xs px-3 py-1.5 rounded-lg border ${
-                        selectedSessionId === t.sessionId ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      View session
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
+      {/* Two-column body: topics left, sticky notes/trend rail right. The
+          session replay (SessionViewer) renders full-width BELOW the grid. */}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-5 items-start">
+        <div className="bg-surface border border-hairline rounded-2xl shadow-card overflow-hidden animate-riseIn">
+          <div className="px-5 py-4 border-b border-hairline-soft">
+            <p className="text-base font-bold text-ink-900">Topics</p>
+            <p className="text-xs text-ink-300 mt-0.5">Open the latest session for any topic</p>
           </div>
-
-          <SessionViewer courseId={courseId} sessionId={selectedSessionId} />
+          <div className="p-1.5 px-3 pb-3">
+            {topics.length === 0 ? (
+              <div className="px-4 py-8 text-sm text-ink-400 text-center">No sessions yet.</div>
+            ) : (
+              topics.map((t) => (
+                <div key={t.courseTopicId} className="flex items-center gap-3.5 px-2 py-3 border-t border-hairline-soft first:border-t-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-ink-900 truncate">{t.topicTitle}</p>
+                    <p className="text-[11px] text-ink-200 mt-0.5" title={`Modules ${t.passedModules}/${t.moduleCount} · Milestones ${t.completedMilestones}/${t.totalMilestones}`}>
+                      Updated {formatDateTime(t.updatedAt)} · Modules {t.passedModules}/{t.moduleCount} · Milestones {t.completedMilestones}/{t.totalMilestones}
+                    </p>
+                  </div>
+                  <span className="w-24 h-1.5 bg-hairline-softer rounded-full overflow-hidden flex-shrink-0">
+                    <span
+                      className={`block h-full rounded-full ${t.completed ? 'bg-approve-strong' : (t.progressPct || 0) > 0 ? 'bg-brand' : 'bg-hairline-strong'}`}
+                      style={{ width: `${Math.min(t.progressPct || 0, 100)}%` }}
+                    />
+                  </span>
+                  <span className={`w-[74px] text-right text-[11px] font-semibold ${t.completed ? 'text-approve' : (t.progressPct || 0) > 0 ? 'text-brand' : 'text-ink-300'}`}>
+                    {t.completed ? 'Complete' : `${t.phase} · ${t.progressPct}%`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleViewSession(t.courseTopicId, t.sessionId)}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
+                      selectedSessionId === t.sessionId
+                        ? 'border-brand bg-brand-tint text-brand'
+                        : 'bg-surface border-hairline-strong text-ink-600 hover:border-brand hover:text-brand'
+                    }`}
+                  >
+                    View session
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
-        {/* Notes panel + risk trend */}
-        <div className="space-y-4">
+        {/* Sticky rail: notes + risk trend (real shipped trend card kept —
+            live /risk-trend endpoint exists, so no "coming soon" placeholder). */}
+        <aside className="lg:sticky lg:top-6 space-y-4 animate-riseIn">
           <NotesPanel
             courseId={courseId}
             studentId={studentId}
@@ -791,7 +831,12 @@ export default function InstructorStudentDetailPage() {
             onScopeChange={setNotesScope}
           />
           <RiskTrendCard courseId={courseId} studentId={studentId} />
-        </div>
+        </aside>
+      </div>
+
+      {/* Session replay (chat + quiz attempts) — full width below the body */}
+      <div className="mt-5 scroll-mt-6" ref={sessionViewerRef}>
+        <SessionViewer courseId={courseId} sessionId={selectedSessionId} />
       </div>
     </div>
   );
