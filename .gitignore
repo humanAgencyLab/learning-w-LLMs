@@ -172,3 +172,7 @@ backend/quiz-attempts-export-*.csv
 
 # Local docs editor artifacts
 docs/.Rhistory
+
+# MS Office lock/temp files
+~$*
+**/~$*
