@@ -419,7 +419,14 @@ async function provision(db, { dryRun }) {
     fs.writeFileSync(file, JSON.stringify(manifest, null, 2));
     console.log(`\nManifest written: ${file}`);
     console.log('KEEP IT SAFE — it contains the alias credentials and is the rollback key.');
-    console.log(`Probe-course env value: STUDY_PROBE_COURSES=${manifest.accounts.map((a) => a.courseId).join(',')}`);
+    const courseList = manifest.accounts.map((a) => a.courseId).join(',');
+    const userList = manifest.accounts.map((a) => a.userId).join(',');
+    console.log('Probe-hook env values (Section 6 items 2-3):');
+    console.log('  STUDY_PROBE=true');
+    console.log(`  STUDY_PROBE_COURSES=${courseList}`);
+    console.log(`  STUDY_PROBE_USERS=${userList}`);
+    console.log('Cloud Run (the ^|^ prefix switches the delimiter — plain --update-env-vars would split these lists on their commas):');
+    console.log(`  gcloud run services update studyassist-iitl-backend --region us-central1 --project llm-ed-studyassist --update-env-vars "^|^STUDY_PROBE=true|STUDY_PROBE_COURSES=${courseList}|STUDY_PROBE_USERS=${userList}"`);
   } else {
     console.log('\nDRY RUN complete — nothing written.');
   }
@@ -449,6 +456,9 @@ async function rollback(db, { dryRun }) {
     await db.collection('coursetopics').deleteMany({ courseId: cid });
     await db.collection('instructorstudentnotes').deleteMany({ courseId: cid });
     await db.collection('instructorchatsessions').deleteMany({ courseId: cid });
+    // Cross-course assistant chats are scoped to the account (courseId: null)
+    // and would otherwise orphan when the account is deleted.
+    await db.collection('instructorchatsessions').deleteMany({ instructorId: uid });
     await db.collection('courses').deleteOne({ _id: cid });
     await db.collection('users').deleteOne({ _id: uid, role: 'instructor' }); // never a student
   }

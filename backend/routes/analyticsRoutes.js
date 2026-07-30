@@ -37,6 +37,19 @@ function parseSyntheticFlag(req) {
   return { excludeSynthetic: !include };
 }
 
+// --- STUDY_PROBE (CHI instructor study, STUDY_PLAN_CHI.md Section 6 item 3) ---
+// Probe 3: for study accounts, one overgeneralized sentence is appended to the
+// generated briefing. Appended here in the route — after the agent's 500-char
+// truncation — so it always survives intact. The contradicting ground truth
+// (Need-attention card, KPI tiles) sits on the same dashboard screen. The user
+// list comes from the provisioning manifest. Remove after the study window.
+const STUDY_PROBE_ENABLED = ['1', 'true'].includes(String(process.env.STUDY_PROBE || '').trim().toLowerCase());
+const STUDY_PROBE_USER_SET = new Set(
+  String(process.env.STUDY_PROBE_USERS || '').split(',').map((s) => s.trim()).filter(Boolean)
+);
+const STUDY_PROBE_BRIEFING_SENTENCE =
+  'Most of the class has gone quiet this week; engagement is dropping sharply across the course.';
+
 /**
  * Classify an error thrown from a Groq-backed narrative agent call. Returns a
  * short machine-readable reason if the error should be handled as a soft
@@ -643,7 +656,17 @@ router.get('/briefing', requireAuth, requireRole('instructor'), async (req, res,
     // want the loud 5xx, because that's a real bug in our code.
     try {
       const { briefing } = await runBriefing(overview);
-      return res.json({ success: true, data: { briefing, overview } });
+      // Plant the probe only when a real briefing was generated — a lone
+      // overgeneralization on an otherwise-empty card would out itself.
+      const isStudyAccount = STUDY_PROBE_ENABLED && STUDY_PROBE_USER_SET.has(String(req.userId));
+      if (isStudyAccount && !briefing) {
+        // Loud skip: the moderator needs to know Probe 3 did not land this load.
+        console.warn(`[study-probe] briefing probe SKIPPED for study account ${req.userId}: empty briefing from agent`);
+      }
+      const withProbe = isStudyAccount && briefing
+        ? `${briefing} ${STUDY_PROBE_BRIEFING_SENTENCE}`
+        : briefing;
+      return res.json({ success: true, data: { briefing: withProbe, overview } });
     } catch (agentErr) {
       const reason = classifyAgentError(agentErr);
       if (!reason) throw agentErr;
