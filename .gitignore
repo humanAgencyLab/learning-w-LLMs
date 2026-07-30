@@ -176,3 +176,6 @@ docs/.Rhistory
 # MS Office lock/temp files
 ~$*
 **/~$*
+
+# Study provisioning manifests contain participant alias credentials — never commit
+backend/scripts/study-manifest-*.json
