@@ -25,6 +25,26 @@ const { runTopicDraftModifyAgent } = require('../agents/topicDraftModifyAgent');
 const { validateTopicPlanPayload, validateSingleTopicPayload, normalizeTopicTitleKey } = require('../agents/validators/topicPlanValidator');
 const logger = require('../utils/logger');
 
+/**
+ * Build the one-shot retry nudge appended to the model prompt when a plan
+ * fails validation (pilot P4: generation is nondeterministic, so retry once
+ * with the validation feedback before surfacing anything to the instructor).
+ * Machine detail (Zod paths in internalErrors) is fine HERE — it goes to the
+ * model, never to the instructor.
+ */
+function topicPlanRetryNudge(validated, syllabusNames) {
+  if (validated.code === 'SYLLABUS_COVERAGE_SOURCES') {
+    const missingNames = (syllabusNames || []).filter(Boolean);
+    return missingNames.length > 0
+      ? `\n\nIMPORTANT RETRY: Your previous output failed because it did not explicitly reference these primary syllabus filenames in syllabusCoverageOverview or syllabusAnchors: ${missingNames.join(
+          '; '
+        )}. Re-output valid JSON and ensure syllabusCoverageOverview includes the exact substring: "Primary syllabus files: ${missingNames.join('; ')}".`
+      : '\n\nIMPORTANT RETRY: Your previous output failed the syllabus filename coverage guardrail. Re-output valid JSON and explicitly reference the primary syllabus filename(s) in syllabusCoverageOverview.';
+  }
+  const detail = (validated.internalErrors || validated.errors || []).slice(0, 5).join('; ');
+  return `\n\nIMPORTANT RETRY: Your previous output failed structural validation: ${detail}. Structural rules: at most 20 topics, each with a UNIQUE title; each topic needs 1-8 modules and 1-10 syllabusAnchors; each module needs exactly 2-8 milestones (never fewer than 2, never more than 8); syllabusCoverageOverview must be 60-4500 characters. Re-output the FULL corrected JSON payload.`;
+}
+
 const COURSE_UPLOAD_DIR = process.env.COURSE_UPLOAD_DIR
   ? path.resolve(process.env.COURSE_UPLOAD_DIR)
   : path.join(__dirname, '../uploads/course-materials');
@@ -489,17 +509,14 @@ router.post('/courses/:courseId/generate-topics', requireCourseOwner, async (req
 
     let validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames });
 
-    // Auto-retry once when the model forgets to name the syllabus file(s).
-    if (!validated.valid && validated.code === 'SYLLABUS_COVERAGE_SOURCES') {
-      const missingNames = (syllabusNames || []).filter(Boolean);
-      const retryNudge =
-        missingNames.length > 0
-          ? `\n\nIMPORTANT RETRY: Your previous output failed because it did not explicitly reference these primary syllabus filenames in syllabusCoverageOverview or syllabusAnchors: ${missingNames.join(
-              '; '
-            )}. Re-output valid JSON and ensure syllabusCoverageOverview includes the exact substring: "Primary syllabus files: ${missingNames.join(
-              '; '
-            )}".`
-          : '\n\nIMPORTANT RETRY: Your previous output failed the syllabus filename coverage guardrail. Re-output valid JSON and explicitly reference the primary syllabus filename(s) in syllabusCoverageOverview.';
+    // Auto-retry once on ANY validation failure (coverage guardrail or
+    // structure the repair pass couldn't save), with feedback in the prompt.
+    if (!validated.valid) {
+      logger.warn(
+        { courseId: req.course._id.toString(), code: validated.code, internalErrors: validated.internalErrors || validated.errors },
+        'topic plan failed validation; retrying once with feedback'
+      );
+      const retryNudge = topicPlanRetryNudge(validated, syllabusNames);
 
       raw = await runTopicPlanGeneratorAgent({
         contextText,
@@ -519,6 +536,10 @@ router.post('/courses/:courseId/generate-topics', requireCourseOwner, async (req
     }
 
     if (!validated.valid) {
+      logger.warn(
+        { courseId: req.course._id.toString(), code: validated.code, internalErrors: validated.internalErrors || validated.errors },
+        'topic plan failed validation after retry'
+      );
       return res.status(422).json({
         success: false,
         error: validated.errors?.[0] || 'Generated plan failed validation',
@@ -828,17 +849,13 @@ async function runTopicPlanPipeline(req, res, { instructorMessage, kind }) {
   const validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames });
   let finalValidated = validated;
 
-  // Auto-retry once when the model forgets to name the syllabus file(s).
-  if (!finalValidated.valid && finalValidated.code === 'SYLLABUS_COVERAGE_SOURCES') {
-    const missingNames = (syllabusNames || []).filter(Boolean);
-    const retryNudge =
-      missingNames.length > 0
-        ? `\n\nIMPORTANT RETRY: Your previous output failed because it did not explicitly reference these primary syllabus filenames in syllabusCoverageOverview or syllabusAnchors: ${missingNames.join(
-            '; '
-          )}. Re-output valid JSON and ensure syllabusCoverageOverview includes the exact substring: "Primary syllabus files: ${missingNames.join(
-            '; '
-          )}".`
-        : '\n\nIMPORTANT RETRY: Your previous output failed the syllabus filename coverage guardrail. Re-output valid JSON and explicitly reference the primary syllabus filename(s) in syllabusCoverageOverview.';
+  // Auto-retry once on ANY validation failure, with feedback in the prompt.
+  if (!finalValidated.valid) {
+    logger.warn(
+      { courseId: course._id.toString(), code: finalValidated.code, internalErrors: finalValidated.internalErrors || finalValidated.errors },
+      'topic plan failed validation; retrying once with feedback'
+    );
+    const retryNudge = topicPlanRetryNudge(finalValidated, syllabusNames);
 
     if (kind === 'generate') {
       raw = await runTopicPlanGeneratorAgent({
@@ -876,6 +893,10 @@ async function runTopicPlanPipeline(req, res, { instructorMessage, kind }) {
   }
 
   if (!finalValidated.valid) {
+    logger.warn(
+      { courseId: course._id.toString(), code: finalValidated.code, internalErrors: finalValidated.internalErrors || finalValidated.errors },
+      'topic plan failed validation after retry'
+    );
     return res.status(422).json({
       success: false,
       error: finalValidated.errors?.[0] || 'Generated plan failed validation',
@@ -1030,13 +1051,32 @@ router.post('/courses/:courseId/topics/:topicId/ai-modify', requireCourseTopicOw
       });
     }
 
-    const raw = await runTopicDraftModifyAgent({
+    let raw = await runTopicDraftModifyAgent({
       topic: topic.toObject(),
       modificationRequest: message
     });
 
-    const validated = validateSingleTopicPayload(raw);
+    let validated = validateSingleTopicPayload(raw);
+
+    // Auto-retry once with validation feedback (same policy as plan generation).
     if (!validated.valid) {
+      logger.warn(
+        { topicId: topic._id.toString(), internalErrors: validated.internalErrors || validated.errors },
+        'AI topic edit failed validation; retrying once with feedback'
+      );
+      const detail = (validated.internalErrors || validated.errors || []).slice(0, 5).join('; ');
+      raw = await runTopicDraftModifyAgent({
+        topic: topic.toObject(),
+        modificationRequest: `${message}\n\nIMPORTANT RETRY: Your previous output failed structural validation: ${detail}. Rules: the topic needs 1-8 modules and 1-10 syllabusAnchors; each module needs exactly 2-8 milestones. Re-output the FULL corrected topic JSON.`
+      });
+      validated = validateSingleTopicPayload(raw);
+    }
+
+    if (!validated.valid) {
+      logger.warn(
+        { topicId: topic._id.toString(), internalErrors: validated.internalErrors || validated.errors },
+        'AI topic edit failed validation after retry'
+      );
       return res.status(422).json({
         success: false,
         error: validated.errors?.[0] || 'AI output failed validation',
@@ -1054,7 +1094,10 @@ router.post('/courses/:courseId/topics/:topicId/ai-modify', requireCourseTopicOw
     topic.updatedBy = req.userId;
     await topic.save();
 
-    res.json({ success: true, data: { topic } });
+    res.json({
+      success: true,
+      data: { topic, ...(validated.warnings?.length ? { warnings: validated.warnings } : {}) }
+    });
   } catch (e) {
     next(e);
   }
