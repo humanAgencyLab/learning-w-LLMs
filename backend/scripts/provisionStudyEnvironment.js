@@ -190,7 +190,10 @@ async function seedMaya(db, { dryRun }) {
     passwordHash: await hashPassword(crypto.randomBytes(12).toString('base64url')), // login never used
     name: MAYA.name,
     role: 'student',
-    profile: { isSynthetic: true, personaTag: 'probe_strong_then_quiet', onboardingCompleted: true },
+    // Pilot F19: the demo cohort's users all carry isSynthetic:false and no
+    // personaTag, and the instructor UI renders a "SYN" badge from these — Maya
+    // must be visually indistinguishable from the cohort, so she matches them.
+    profile: { isSynthetic: false, onboardingCompleted: true },
     createdAt: enrolledAt,
     updatedAt: lastAttemptAt,
   };
