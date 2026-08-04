@@ -1,7 +1,8 @@
 // Utility to parse and detect question types from message content
 
 export const detectQuestionType = (content) => {
-  const lowerContent = content.toLowerCase().trim();
+  const safeContent = String(content || '');
+  const lowerContent = safeContent.toLowerCase().trim();
   
   // Check for True/False questions
   if (lowerContent.includes('true or false') || lowerContent.match(/^.*true or false:/i)) {
@@ -10,7 +11,7 @@ export const detectQuestionType = (content) => {
   
   // Check for Multiple Choice Questions (format: A), B), C), D) or a), b), c), d))
   const mcqPattern = /[a-d]\)\s+[^\n]+/i;
-  const lines = content.split('\n');
+  const lines = safeContent.split('\n');
   const hasMCQOptions = lines.some(line => mcqPattern.test(line.trim()));
   
   if (hasMCQOptions) {
@@ -22,7 +23,7 @@ export const detectQuestionType = (content) => {
 };
 
 export const parseMCQQuestion = (content) => {
-  const lines = content.split('\n').filter(l => l.trim());
+  const lines = String(content || '').split('\n').filter(l => l.trim());
   const questionLine = lines[0] || '';
   const options = [];
   

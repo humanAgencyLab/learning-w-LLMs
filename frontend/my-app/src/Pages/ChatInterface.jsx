@@ -102,8 +102,10 @@ function ChatInterface() {
     
     const lastMessage = sessionMessages[sessionMessages.length - 1];
     if (lastMessage.role !== 'assistant') return chips;
-    
-    const content = lastMessage.content.toLowerCase();
+
+    // Pilot B3: content can be undefined on a malformed/in-flight message —
+    // never let the chips memo crash the whole chat render.
+    const content = String(lastMessage.content || '').toLowerCase();
     
     // Check for "start quiz" or similar phrases in message content (fallback)
     // Only show for STUDY mode, not revision mode

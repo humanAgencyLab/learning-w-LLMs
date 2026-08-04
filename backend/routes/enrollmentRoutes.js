@@ -10,6 +10,44 @@ const { seedSessionForCourseTopic } = require('../services/sessionSeedingService
 
 const router = express.Router();
 
+// Pilot B1: the join modal shipped enum values the Enrollment schema never
+// accepted (selfRating 'some_knowledge' → ValidationError → opaque 500, and
+// the modal silently stalled). Sanitize here so any deployed client version
+// joins cleanly; unknown values degrade to the schema defaults rather than
+// throwing. Vocabulary mirrors simulation/syntheticStudent.js.
+const SELF_RATING_MAP = {
+  none: 'none',
+  basic: 'beginner',
+  beginner: 'beginner',
+  some_knowledge: 'beginner',
+  some: 'beginner',
+  intermediate: 'intermediate',
+  advanced: 'advanced'
+};
+const EXPOSURES = new Set(['none', 'some', 'lots', 'unknown']);
+const MOTIVATIONS = new Set(['grade', 'curiosity', 'career', 'requirement', 'unknown']);
+
+function sanitizePriorKnowledge(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out = {};
+  if (raw.selfRating != null) {
+    out.selfRating = SELF_RATING_MAP[String(raw.selfRating).trim().toLowerCase()] || 'none';
+  }
+  if (raw.programmingExposure != null) {
+    const v = String(raw.programmingExposure).trim().toLowerCase();
+    out.programmingExposure = EXPOSURES.has(v) ? v : 'unknown';
+  }
+  if (raw.motivationType != null) {
+    const v = String(raw.motivationType).trim().toLowerCase();
+    out.motivationType = MOTIVATIONS.has(v) ? v : 'unknown';
+  }
+  const conf = Number(raw.selfConfidence);
+  if (Number.isFinite(conf)) out.selfConfidence = Math.min(5, Math.max(1, Math.round(conf)));
+  if (raw.relevantExperience != null) out.relevantExperience = String(raw.relevantExperience).slice(0, 500);
+  if (raw.specificGoals != null) out.specificGoals = String(raw.specificGoals).slice(0, 500);
+  return Object.keys(out).length ? out : undefined;
+}
+
 /** POST /v1/courses/join */
 router.post('/join', requireAuth, async (req, res, next) => {
   try {
@@ -47,7 +85,7 @@ router.post('/join', requireAuth, async (req, res, next) => {
       studentId: req.userId,
       courseId: course._id,
       status: 'active',
-      priorKnowledge: req.body?.priorKnowledge || undefined
+      priorKnowledge: sanitizePriorKnowledge(req.body?.priorKnowledge)
     });
     res.status(201).json({
       success: true,
@@ -59,6 +97,15 @@ router.post('/join', requireAuth, async (req, res, next) => {
         success: false,
         error: 'Already enrolled',
         code: 'ALREADY_ENROLLED'
+      });
+    }
+    // Schema drift must read as a client error with a JSON body, never as
+    // Express's default 500 HTML page (which the modal cannot even parse).
+    if (e.name === 'ValidationError' || e.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        error: 'Some profile answers were not understood. You can retry, or skip the profile questions.',
+        code: 'VALIDATION_ERROR'
       });
     }
     next(e);

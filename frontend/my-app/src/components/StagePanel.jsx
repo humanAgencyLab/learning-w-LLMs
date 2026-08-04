@@ -139,7 +139,7 @@ function StagePanel({
     ];
 
     const hasMasteryHint = masteryKeywords.some((keyword) =>
-      message.toLowerCase().includes(keyword),
+      String(message || '').toLowerCase().includes(keyword),
     );
 
     if (hasMasteryHint) {

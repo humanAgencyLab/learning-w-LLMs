@@ -431,6 +431,48 @@ describe('SessionStore', () => {
       expect(result.current.messages[1].content).toBe('Hello! How can I help you learn?');
     });
 
+    it('never appends an assistant message with undefined content on a module-completion response (pilot B3)', async () => {
+      // Module/milestone-completion responses can carry meta + milestone
+      // fields with NO `message`. The old code appended
+      // { role: 'assistant', content: undefined }, which crashed the chat
+      // render (toLowerCase on undefined -> white screen at the module
+      // boundary).
+      const { result } = renderHook(() => useSessionStore());
+
+      act(() => {
+        result.current.sessionId = 'test-123';
+      });
+
+      const completionShapedResponse = {
+        data: {
+          // no `message` key at all
+          milestoneCompleted: true,
+          currentMilestoneIndex: 2,
+          meta: { currentMilestoneIndex: 2, milestoneBeingTaught: false },
+          phase: 'learning',
+          tokensOut: 0
+        }
+      };
+
+      const { sendMessage } = require('../lib/chatApi');
+      sendMessage.mockResolvedValue(completionShapedResponse);
+
+      await act(async () => {
+        await result.current.sendChatMessage('done with this milestone');
+      });
+
+      // The user message is appended; NO assistant message with undefined
+      // content may exist anywhere in the transcript.
+      expect(result.current.messages.length).toBeGreaterThanOrEqual(1);
+      for (const m of result.current.messages) {
+        expect(typeof m.content).toBe('string');
+      }
+      const undefinedContent = result.current.messages.filter((m) => m.content == null);
+      expect(undefinedContent).toHaveLength(0);
+      // Meta still synced from the completion response.
+      expect(result.current.meta.currentMilestoneIndex).toBe(2);
+    });
+
     it('should handle quiz flow', async () => {
       const { result } = renderHook(() => useSessionStore());
       

@@ -14,9 +14,12 @@ function CourseOnboardingModal({ accessCode, onComplete, onSkip }) {
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(null);
 
+  // Values must be Enrollment.priorKnowledge.selfRating enum members
+  // ('none'|'beginner'|'intermediate'|'advanced') — pilot B1: the old
+  // 'some_knowledge' value failed backend validation and stalled the join.
   const RATINGS = [
-    { value: 'beginner', label: 'Beginner', desc: 'New to this subject' },
-    { value: 'some_knowledge', label: 'Some knowledge', desc: 'Familiar with basics' },
+    { value: 'none', label: 'Beginner', desc: 'New to this subject' },
+    { value: 'beginner', label: 'Some knowledge', desc: 'Familiar with basics' },
     { value: 'intermediate', label: 'Intermediate', desc: 'Comfortable with key concepts' },
     { value: 'advanced', label: 'Advanced', desc: 'Strong understanding, looking to deepen' },
   ];

@@ -2259,12 +2259,17 @@ Return ONLY valid JSON in this format:
           points: session.points || 0,
           meta: buildChatMeta(session),
         };
-        if (req.body.stream) {
+        // Pilot B3: only speak SSE when SSE headers were actually sent. The
+        // module-completion / non-teaching branches skip the streaming block
+        // above, so `req.body.stream` alone used to write an SSE-format body
+        // on a plain response — the client could not parse it, and the chat
+        // white-screened at every module boundary.
+        if (req.body.stream && res.headersSent) {
           res.write(`data: ${JSON.stringify({ done: true, ...data })}\n\n`);
           return res.end();
         }
         return res.json({ success: true, data });
-        
+
       } catch (error) {
         console.error('LLM conversation decision failed', { sessionId, error: error.message, stack: error.stack });
         

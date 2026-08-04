@@ -775,12 +775,14 @@ const useSessionStore = create(
                 return response;
               }
 
-              get().appendMessage({
-                role: 'assistant',
-                content: response.data.message,
-                ts: new Date().toISOString(),
-                tokens: response.data.tokensOut
-              });
+              // Pilot B3: the unconditional appendMessage that lived here was a
+              // leftover from before the streaming block above (which already
+              // appends or back-fills the assistant reply exactly once). It
+              // double-appended every reply, and on module-completion responses
+              // that carry no `message` it appended content: undefined — which
+              // crashed the chat render (toLowerCase on undefined → white
+              // screen). Both branches above fully handle the reply; nothing
+              // to append here.
 
               // Always sync meta from chat response so StudyPanelNav shows correct active milestone
               const metaFromResponse = response.data?.meta || response.meta;
