@@ -6,6 +6,8 @@ const mongoose = require('mongoose');
 const Session = require('../models/Session');
 const Enrollment = require('../models/Enrollment');
 const InstructorStudentNote = require('../models/InstructorStudentNote');
+const TutorRefusalEvent = require('../models/TutorRefusalEvent');
+const User = require('../models/User');
 const {
   getCourseAnalytics,
   getStudentProgress,
@@ -155,6 +157,59 @@ router.get('/courses/:courseId/students', requireAuth, requireRole('instructor')
 });
 
 /** GET /v1/instructor/courses/:courseId/students/:studentId — individual monitoring (summary + per-topic latest session) */
+/**
+ * GET /v1/instructor/courses/:courseId/refusals[?studentId=]
+ * The tutor-refusal log (Addition 1). Refused turns are invisible to every
+ * learning analytic by design — no attempt, no retry, no advance — so a
+ * student who only triggers refusals leaves no trace in the risk model. This
+ * is that trace, queryable per course and per student.
+ */
+router.get('/courses/:courseId/refusals', requireAuth, requireRole('instructor'), requireCourseOwner, async (req, res, next) => {
+  try {
+    const filter = { courseId: new mongoose.Types.ObjectId(req.params.courseId) };
+    if (req.query.studentId && mongoose.Types.ObjectId.isValid(req.query.studentId)) {
+      filter.userId = new mongoose.Types.ObjectId(req.query.studentId);
+    }
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+    const events = await TutorRefusalEvent.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
+
+    const userIds = [...new Set(events.map((e) => String(e.userId)))];
+    const users = await User.find({ _id: { $in: userIds } }).select('name username').lean();
+    const nameOf = new Map(users.map((u) => [String(u._id), u]));
+
+    const byStudent = {};
+    for (const e of events) {
+      const k = String(e.userId);
+      byStudent[k] = byStudent[k] || { studentId: k, name: nameOf.get(k)?.name || null, username: nameOf.get(k)?.username || null, count: 0, lastAt: null, categories: {} };
+      byStudent[k].count += 1;
+      byStudent[k].categories[e.category] = (byStudent[k].categories[e.category] || 0) + 1;
+      if (!byStudent[k].lastAt || e.createdAt > byStudent[k].lastAt) byStudent[k].lastAt = e.createdAt;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        total: events.length,
+        byStudent: Object.values(byStudent).sort((a, b) => b.count - a.count),
+        events: events.map((e) => ({
+          _id: e._id,
+          studentId: e.userId,
+          studentName: nameOf.get(String(e.userId))?.name || null,
+          category: e.category,
+          clause: e.clause,
+          refusalReason: e.refusalReason,
+          detectedBy: e.detectedBy,
+          studentMessage: e.studentMessage,
+          milestoneText: e.milestoneText,
+          createdAt: e.createdAt,
+        })),
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get('/courses/:courseId/students/:studentId', requireAuth, requireRole('instructor'), requireCourseOwner, async (req, res, next) => {
   try {
     const { courseId, studentId } = req.params;

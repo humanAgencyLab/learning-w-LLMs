@@ -317,6 +317,17 @@ export async function getStudentProgress(courseId) {
   );
 }
 
+/** Tutor-refusal log. Omit studentId for the whole course. */
+export async function getRefusalLog(courseId, studentId) {
+  const qs = studentId ? `?studentId=${studentId}` : '';
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/refusals${qs}`, {
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
 export async function getStudentDetail(courseId, studentId) {
   return parse(
     await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/students/${studentId}`, {

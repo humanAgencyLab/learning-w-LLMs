@@ -3,6 +3,7 @@ import { Link, useParams, useLocation } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
 import MessageContent from '../../components/chat/MessageContent';
 import RiskTrendCard from '../../components/instructor/RiskTrendCard';
+import RefusalLogPanel from '../../components/instructor/RefusalLogPanel';
 import { flagLabel } from '../../components/instructor/riskLevel';
 import useToastStore from '../../state/toastStore';
 
@@ -831,6 +832,9 @@ export default function InstructorStudentDetailPage() {
             onScopeChange={setNotesScope}
           />
           <RiskTrendCard courseId={courseId} studentId={studentId} />
+          {/* Renders only when this student has refusals — the one place a
+              refusal-only student is visible at all. */}
+          <RefusalLogPanel courseId={courseId} studentId={studentId} />
         </aside>
       </div>
 

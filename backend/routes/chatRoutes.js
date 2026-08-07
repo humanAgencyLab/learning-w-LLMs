@@ -23,6 +23,7 @@ const { runIntentAgent } = require('../agents/intentAgent');
 const { runStudyGraph } = require('../agents/graph/runGraph');
 const { runEngagementAgent } = require('../agents/engagementAgent');
 const { runTeachingAgent, mapAssessmentForTeacher } = require('../agents/teachingAgent');
+const { evaluateConstraints, buildRefusalMessage, recordRefusal } = require('../services/constraintGateService');
 
 // Extract question from assistant response
 /**
@@ -1191,6 +1192,49 @@ Return ONLY valid JSON in this format:
             const milestoneIdx = session.meta?.currentMilestoneIndex ?? 0;
             const currentMilestone = activeModule?.milestones?.[milestoneIdx];
 
+            // ── Constraint gate (1b) ──────────────────────────────────────
+            // Checked FIRST, ahead of the quiz-gate short-circuit: the pilot
+            // found an exploit request typed at a module gate was swallowed by
+            // the flow manager with a canned "type start quiz" reply, so no
+            // guardrail ran. A refusal records NO attempt, increments NO retry
+            // count, advances NO milestone, and leaves outstandingCheck intact
+            // — a refused turn must never be able to move a student forward.
+            if (gs.refusalResult?.violates) {
+              const refusalText = buildRefusalMessage(gs.refusalResult, {
+                outstandingCheck: session.meta?.outstandingCheck,
+              });
+              await recordRefusal(gs.refusalResult, {
+                courseId: session.courseId,
+                courseTopicId: session.courseTopicId,
+                sessionId: session._id,
+                userId: session.userId,
+                userMessage,
+                milestoneText: currentMilestone?.text || '',
+              });
+              session.messages.push(
+                { id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: 'refused', phaseAtSend: session.phase, graphPath: true } },
+                { id: `msg_${Date.now() + 1}`, role: 'assistant', content: refusalText, timestamp: new Date(), metadata: { intent: 'refusal', phaseAtSend: session.phase, graphPath: true, refusal: true, refusalCategory: gs.refusalResult.category } }
+              );
+              await session.save();
+              const refusalData = {
+                message: refusalText,
+                phase: session.phase,
+                refusal: true,
+                refusalCategory: gs.refusalResult.category,
+                currentMilestoneIndex: session.meta?.currentMilestoneIndex ?? 0,
+                plan: session.plan,
+                activeModuleId: session.activeModuleId,
+                progressPct: session.progressPct || 0,
+                points: session.points || 0,
+                meta: buildChatMeta(session),
+              };
+              if (res.headersSent) {
+                res.write(`data: ${JSON.stringify({ done: true, ...refusalData })}\n\n`);
+                return res.end();
+              }
+              return res.json({ success: true, data: refusalData });
+            }
+
             if (cm?.shouldStartQuiz || cm?.action === 'start_quiz') {
               session.messages.push({ id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: cm.intent, phaseAtSend: session.phase, graphPath: true } });
               await session.save();
@@ -1490,6 +1534,53 @@ Return ONLY valid JSON in this format:
         }
       }
       
+      // ── Constraint gate (1b), legacy path ───────────────────────────────
+      // Runs before the conversation decision AND before the assessment block,
+      // so refusal behaviour is identical whichever side of USE_MULTI_AGENT
+      // the deployment is on. Same invariants: no grading, no retry, no
+      // attempt, no advance, outstandingCheck preserved.
+      {
+        const legacyVerdict = await evaluateConstraints({
+          userMessage,
+          globalInstructions: courseGlobalInstructions,
+        });
+        if (legacyVerdict.violates) {
+          const activeModuleForRefusal = session.plan?.find((m) => m.id === session.activeModuleId);
+          const milestoneForRefusal = activeModuleForRefusal?.milestones?.[session.meta?.currentMilestoneIndex ?? 0];
+          const refusalText = buildRefusalMessage(legacyVerdict, {
+            outstandingCheck: session.meta?.outstandingCheck,
+          });
+          await recordRefusal(legacyVerdict, {
+            courseId: session.courseId,
+            courseTopicId: session.courseTopicId,
+            sessionId: session._id,
+            userId: session.userId,
+            userMessage,
+            milestoneText: milestoneForRefusal?.text || '',
+          });
+          session.messages.push(
+            { id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: 'refused', phaseAtSend: session.phase } },
+            { id: `msg_${Date.now() + 1}`, role: 'assistant', content: refusalText, timestamp: new Date(), metadata: { intent: 'refusal', phaseAtSend: session.phase, refusal: true, refusalCategory: legacyVerdict.category } }
+          );
+          await session.save();
+          return res.json({
+            success: true,
+            data: {
+              message: refusalText,
+              phase: session.phase,
+              refusal: true,
+              refusalCategory: legacyVerdict.category,
+              currentMilestoneIndex: session.meta?.currentMilestoneIndex ?? 0,
+              plan: session.plan,
+              activeModuleId: session.activeModuleId,
+              progressPct: session.progressPct || 0,
+              points: session.points || 0,
+              meta: buildChatMeta(session),
+            },
+          });
+        }
+      }
+
       // Capture state at turn start for safety checks later
       const hadOutstandingQuestionAtTurnStart = !!session.meta?.outstandingCheck;
       const wasMilestoneInProgressAtTurnStart = !!session.meta?.milestoneBeingTaught;

@@ -7,6 +7,7 @@ const { runAssessmentAgent } = require('../assessmentAgent');
 const { runTeachingAgent, mapAssessmentForTeacher } = require('../teachingAgent');
 const { runQuizAgent } = require('../quizAgent');
 const CourseTopic = require('../../models/CourseTopic');
+const { evaluateConstraints } = require('../../services/constraintGateService');
 const { runFeedbackAgent } = require('../feedbackAgent');
 
 // ---------------------------------------------------------------------------
@@ -24,6 +25,13 @@ const AgentState = Annotation.Root({
   // and assessment stays instruction-blind for this study window (see
   // teachingNode comment).
   globalInstructions: Annotation({ reducer: (_, v) => v, default: () => '' }),
+
+  /**
+   * Constraint-gate verdict. Set by constraintGateNode, which runs BEFORE
+   * assessment and teaching. When it says violates, the graph ends: nothing
+   * downstream may grade, advance, or score the message.
+   */
+  refusalResult:      Annotation({ reducer: (_, v) => v, default: () => null }),
 
   intentResult:       Annotation({ reducer: (_, v) => v, default: () => null }),
   planResult:         Annotation({ reducer: (_, v) => v, default: () => null }),
@@ -90,6 +98,30 @@ async function convManagerNode(state) {
     userMessage: state.userMessage,
   });
   return { convManagerResult: result };
+}
+
+/**
+ * Constraint gate (1b). Sits between convManager and BOTH assessment and
+ * teaching, so the refusal decision is made before — and independently of —
+ * the correct/incorrect call. It receives only the student's message and the
+ * instructor's rules: never the milestone, never a grade.
+ *
+ * It also runs ahead of the quiz-gate short-circuit, which is deliberate: the
+ * pilot found an exploit request typed at a module-completion gate was
+ * swallowed by the flow manager and answered with a canned "type start quiz"
+ * line, so no guardrail ran at all.
+ */
+async function constraintGateNode(state) {
+  const verdict = await evaluateConstraints({
+    userMessage: state.userMessage,
+    globalInstructions: state.globalInstructions,
+  });
+  return { refusalResult: verdict };
+}
+
+function routeAfterGate(state) {
+  if (state.refusalResult?.violates) return END;
+  return routeAfterConvManager(state);
 }
 
 function routeAfterConvManager(state) {
@@ -244,6 +276,7 @@ function compileStudyGraph() {
     .addNode('plan',        planNode)
     .addNode('planModify',  planModifyNode)
     .addNode('convManager', convManagerNode)
+    .addNode('constraintGate', constraintGateNode)
     .addNode('assessment',  assessmentNode)
     .addNode('teaching',    teachingNode)
     .addNode('quiz',        quizNode)
@@ -256,7 +289,10 @@ function compileStudyGraph() {
     .addEdge('plan',       '__end__')
     .addEdge('planModify', '__end__')
 
-    .addConditionalEdges('convManager', routeAfterConvManager)
+    // convManager ALWAYS hands off to the gate; the gate decides whether the
+    // turn is allowed to reach assessment/teaching at all.
+    .addEdge('convManager', 'constraintGate')
+    .addConditionalEdges('constraintGate', routeAfterGate)
     .addConditionalEdges('assessment',  routeAfterAssessment)
 
     .addEdge('teaching', '__end__')
