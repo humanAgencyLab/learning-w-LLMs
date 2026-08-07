@@ -56,7 +56,33 @@ const CourseSchema = new mongoose.Schema({
       type: String,
       enum: ['syllabus', 'reference'],
       default: 'reference'
-    }
+    },
+    // --- Book ingestion (BOOK_GROUNDED_COURSES_PLAN.md; inert until the
+    // USE_BOOK_SOURCES flag is on and an ingest run is triggered) ---
+    ingestStatus: {
+      type: String,
+      enum: ['none', 'pending', 'extracting', 'structuring', 'embedding', 'ready', 'failed'],
+      default: 'none'
+    },
+    ingestError: { type: String, default: '' },
+    pageCount: { type: Number, default: 0 },
+    chapterCount: { type: Number, default: 0 },
+    contentHash: { type: String, default: '' },
+    /**
+     * Chapter tree + per-chapter extractive summaries. For ready book sources
+     * this map — a few thousand tokens — replaces extractedText in
+     * buildCourseContext, so the plan generator sees the whole book's
+     * skeleton instead of the first 56k characters.
+     * chapters: [{ index, title, pageStart, pageEnd, sections: [String], summary }]
+     */
+    bookMap: { type: mongoose.Schema.Types.Mixed, default: null },
+    /**
+     * Ingestion report (plan Section 6): what was actually understood, shown
+     * on the source card. { pagesRead, wordsExtracted, chaptersFound,
+     * chunksIndexed, embeddedChunks, structureSource, caveats: [String],
+     * skipped: [String], finishedAt }
+     */
+    ingestReport: { type: mongoose.Schema.Types.Mixed, default: null }
   }],
   globalInstructions: {
     type: String,
@@ -64,6 +90,12 @@ const CourseSchema = new mongoose.Schema({
     maxlength: 5000,
     default: ''
   },
+  /**
+   * Whether the last topic-plan generation ran on truncated context (the 56k
+   * cap). Surfaced in the book coverage view — the instructor was previously
+   * never told (book plan Section 7).
+   */
+  planContextTruncated: { type: Boolean, default: null },
   planStrategy: {
     type: {
       type: String,

@@ -1,3 +1,5 @@
+const { useBookSources } = require('../agents/framework/featureFlag');
+
 /** Budget for syllabus + refs sent to topic-plan agents (override via env). */
 const MAX_CONTEXT_CHARS = parseInt(process.env.COURSE_CONTEXT_MAX_CHARS || '56000', 10);
 
@@ -398,6 +400,28 @@ function orderedSourcesForContext(sources) {
  * @param {string} [opts.extraInstructions]
  * @returns {{ contextText: string, truncated: boolean, sourceCount: number }}
  */
+/**
+ * Render a ready book source's chapter map (BOOK_GROUNDED_COURSES_PLAN.md
+ * Section 4a) — 3-8k tokens covering the WHOLE book, in place of the first
+ * 56k characters of raw text. Only reachable when USE_BOOK_SOURCES is on.
+ */
+function renderBookMapBlock(src, kind) {
+  const map = src.bookMap;
+  const lines = [
+    `### Source (${kind} — full-book structure map): ${src.originalName || src.filename}`,
+    `This book was ingested in full (${src.pageCount || '?'} pages, ${map.chapters.length} chapters). The map below covers the ENTIRE book.`,
+    'When generating topics for this course, follow the book\'s own chapter progression and set each topic\'s syllabusAnchors to machine-usable chapter references of the form "ch:<index>" (e.g. "ch:3") for every chapter the topic covers, alongside any prose anchors.',
+    '',
+  ];
+  for (const ch of map.chapters) {
+    const pagePart = ch.pageStart != null ? ` (pp. ${ch.pageStart}-${ch.pageEnd})` : '';
+    lines.push(`Chapter ${ch.index}: ${ch.title}${pagePart}`);
+    if (ch.sections?.length) lines.push(`  Sections: ${ch.sections.join('; ')}`);
+    if (ch.summary) lines.push(`  Summary: ${ch.summary}`);
+  }
+  return lines.join('\n');
+}
+
 function buildCourseContext(course, opts = {}) {
   const extra = (opts.extraInstructions || '').trim();
   const globalInstr = (course.globalInstructions || '').trim();
@@ -414,7 +438,13 @@ function buildCourseContext(course, opts = {}) {
   for (const src of ordered) {
     const eff = effectiveSourceRole(src, L);
     const kind = eff === 'syllabus' ? 'Primary syllabus' : 'Reference (optional)';
-    const block = `### Source (${kind}): ${src.originalName || src.filename}\n${(src.extractedText || '').trim()}`;
+    // Book-map branch (flag-gated): a ready ingested book contributes its
+    // chapter map instead of truncated raw text. With the flag off this
+    // branch is unreachable and output is byte-identical to the pre-feature
+    // behavior (locked by tests/fixtures/buildCourseContext.baseline.json).
+    const block = (useBookSources() && src.ingestStatus === 'ready' && src.bookMap?.chapters?.length)
+      ? renderBookMapBlock(src, kind)
+      : `### Source (${kind}): ${src.originalName || src.filename}\n${(src.extractedText || '').trim()}`;
     if (used + block.length > MAX_CONTEXT_CHARS) {
       const room = Math.max(0, MAX_CONTEXT_CHARS - used - 100);
       if (room > 200) {

@@ -361,6 +361,36 @@ function validateTopicPlanPayload(data, options = {}) {
       `Removed ${duplicateTitlesRemoved} duplicate topic title(s) from the model output (each topic must be unique).`
     );
   }
+
+  // Book-backed courses (BOOK_GROUNDED_COURSES_PLAN.md 4a): "ch:N" anchors
+  // must reference real chapters from the book map. Repair-style — invalid
+  // references are dropped with a warning (when other anchors remain), never
+  // payload-fatal.
+  if (Array.isArray(options.bookChapters) && options.bookChapters.length > 0) {
+    const validChapters = new Set(options.bookChapters.map(Number));
+    let anyChapterAnchor = false;
+    for (const t of topics) {
+      const anchors = t.syllabusAnchors || [];
+      const kept = [];
+      for (const a of anchors) {
+        const m = String(a).trim().match(/^ch:(\d+)(?:\.\d+)?$/i);
+        if (!m) { kept.push(a); continue; }
+        if (validChapters.has(Number(m[1]))) {
+          kept.push(a);
+          anyChapterAnchor = true;
+        } else {
+          warnings.push(`Dropped anchor "${a}" on topic "${truncateAtWordBoundary(t.title, 60)}" — the book has no chapter ${m[1]}.`);
+        }
+      }
+      if (kept.length > 0) t.syllabusAnchors = kept; // never strip a topic to zero anchors
+    }
+    if (!anyChapterAnchor) {
+      warnings.push(
+        'No topic carries a machine-usable chapter anchor (ch:N) referencing the ingested book — the coverage view cannot map chapters to modules for this plan. Regenerate, or add chapter anchors on topics manually.'
+      );
+    }
+  }
+
   return {
     valid: true,
     topics,

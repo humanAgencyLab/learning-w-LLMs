@@ -127,6 +127,26 @@ export async function updateCourseSourceRole(courseId, sourceId, role) {
   );
 }
 
+/** Book ingestion (feature-flagged server-side; 403 FEATURE_DISABLED when off). */
+export async function ingestCourseSource(courseId, sourceId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/sources/${sourceId}/ingest`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function getBookCoverage(courseId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/book-coverage`, {
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
 export async function listTopics(courseId) {
   return parse(
     await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/topics`, {

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
 import HotSignalCard from '../../components/instructor/HotSignalCard';
 import TopicRow from '../../components/instructor/desk/TopicRow';
+import { SourceIngestControls, BookCoveragePanel } from '../../components/instructor/BookSourcePanel';
 import useToastStore from '../../state/toastStore';
 
 function CopyButton({ text }) {
@@ -580,6 +581,7 @@ export default function InstructorCourseDetailPage() {
                   >
                     Remove
                   </button>
+                  <SourceIngestControls courseId={courseId} source={s} busy={busy} onChanged={load} />
                 </li>
               );
             })}
@@ -593,10 +595,23 @@ export default function InstructorCourseDetailPage() {
             onChange={onUploadFiles}
             disabled={busy || sourceSlotsLeft === 0}
             className="hidden"
-            accept=".pdf,.txt,.md,.doc,.docx,application/pdf,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept=".pdf,.epub,.txt,.md,.doc,.docx,application/pdf,application/epub+zip,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           />
         </label>
       </section>
+
+      {/* Book coverage — only renders when a source has been ingested as a
+          book (feature-flagged server-side; without the flag no source ever
+          reaches ingestStatus 'ready', so this section never appears). */}
+      {(course?.sources || []).some((s) => s.ingestStatus === 'ready' && s.bookMap) && (
+        <section className="bg-surface border border-hairline rounded-2xl shadow-card p-5">
+          <h2 className="text-base font-bold text-ink-900">Book coverage</h2>
+          <p className="text-xs text-ink-400 mt-1 mb-3">
+            Which chapters each topic covers, from the topics&apos; chapter anchors. Edit anchors here or regenerate the plan.
+          </p>
+          <BookCoveragePanel courseId={courseId} refreshKey={course?.updatedAt} />
+        </section>
+      )}
 
       {/* Plan Chat Panel — the `.chat-history-scroll` class is load-bearing:
           the D4 auto-scroll effect targets it so the chat scrolls internally

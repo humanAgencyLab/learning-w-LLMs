@@ -23,7 +23,19 @@ const { runTopicPlanGeneratorAgent } = require('../agents/topicPlanGeneratorAgen
 const { runCourseTopicPlanModifyAgent } = require('../agents/courseTopicPlanModifyAgent');
 const { runTopicDraftModifyAgent } = require('../agents/topicDraftModifyAgent');
 const { validateTopicPlanPayload, validateSingleTopicPayload, normalizeTopicTitleKey } = require('../agents/validators/topicPlanValidator');
+const { runIngestion } = require('../services/bookIngestionService');
+const { useBookSources } = require('../agents/framework/featureFlag');
 const logger = require('../utils/logger');
+
+/** Chapter indices of ready ingested books (for ch:N anchor validation), or null. */
+function bookChapterIndicesFor(course) {
+  if (!useBookSources()) return null;
+  const ready = (course.sources || []).filter((s) => s.ingestStatus === 'ready' && s.bookMap?.chapters?.length);
+  if (!ready.length) return null;
+  const indices = new Set();
+  for (const src of ready) for (const ch of src.bookMap.chapters) indices.add(ch.index);
+  return [...indices];
+}
 
 /**
  * Build the one-shot retry nudge appended to the model prompt when a plan
@@ -63,10 +75,13 @@ const courseFileStorage = multer.diskStorage({
 
 const MAX_SOURCES_PER_COURSE = 10;
 const MAX_BATCH_UPLOAD_BYTES = 15 * 1024 * 1024;
+// Books (pdf/epub/docx) get a larger per-file cap; kept under Cloud Run's
+// 32MB request limit. Non-book batches are still policed at 15MB in-handler.
+const MAX_BOOK_FILE_BYTES = 30 * 1024 * 1024;
 
 const courseUpload = multer({
   storage: courseFileStorage,
-  limits: { fileSize: MAX_BATCH_UPLOAD_BYTES, files: MAX_SOURCES_PER_COURSE }
+  limits: { fileSize: MAX_BOOK_FILE_BYTES, files: MAX_SOURCES_PER_COURSE }
 });
 
 function collectCourseUploadFiles(req) {
@@ -313,12 +328,16 @@ router.post(
           code: 'TOO_MANY_FILES'
         });
       }
-      const totalBytes = rawFiles.reduce((s, f) => s + (f.size || 0), 0);
-      if (totalBytes > MAX_BATCH_UPLOAD_BYTES) {
+      // Size rules: book formats (pdf/epub/docx) may use the larger per-file
+      // cap; plain-text materials keep the original batch budget. The book cap
+      // stays under Cloud Run's 32MB request limit deliberately.
+      const isBookFormat = (f) => /\.(pdf|epub|docx)$/i.test(f.originalname || '');
+      const nonBookBytes = rawFiles.filter((f) => !isBookFormat(f)).reduce((s, f) => s + (f.size || 0), 0);
+      if (nonBookBytes > MAX_BATCH_UPLOAD_BYTES) {
         rawFiles.forEach((f) => unlinkQuiet(f.path));
         return res.status(413).json({
           success: false,
-          error: `Total upload size exceeds ${MAX_BATCH_UPLOAD_BYTES / (1024 * 1024)}MB`,
+          error: `Total upload size for non-book files exceeds ${MAX_BATCH_UPLOAD_BYTES / (1024 * 1024)}MB`,
           code: 'PAYLOAD_TOO_LARGE'
         });
       }
@@ -341,12 +360,30 @@ router.post(
         const mimeType = f.mimetype || 'application/octet-stream';
         let extractedText = '';
         let wordCount = 0;
+        let pdfPageCount = 0;
         try {
           const ex = await extractTextFromFile(filePath, mimeType);
           extractedText = ex.text;
           wordCount = ex.wordCount;
+          pdfPageCount = ex.pageCount || 0;
         } catch (exErr) {
           logger.warn({ err: exErr.message, courseId: req.params.courseId }, 'Extraction failed; storing metadata only');
+        }
+        // Scanned-PDF detection (book plan Section 2): a scan "succeeds" with
+        // an empty text layer, then breaks topic generation two screens away.
+        // Fail loudly HERE with a message the instructor can act on. No OCR
+        // in this phase.
+        const isPdf = mimeType === 'application/pdf' || /\.pdf$/i.test(f.originalname || '');
+        if (isPdf && pdfPageCount >= 5 && wordCount / pdfPageCount < 20) {
+          rawFiles.forEach((file) => unlinkQuiet(file.path));
+          return res.status(422).json({
+            success: false,
+            error:
+              `"${f.originalname}" appears to be a scanned PDF (page images without a text layer — ` +
+              `only ${wordCount} readable words across ${pdfPageCount} pages). Text cannot be extracted from scans. ` +
+              'Upload a digital PDF or an EPUB of this document instead.',
+            code: 'SCANNED_PDF'
+          });
         }
         createdDocs.push({
           filename: f.filename,
@@ -406,6 +443,115 @@ router.delete('/courses/:courseId/sources/:sourceId', requireCourseOwner, async 
     await req.course.save();
     fs.unlink(filePath, () => {});
     res.json({ success: true, data: { removed: true } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * POST /v1/instructor/courses/:courseId/sources/:sourceId/ingest
+ * Book ingestion (BOOK_GROUNDED_COURSES_PLAN.md Phase 1). Flag-gated; runs
+ * the staged pipeline in-request (a 500-page digital book completes well
+ * inside the Cloud Run window) and doubles as the retry endpoint — stages
+ * are idempotent. The client polls the course GET for ingestStatus.
+ */
+router.post('/courses/:courseId/sources/:sourceId/ingest', requireCourseOwner, async (req, res, next) => {
+  try {
+    if (!useBookSources()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Book ingestion is not enabled on this deployment.',
+        code: 'FEATURE_DISABLED'
+      });
+    }
+    const src = req.course.sources.id(req.params.sourceId);
+    if (!src) {
+      return res.status(404).json({ success: false, error: 'Source not found', code: 'NOT_FOUND' });
+    }
+    if (['extracting', 'structuring', 'embedding'].includes(src.ingestStatus)) {
+      return res.status(409).json({ success: false, error: 'Ingestion is already running for this source.', code: 'INGEST_RUNNING' });
+    }
+    const filePath = path.join(COURSE_UPLOAD_DIR, src.filename);
+    try {
+      await fs.promises.access(filePath);
+    } catch {
+      return res.status(410).json({
+        success: false,
+        error: 'The uploaded file is no longer on disk (instance storage is ephemeral). Re-upload the file, then ingest.',
+        code: 'FILE_MISSING'
+      });
+    }
+    const result = await runIngestion({
+      courseId: req.course._id,
+      sourceId: src._id,
+      filePath,
+      mimeType: src.mimeType,
+      originalName: src.originalName
+    });
+    if (!result.ok) {
+      return res.status(422).json({ success: false, error: result.error, code: result.code });
+    }
+    res.json({ success: true, data: { report: result.report } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * GET /v1/instructor/courses/:courseId/book-coverage
+ * Chapter-to-module coverage (plan Section 6): every chapter of each ready
+ * book, which topics/modules anchor to it (via machine-usable "ch:N"
+ * anchors), an explicit "Not covered" bucket, and topics carrying no chapter
+ * anchors at all. Anchors are edited through the existing topic PATCH.
+ */
+router.get('/courses/:courseId/book-coverage', requireCourseOwner, async (req, res, next) => {
+  try {
+    const books = (req.course.sources || []).filter(
+      (s) => s.ingestStatus === 'ready' && s.bookMap?.chapters?.length
+    );
+    if (!books.length) {
+      return res.json({ success: true, data: { books: [], planContextTruncated: req.course.planContextTruncated ?? null } });
+    }
+    const topics = await CourseTopic.find({ courseId: req.course._id })
+      .select('title status syllabusAnchors modules.title orderIndex updatedAt')
+      .sort({ orderIndex: 1 })
+      .lean();
+    const parseCh = (a) => {
+      const m = String(a).trim().match(/^ch:(\d+)(?:\.\d+)?$/i);
+      return m ? Number(m[1]) : null;
+    };
+    const data = books.map((src) => {
+      const chapters = src.bookMap.chapters.map((ch) => {
+        const coveredBy = topics
+          .filter((t) => (t.syllabusAnchors || []).some((a) => parseCh(a) === ch.index))
+          .map((t) => ({
+            topicId: t._id,
+            title: t.title,
+            status: t.status,
+            modules: (t.modules || []).map((m) => m.title)
+          }));
+        return {
+          index: ch.index,
+          title: ch.title,
+          pageStart: ch.pageStart,
+          pageEnd: ch.pageEnd,
+          summary: ch.summary,
+          coveredBy
+        };
+      });
+      return {
+        sourceId: src._id,
+        name: src.originalName,
+        generatedAt: src.bookMap.generatedAt,
+        ingestReport: src.ingestReport || null,
+        chapters,
+        notCovered: chapters.filter((c) => c.coveredBy.length === 0).map((c) => ({ index: c.index, title: c.title })),
+        topicsWithoutChapterAnchors: topics
+          .filter((t) => !(t.syllabusAnchors || []).some((a) => parseCh(a) != null))
+          .map((t) => ({ topicId: t._id, title: t.title }))
+      };
+    });
+    res.json({ success: true, data: { books: data, planContextTruncated: req.course.planContextTruncated ?? null } });
   } catch (e) {
     next(e);
   }
@@ -484,7 +630,7 @@ router.post('/courses/:courseId/generate-topics', requireCourseOwner, async (req
     }
     const referenceNames = referenceSourceNamesForPrompt(req.course.sources || []);
     const outlineHints = extractOutlineHints(contextText);
-    const resolved = resolveTopicPlanTargetCount({
+    let resolved = resolveTopicPlanTargetCount({
       bodyTopicCount: topicCountOverride,
       planStrategyTopicCount: req.course.planStrategy?.topicCount,
       planStrategyTopicCountMax: req.course.planStrategy?.topicCountMax,
@@ -492,6 +638,14 @@ router.post('/courses/:courseId/generate-topics', requireCourseOwner, async (req
       contextText,
       outlineHints
     });
+    // Book-backed courses (flag-gated): "one topic per chapter" targets the
+    // ingested book's chapter count. The shared resolver knows Unit/Week
+    // labels only, and extending it globally would change non-book behavior.
+    const bookChaptersForCount = bookChapterIndicesFor(req.course);
+    if (bookChaptersForCount && topicCountOverride == null && /per\s+chapter/i.test(instruct)) {
+      const n = Math.min(bookChaptersForCount.length, 20);
+      resolved = { ...resolved, target: n, rationale: `one topic per chapter of the ingested book (${bookChaptersForCount.length} chapters)`, perUnitRequested: true, inferredSegments: bookChaptersForCount.length };
+    }
 
     let raw = await runTopicPlanGeneratorAgent({
       contextText,
@@ -507,7 +661,7 @@ router.post('/courses/:courseId/generate-topics', requireCourseOwner, async (req
       topicBasis: resolved.topicBasis
     });
 
-    let validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames });
+    let validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames, bookChapters: bookChapterIndicesFor(req.course) });
 
     // Auto-retry once on ANY validation failure (coverage guardrail or
     // structure the repair pass couldn't save), with feedback in the prompt.
@@ -532,7 +686,7 @@ router.post('/courses/:courseId/generate-topics', requireCourseOwner, async (req
         topicBasis: resolved.topicBasis
       });
 
-      validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames });
+      validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames, bookChapters: bookChapterIndicesFor(req.course) });
     }
 
     if (!validated.valid) {
@@ -548,6 +702,9 @@ router.post('/courses/:courseId/generate-topics', requireCourseOwner, async (req
       });
     }
 
+    // Record whether this plan was generated from truncated context — the
+    // coverage view surfaces it (the instructor was previously never told).
+    Course.updateOne({ _id: req.course._id }, { $set: { planContextTruncated: truncated } }).catch(() => {});
     const delDrafts = await CourseTopic.deleteMany({ courseId: req.course._id, status: 'draft' });
     const draftRemovalCount = delDrafts.deletedCount || 0;
     const maxOrderDoc = await CourseTopic.findOne({ courseId: req.course._id }).sort({ orderIndex: -1 }).select('orderIndex').lean();
@@ -802,7 +959,7 @@ async function runTopicPlanPipeline(req, res, { instructorMessage, kind }) {
   const referenceNames = referenceSourceNamesForPrompt(course.sources || []);
   const outlineHints = extractOutlineHints(contextText);
 
-  const resolved = resolveTopicPlanTargetCount({
+  let resolved = resolveTopicPlanTargetCount({
     bodyTopicCount,
     planStrategyTopicCount: course.planStrategy?.topicCount,
     planStrategyTopicCountMax: course.planStrategy?.topicCountMax,
@@ -810,6 +967,13 @@ async function runTopicPlanPipeline(req, res, { instructorMessage, kind }) {
     contextText,
     outlineHints
   });
+  // Book-backed courses (flag-gated): "one topic per chapter" targets the
+  // ingested book's chapter count (see the generate-topics route note).
+  const pipelineBookChapters = bookChapterIndicesFor(req.course);
+  if (pipelineBookChapters && bodyTopicCount == null && /per\s+chapter/i.test(instructForResolve)) {
+    const n = Math.min(pipelineBookChapters.length, 20);
+    resolved = { ...resolved, target: n, rationale: `one topic per chapter of the ingested book (${pipelineBookChapters.length} chapters)`, perUnitRequested: true, inferredSegments: pipelineBookChapters.length };
+  }
 
   const allTopics = await CourseTopic.find({ courseId: course._id }).sort({ orderIndex: 1 }).lean();
 
@@ -846,7 +1010,7 @@ async function runTopicPlanPipeline(req, res, { instructorMessage, kind }) {
     });
   }
 
-  const validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames });
+  const validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames, bookChapters: bookChapterIndicesFor(req.course) });
   let finalValidated = validated;
 
   // Auto-retry once on ANY validation failure, with feedback in the prompt.
@@ -889,7 +1053,7 @@ async function runTopicPlanPipeline(req, res, { instructorMessage, kind }) {
       });
     }
 
-    finalValidated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames });
+    finalValidated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames, bookChapters: bookChapterIndicesFor(req.course) });
   }
 
   if (!finalValidated.valid) {
@@ -905,6 +1069,7 @@ async function runTopicPlanPipeline(req, res, { instructorMessage, kind }) {
     });
   }
 
+  Course.updateOne({ _id: course._id }, { $set: { planContextTruncated: truncated } }).catch(() => {});
   const delDrafts = await CourseTopic.deleteMany({ courseId: course._id, status: 'draft' });
   const draftRemovalCount = delDrafts.deletedCount || 0;
 
