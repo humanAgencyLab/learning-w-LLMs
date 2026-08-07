@@ -25,12 +25,31 @@ const { runEngagementAgent } = require('../agents/engagementAgent');
 const { runTeachingAgent, mapAssessmentForTeacher } = require('../agents/teachingAgent');
 
 // Extract question from assistant response
+/**
+ * The check-in question the student is expected to answer.
+ *
+ * The unified teaching structure mandates exactly ONE question, at the END of
+ * the response, so the LAST question sentence is the assessment question. The
+ * previous implementation took the FIRST '?'-span with `[^.!?]*` on either
+ * side, which back-scans across fenced code (no sentence terminators in it) and
+ * handed the grader a question prefixed with code garbage — measured on real
+ * transcripts, that polluted the graded question in the multi-question minority
+ * of turns. Newlines and code fences now bound the span.
+ */
 const extractQuestion = (response) => {
-  const questionMatch = response.match(/([^.!?]*\?[^.!?]*)/);
-  if (questionMatch) {
-    return questionMatch[1].trim();
-  }
-  return null;
+  const text = String(response || '');
+  if (!text.includes('?')) return null;
+  const withoutCode = text.replace(/```[\s\S]*?```/g, ' ');
+  // Split on sentence terminators followed by whitespace, or on line breaks.
+  // A bare '.' between digits (3.14) is NOT a terminator, so decimals survive.
+  const candidates = withoutCode
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.replace(/\*\*/g, '').trim())
+    .filter((s) => s.endsWith('?') && s.split(/\s+/).filter(Boolean).length >= 3);
+  if (candidates.length) return candidates[candidates.length - 1];
+  // Fall back to the original behaviour rather than losing the check entirely.
+  const questionMatch = text.match(/([^.!?]*\?[^.!?]*)/);
+  return questionMatch ? questionMatch[1].trim() : null;
 };
 
 // Safety: override obviously-correct short answers to prevent LLM misgrading.
@@ -1188,6 +1207,12 @@ Return ONLY valid JSON in this format:
               });
             }
 
+            // Retry count for the milestone being assessed, read BEFORE this
+            // turn's increment. This is the authoritative first-vs-second-wrong
+            // signal for scenario selection (the grader's own `recommendation`
+            // is model output and cannot be trusted for escalation).
+            const retryCountForTeacher = Number(session.meta?.milestoneRetryCount?.[milestoneIdx] || 0);
+
             if (assessment) {
               // If the LLM misgraded an obvious concept check, fix it deterministically.
               if (session?.meta?.outstandingCheck) {
@@ -1204,7 +1229,7 @@ Return ONLY valid JSON in this format:
               }
 
               const effectiveAssessment = gs.assessmentResult?.payload || assessment;
-              const retryCount = session.meta?.milestoneRetryCount?.[milestoneIdx] || 0;
+              const retryCount = retryCountForTeacher;
               const assessmentFeedback = buildAssessmentFeedback({
                 responseType: effectiveAssessment.responseType,
                 understood: effectiveAssessment.understood,
@@ -1309,7 +1334,7 @@ Return ONLY valid JSON in this format:
               // IMPORTANT: The graph's teaching result was generated BEFORE we advanced the milestone.
               // Re-generate teaching for the NEW milestone so UI + teaching stay aligned.
               const milestoneInfo = { moveToNextMilestone: true, markMilestoneComplete: true };
-              const assessmentForTeacher = mapAssessmentForTeacher(assessment);
+              const assessmentForTeacher = mapAssessmentForTeacher(assessment, retryCountForTeacher);
 
               // This re-teach IS the turn's final content (the in-graph
               // teaching was suppressed for advancing turns) — stream it, and
@@ -1335,7 +1360,7 @@ Return ONLY valid JSON in this format:
               // Teaching agent skipped or failed validation; still return full teaching via unified prompt.
               try {
                 const isFollowUp = !!assessment;
-                const assessmentForTeacher = mapAssessmentForTeacher(assessment);
+                const assessmentForTeacher = mapAssessmentForTeacher(assessment, retryCountForTeacher);
                 const milestoneInfo = cm
                   ? {
                       moveToNextMilestone: cm.moveToNextMilestone,
@@ -1664,7 +1689,11 @@ Return ONLY valid JSON in this format:
             session.meta.outstandingCheck,
             userMessage,
             currentMilestone, // This is the milestone the question was about
-            milestoneRetryCount
+            milestoneRetryCount,
+            // The grader was subject- and language-blind: it saw only the
+            // question, the answer and the milestone text, so a Java answer was
+            // judged against a prompt whose only worked examples were Python.
+            { topicTitle: session.topic || '' }
           );
           
           try {

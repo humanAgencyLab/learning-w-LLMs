@@ -24,40 +24,33 @@ const { callTeacherAPI, callTeacherAPIStream } = require('../services/teacherSer
  * Map the assessment agent's payload
  *   { responseType, understood, recommendation, ... }
  * onto the legacy analyzer's assessmentResult shape that buildTeacherPrompt
- * branches on. The mapping must be TOTAL over wrong answers: teacher_prompt's
- * fallback operands reference an undefined `milestoneRetryCount` (latent
- * ReferenceError the legacy analyzer never triggers because it always sets the
- * explicit flags) — so exactly one of isFirstIncorrect/isSecondIncorrect must
- * be true for every wrong_answer.
+ * branches on.
  *
  * Scenario coverage (legacy scenarioType ← this mapping):
  * - first_teaching        ← assessment null (isFollowUp=false)
  * - correct_move_next     ← understood, !needsMore, milestoneInfo both flags
  * - correct_needs_more    ← understood + recommendation 'clarify_again'
  * - clarification_request ← !understood + responseType 'clarification_request'
- * - incorrect_first       ← every wrong_answer (see below)
+ * - incorrect_first       ← wrong_answer, first attempt
+ * - incorrect_second      ← wrong_answer with a prior failed attempt
  * - follow_up             ← understood without a milestone advance
  *
- * incorrect_second is deliberately NOT selectable: whenever teacher_prompt
- * would choose it (isFirstIncorrect falsy on a wrong answer), line 105
- * evaluates the undefined milestoneRetryCount and throws — the legacy
- * analyzer feeds exactly that shape (isSecondIncorrect only), so the
- * incorrect_second template has never once rendered in production; second
- * wrongs have always surfaced as the re-teach loop (pilot F16) or an error.
- * We therefore set isFirstIncorrect for ALL wrong answers, which
- * short-circuits the broken operand and renders the re-teach template —
- * the only second-wrong behavior legacy has ever actually delivered — while
- * the route still advances the milestone. Fixing teacher_prompt.js is a
- * post-study change (it is the pilot's reference implementation).
+ * `retryCount` is the ROUTE's count for the milestone being assessed, taken
+ * before this turn's increment — it, not the model's `recommendation`, is the
+ * authoritative first-vs-second signal (the grader is an LLM and may say
+ * "clarify_again" on a second wrong). This mirrors the legacy analyzer, which
+ * branches on the same stored count.
  */
-function mapAssessmentForTeacher(assessment) {
+function mapAssessmentForTeacher(assessment, retryCount = 0) {
   if (!assessment) return null;
   const wrong = assessment.responseType === 'wrong_answer';
+  const secondWrong = wrong
+    && (Number(retryCount) >= 1 || assessment.recommendation === 'move_forward_anyway');
   return {
     understood: !!assessment.understood,
     isClarificationRequest: assessment.responseType === 'clarification_request',
-    isFirstIncorrect: wrong,
-    isSecondIncorrect: wrong && assessment.recommendation === 'move_forward_anyway',
+    isFirstIncorrect: wrong && !secondWrong,
+    isSecondIncorrect: secondWrong,
     needsMoreClarification: !!assessment.understood && assessment.recommendation === 'clarify_again',
     responseType: assessment.responseType,
     recommendation: assessment.recommendation,

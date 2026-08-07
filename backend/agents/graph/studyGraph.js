@@ -129,6 +129,10 @@ async function assessmentNode(state) {
     answer: state.userMessage,
     milestone,
     retryCount,
+    // Subject/language context so the grader judges the answer in the course's
+    // language. NOT the instructor's guidelines — assessment stays
+    // instruction-blind for the study window (see the AgentState comment).
+    topicTitle: session?.topic || '',
   });
   return { assessmentResult: result };
 }
@@ -152,7 +156,8 @@ async function teachingNode(state) {
   // semantics — including correct_needs_more, which the old inline mapping
   // could never express (it keyed needsMoreClarification off
   // clarification_request, which forces understood=false).
-  const assessmentForTeacher = mapAssessmentForTeacher(assessment);
+  const retryCount = state.session?.meta?.milestoneRetryCount?.[state.session?.meta?.currentMilestoneIndex ?? 0] || 0;
+  const assessmentForTeacher = mapAssessmentForTeacher(assessment, retryCount);
 
   const milestoneInfo = cm ? {
     moveToNextMilestone: cm.moveToNextMilestone,

@@ -1,6 +1,24 @@
 const VALID_RESPONSE_TYPES = ['clarification_request', 'wrong_answer', 'correct_answer', 'incomplete_answer'];
 const VALID_RECOMMENDATIONS = ['move_forward', 'clarify_again', 'move_forward_anyway'];
 
+/**
+ * Repair internally-inconsistent-but-recoverable grader output instead of
+ * rejecting it. The legacy route already normalises the identical shapes
+ * (chatRoutes: a correct_answer label forces understood/recommendation), while
+ * this validator used to reject them — and three rejects landed on the
+ * fallback, turning a CORRECT answer into a wrong one. Mutates a copy.
+ */
+function repairAssessment(output) {
+  if (!output || typeof output !== 'object') return output;
+  const o = { ...output };
+  if (typeof o.responseType === 'string') o.responseType = o.responseType.trim().toLowerCase();
+  if (o.responseType === 'correct_answer' || o.responseType === 'incomplete_answer') {
+    o.understood = true;
+    o.recommendation = 'move_forward';
+  }
+  return o;
+}
+
 function validateAssessment(output) {
   const errors = [];
 
@@ -32,4 +50,4 @@ function validateAssessment(output) {
   return { valid: errors.length === 0, errors };
 }
 
-module.exports = { validateAssessment };
+module.exports = { validateAssessment, repairAssessment };

@@ -1,24 +1,43 @@
 // Assessment Analyzer - LLM-based evaluation of student responses
 
-const buildAssessmentAnalysisPrompt = (assessmentQuestion, studentAnswer, currentMilestone, milestoneRetryCount = 0) => {
+const buildAssessmentAnalysisPrompt = (assessmentQuestion, studentAnswer, currentMilestone, milestoneRetryCount = 0, context = {}) => {
+  const topicLine = context?.topicTitle
+    ? `Course topic (the subject and language this answer must be judged in): "${context.topicTitle}"\n`
+    : '';
   return `You are an expert educational assessment AI. Your task is to classify the student's response and evaluate their understanding of the CURRENT MILESTONE concept.
 
-Assessment Question: "${assessmentQuestion}"
+${topicLine}Assessment Question: "${assessmentQuestion}"
 Student's Answer: "${studentAnswer}"
 Current Milestone Topic: "${currentMilestone?.text || 'N/A'}"
 Milestone Retry Count: ${milestoneRetryCount} (0 = first attempt, 1 = retry after clarification)
 
 ⚠️⚠️⚠️ CRITICAL: This assessment is about the CURRENT MILESTONE ONLY: "${currentMilestone?.text || 'N/A'}"
 
+⚠️⚠️⚠️ RULE 0 - SUBSTANCE BEFORE KEYWORDS (apply this before every other rule):
+Decide FIRST whether the answer contains a substantive attempt at the question:
+a claim, a definition, an example, a code snippet, a comparison, or a piece of
+reasoning about the concept. If it does, classify on THAT SUBSTANCE — as
+CORRECT_ANSWER, INCOMPLETE_ANSWER, or WRONG_ANSWER — even if the student also
+asks a follow-up question, hedges ("I think", "right?", "does that sound
+right?"), or says they were confused earlier. Learners routinely answer and
+then ask for more; that is engagement, not helplessness.
+Only classify as CLARIFICATION_REQUEST when the message contains NO substantive
+attempt at all.
+
 YOUR TASK - CLASSIFY THE RESPONSE TYPE FIRST:
 
 Analyze the student's response and classify it into ONE of these categories:
 
-1. **CLARIFICATION_REQUEST**: Student is asking for help, expressing confusion, or indicating they don't understand
-   - Examples: "I don't know", "I don't understand", "can you explain", "help", "I'm confused", "what does this mean", "no idea", "not sure", "unsure", "i forgot", "i forgot", "forgot", "don't remember", "can't remember", "don't recall", "not sure how", "how do i", "what is", "explain", "help me", "i need help", "confused", "unclear", "not clear"
-   - Also includes: Repeating the question back, vague non-answers like "maybe", "I think" without substance
+1. **CLARIFICATION_REQUEST**: Student is asking for help with NO substantive attempt at the question
+   - Examples of pure requests: "I don't know", "I don't understand", "can you explain", "help", "I'm confused", "what does this mean", "no idea", "not sure", "i forgot", "don't remember", "can you give me an example first", "can you rephrase that"
+   - Also includes: Repeating the question back, vague non-answers like "maybe", "I think" with no content after it
    - Also includes: Pointing out that something wasn't taught (e.g., "you did not say anything about terminal")
    - Intent: Student needs explanation/help, NOT attempting to answer
+   - ⚠️ DOES NOT include: an answer followed by a question. "Binary is base-2 using
+     0 and 1. Does that mean it is like a yes/no system?" is a CORRECT_ANSWER with
+     a follow-up, NOT a clarification request.
+   - ⚠️ The presence of a question mark, or of words like "what is", "how do I",
+     or "explain", NEVER by itself makes a response a clarification request.
 
 2. **WRONG_ANSWER**: Student attempted to answer but gave an incorrect answer
    - Examples: Providing a specific but incorrect answer, demonstrating misunderstanding
@@ -35,33 +54,45 @@ Analyze the student's response and classify it into ONE of these categories:
 ⚠️⚠️⚠️ CRITICAL CLASSIFICATION RULES:
 
 - Use CONTEXT and INTENT, not just keywords
-- "I don't know", "no idea", "i forgot", "don't remember", "not sure" → CLARIFICATION_REQUEST (not wrong answer)
+- "I don't know", "no idea", "i forgot", "don't remember", "not sure" (with nothing else) → CLARIFICATION_REQUEST (not wrong answer)
 - "I think it's X" where X is wrong → WRONG_ANSWER (they attempted to answer)
 - "I think it's X" where X is correct but brief → INCOMPLETE_ANSWER
-- Repeating the question → CLARIFICATION_REQUEST
+- Repeating the question with no content of their own → CLARIFICATION_REQUEST
 - Pointing out missing information (e.g., "you didn't mention X") → CLARIFICATION_REQUEST
 - "yes" or "ok" without substance → CLARIFICATION_REQUEST (not really answering)
 - Providing a specific answer (even if wrong) → WRONG_ANSWER (they attempted)
 - ⚠️⚠️⚠️ CRITICAL: If the student's answer is CORRECT (even if brief), classify as CORRECT_ANSWER or INCOMPLETE_ANSWER, NOT wrong_answer
-- ⚠️⚠️⚠️ CRITICAL: "python filename.py" is a CORRECT answer to "how to run a Python program"
-- ⚠️⚠️⚠️ CRITICAL: "The purpose of using the python command is to invoke the Python interpreter to execute the specified script" is a CORRECT answer
+- ⚠️⚠️⚠️ CRITICAL: A CORRECT statement + a follow-up question → CORRECT_ANSWER or
+  INCOMPLETE_ANSWER (recommendation "move_forward"). Never CLARIFICATION_REQUEST.
+- ⚠️⚠️⚠️ CRITICAL: An answer that demonstrates the milestone concept correctly
+  using a DIFFERENT but valid example than the one named in the question still
+  shows understanding → INCOMPLETE_ANSWER (not WRONG_ANSWER). Judge the concept,
+  not whether they used the exact variable, value, or function from the question.
+  Reserve WRONG_ANSWER for answers that are factually incorrect, or that explain
+  a genuinely DIFFERENT concept than the one asked about.
 
 AFTER CLASSIFICATION, EVALUATE UNDERSTANDING:
 
-⚠️⚠️⚠️ CRITICAL: Before classifying, verify if the answer is actually CORRECT:
-- "python filename.py" → CORRECT answer for "how to run Python program"
-- "The purpose of using the python command is to invoke the Python interpreter to execute the specified script" → CORRECT answer
-- ".py extension helps IDE/interpreter understand it's Python" → CORRECT answer
-- "it determined we have to run a python file" → CORRECT (shows understanding)
+⚠️⚠️⚠️ CRITICAL: Before classifying, verify if the answer is actually CORRECT.
+Judge correctness in the language and subject of the course topic named above.
+Examples of the SHAPE of a correct answer (these are illustrations, not a
+whitelist — the course may be in any language or subject):
+- A correct command, syntax fragment, or code snippet that does what was asked
+- A correct definition or explanation of the concept in the student's own words
+- A correct comparison ("X holds whole numbers, Y holds decimals")
+- A correct worked example, even with different values than the question used
 - Any answer that correctly explains the concept being asked about → CORRECT answer
 - Any answer that demonstrates understanding of the core concept → CORRECT answer (even if brief)
 
 ⚠️⚠️⚠️ CRITICAL: COMMON CORRECT ANSWER PATTERNS (DO NOT MARK THESE AS WRONG):
-- Answers that correctly explain Python syntax (e.g., "variable_name = value" for variable assignment)
-- Answers that correctly explain how to run Python programs (e.g., "python filename.py")
-- Answers that correctly explain Python concepts (e.g., data types, functions, etc.)
+- Correct syntax for the course's language (e.g. a typed declaration such as
+  \`int x = 5;\`, or an untyped assignment such as \`x = 5\` — whichever is right
+  for THIS course's language)
+- Correct code snippets, including multi-statement examples and fenced code blocks
+- Correct explanations of the course's concepts (data types, functions, control flow, etc.)
 - Answers that show understanding even if they don't use exact terminology
 - Answers that are functionally correct even if phrased differently
+- Answers that transfer a concept correctly from another language the student knows
 
 ⚠️⚠️⚠️ CRITICAL: IF THE ANSWER IS CORRECT, YOU MUST CLASSIFY AS CORRECT_ANSWER OR INCOMPLETE_ANSWER:
 - If answer is correct and complete → CORRECT_ANSWER
@@ -108,13 +139,12 @@ Rules:
   - Do NOT mark correct answers as wrong_answer - this is a critical error
   - When in doubt, if the answer demonstrates understanding → it's correct_answer or incomplete_answer
   - Only use wrong_answer if the answer is genuinely incorrect or shows misunderstanding
-- **Common Correct Answers** (DO NOT MARK THESE AS WRONG): 
-  - "python filename.py" → CORRECT (for "how to run Python program")
-  - "python hello.py" → CORRECT (for "how to run Python program")
-  - "The purpose of using the python command is to invoke the Python interpreter to execute the specified script" → CORRECT
-  - ".py extension helps IDE/interpreter understand it's Python" → CORRECT
-  - "variable_name = value" → CORRECT (for "how to assign a value to a variable")
-  - "name = 'Hello'" → CORRECT (for "how to assign a string to a variable")
+- **Common Correct Answers** (DO NOT MARK THESE AS WRONG):
+  - A correct command or invocation for the course's tooling → CORRECT
+  - A correct assignment or declaration in the course's language (e.g. \`int x = 5;\`
+    in a typed language, \`x = 5\` in an untyped one) → CORRECT
+  - A correct multi-statement code example, even inside a fenced code block → CORRECT
+  - A correct explanation of what a construct is for → CORRECT
   - Any answer that correctly explains the concept → CORRECT
 - **Be fair but accurate**: Recognize when students understand even if brief, but also identify genuine confusion
 - **Use natural language understanding**: Don't rely on keyword matching - understand the student's intent and context
@@ -122,29 +152,43 @@ Rules:
 - **⚠️⚠️⚠️ FINAL CHECK**: Before returning, ask yourself: "Is this answer correct?" If yes → correct_answer or incomplete_answer (NEVER wrong_answer)
 
 ⚠️⚠️⚠️ VALIDATION BEFORE RETURNING (MANDATORY CHECKLIST):
-1. ⚠️⚠️⚠️ FIRST: Is this answer actually CORRECT? 
+1. ⚠️⚠️⚠️ FIRST: Does the response contain a substantive attempt (a claim,
+   definition, example, code, comparison, or reasoning)?
+   - If NO → clarification_request (understood = false, recommendation = "clarify_again")
+   - If YES → continue to step 2. Do NOT return clarification_request, no matter
+     how many questions the student also asked.
+2. Is that substantive attempt actually CORRECT?
    - If YES → MUST use correct_answer or incomplete_answer (NEVER wrong_answer)
    - If YES → MUST set understood = true (NEVER false)
    - If YES → MUST set recommendation = "move_forward" (NEVER "clarify_again")
-2. Is the student asking for help? 
-   - If YES → clarification_request (understood = false, recommendation = "clarify_again")
-3. Did the student attempt to answer but got it wrong? 
+3. Did the student attempt to answer but got it wrong?
    - If YES → wrong_answer (understood = false, recommendation depends on retry count)
 
-⚠️⚠️⚠️ CRITICAL: The most common error is marking correct answers as wrong. Always verify correctness FIRST before classifying.
+⚠️⚠️⚠️ CRITICAL: The two most common errors, in order, are (1) classifying a
+correct answer that ends with a follow-up question as clarification_request,
+and (2) marking a correct answer as wrong. Check for both before returning.
+
+⚠️⚠️⚠️ EXAMPLES OF RESPONSES THAT MUST NOT BE MARKED AS CLARIFICATION REQUESTS:
+- Question: "What is the order of precedence for logical operators?"
+  - Answer: "So, NOT comes first, then AND, then OR. But how does that affect
+    \`!a && b || c\`?" → CORRECT_ANSWER (understood = true, move_forward).
+    The precedence answer is correct; the follow-up does not undo it.
+- Question: "What is the primary difference between binary and decimal?"
+  - Answer: "Binary is base-2 using just 0 and 1. Does that mean it's like a
+    yes/no system?" → CORRECT_ANSWER (understood = true, move_forward)
+- Question: "What is the purpose of the Math class in Java?"
+  - Answer: "It has built-in functions like Math.abs() and Math.sqrt(). But I
+    don't get how they differ from + and -." → CORRECT_ANSWER (understood = true)
 
 ⚠️⚠️⚠️ EXAMPLES OF CORRECT ANSWERS THAT MUST NOT BE MARKED WRONG:
-- Question: "What is the basic syntax for assigning a string value to a variable in Python?"
-  - Answer: "name = 'Hello'" → CORRECT_ANSWER (understood = true)
-  - Answer: "variable_name = 'value'" → CORRECT_ANSWER (understood = true)
-  
-- Question: "What is the command you would use to run a Python program?"
-  - Answer: "python filename.py" → CORRECT_ANSWER (understood = true)
-  - Answer: "python hello.py" → CORRECT_ANSWER (understood = true)
-  
-- Question: "What is the purpose of using the python command?"
-  - Answer: "The purpose of using the python command is to invoke the Python interpreter to execute the specified script" → CORRECT_ANSWER (understood = true)
-  - Answer: "to run python files" → CORRECT_ANSWER or INCOMPLETE_ANSWER (understood = true)
+- Question: "What is the syntax for declaring and initializing a variable named
+  \`y\` with the value \`10\` in Java?"
+  - Answer: "I'd write \`String name;\` and then \`name = \"John\";\`" →
+    INCOMPLETE_ANSWER (understood = true). The declare-then-initialize concept
+    is demonstrated correctly; a different type and identifier is not an error.
+- Question: "What is the purpose of the isWhitespace() method?"
+  - Answer: "To check if a character is whitespace, use Character.isWhitespace()"
+    → CORRECT_ANSWER or INCOMPLETE_ANSWER (understood = true). Brief is not wrong.
 
 Classify accurately based on the student's actual intent and the content of their response. Remember: When in doubt, if the answer is correct → it's correct_answer or incomplete_answer.`;
 };

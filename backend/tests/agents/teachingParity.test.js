@@ -96,15 +96,15 @@ const SCENARIOS = [
     marker: 'INCORRECT FIRST ATTEMPT - RE-TEACH SAME MILESTONE',
   },
   {
-    // Second wrong answer: the incorrect_second template is unreachable in the
-    // reference (see the ReferenceError test below) — legacy has only ever
-    // delivered the re-teach template for second wrongs, and the mapping
-    // reproduces exactly that while the route advances the milestone.
-    name: 'incorrect_second (renders the re-teach template — reference crash documented below)',
+    // Second wrong answer now reaches the move-forward template. Before the
+    // escalation fix this scenario was unreachable (teacher_prompt referenced
+    // an undeclared milestoneRetryCount and threw), so the tutor re-taught the
+    // same milestone forever instead of escalating.
+    name: 'incorrect_second',
     agentAssessment: { responseType: 'wrong_answer', understood: false, recommendation: 'move_forward_anyway' },
     isFollowUp: true,
     milestoneInfo: { moveToNextMilestone: true, markMilestoneComplete: true },
-    marker: 'INCORRECT FIRST ATTEMPT - RE-TEACH SAME MILESTONE',
+    marker: 'INCORRECT SECOND ATTEMPT - MOVE TO NEXT MILESTONE',
   },
 ];
 
@@ -192,30 +192,65 @@ describe('instructor guidelines edge + validation/retry + streaming', () => {
   });
 });
 
-describe('mapAssessmentForTeacher — totality over wrong answers', () => {
-  it('documents the reference bug: buildTeacherPrompt throws whenever incorrect_second would be selected', () => {
-    // The legacy analyzer's own shape for a second wrong (isSecondIncorrect
-    // only, isFirstIncorrect undefined) — teacher_prompt.js:105 evaluates the
-    // undefined milestoneRetryCount and throws. This is why incorrect_second
-    // has never rendered in production and why the mapping must short-circuit.
-    const legacySecondWrongShape = {
-      understood: false,
-      isClarificationRequest: false,
-      isSecondIncorrect: true,
-      responseType: 'wrong_answer',
-    };
-    expect(() =>
-      buildTeacherPrompt(makeSession(), 'x', true, legacySecondWrongShape, { moveToNextMilestone: true, markMilestoneComplete: true }, '')
-    ).toThrow(/milestoneRetryCount is not defined/);
+describe('escalation path (was dead: undeclared milestoneRetryCount)', () => {
+  // Regression for the exact shape the LEGACY analyzer emits on a second wrong
+  // (isSecondIncorrect only, isFirstIncorrect undefined). This used to throw
+  // ReferenceError inside buildTeacherPrompt, so incorrect_second never
+  // rendered in production and the tutor looped instead of escalating.
+  const legacySecondWrongShape = {
+    understood: false,
+    isClarificationRequest: false,
+    isSecondIncorrect: true,
+    responseType: 'wrong_answer',
+  };
+
+  it('no longer throws, and selects the move-forward template', () => {
+    const prompt = buildTeacherPrompt(
+      makeSession(), 'still wrong', true, legacySecondWrongShape,
+      { moveToNextMilestone: true, markMilestoneComplete: true }, ''
+    );
+    expect(prompt).toContain('INCORRECT SECOND ATTEMPT - MOVE TO NEXT MILESTONE');
+    expect(prompt).not.toContain('INCORRECT FIRST ATTEMPT');
   });
 
-  it('always sets isFirstIncorrect for wrong answers so the broken operand never evaluates', () => {
+  it('escalates on the retry-count fallback alone, when no explicit flag is set', () => {
+    const session = makeSession();
+    session.meta.milestoneRetryCount = { 1: 1 }; // already failed this milestone once
+    const prompt = buildTeacherPrompt(
+      session, 'still wrong', true,
+      { understood: false, isClarificationRequest: false, responseType: 'wrong_answer' },
+      { moveToNextMilestone: false, markMilestoneComplete: false }, ''
+    );
+    expect(prompt).toContain('INCORRECT SECOND ATTEMPT - MOVE TO NEXT MILESTONE');
+  });
+
+  it('a FIRST wrong answer still re-teaches the same milestone (no premature escalation)', () => {
+    const prompt = buildTeacherPrompt(
+      makeSession(), 'wrong once', true,
+      mapAssessmentForTeacher({ responseType: 'wrong_answer', understood: false, recommendation: 'clarify_again' }, 0),
+      { moveToNextMilestone: false, markMilestoneComplete: false }, ''
+    );
+    expect(prompt).toContain('INCORRECT FIRST ATTEMPT - RE-TEACH SAME MILESTONE');
+  });
+
+  it('the route retry count, not the model recommendation, decides escalation', () => {
+    // Grader says "clarify_again" but the route knows this is the 2nd failure.
+    const m = mapAssessmentForTeacher({ responseType: 'wrong_answer', understood: false, recommendation: 'clarify_again' }, 1);
+    expect(m.isSecondIncorrect).toBe(true);
+    expect(m.isFirstIncorrect).toBe(false);
+    const prompt = buildTeacherPrompt(makeSession(), 'x', true, m, { moveToNextMilestone: true, markMilestoneComplete: true }, '');
+    expect(prompt).toContain('INCORRECT SECOND ATTEMPT');
+  });
+
+  it('never throws for any wrong-answer shape', () => {
     for (const rec of ['clarify_again', 'move_forward_anyway', 'move_forward', undefined, 'anything']) {
-      const m = mapAssessmentForTeacher({ responseType: 'wrong_answer', understood: false, recommendation: rec });
-      expect(m.isFirstIncorrect).toBe(true);
-      expect(() =>
-        buildTeacherPrompt(makeSession(), 'x', true, m, { moveToNextMilestone: false, markMilestoneComplete: false }, '')
-      ).not.toThrow();
+      for (const rc of [0, 1, 2]) {
+        const m = mapAssessmentForTeacher({ responseType: 'wrong_answer', understood: false, recommendation: rec }, rc);
+        expect(m.isFirstIncorrect || m.isSecondIncorrect).toBe(true);
+        expect(() =>
+          buildTeacherPrompt(makeSession(), 'x', true, m, { moveToNextMilestone: false, markMilestoneComplete: false }, '')
+        ).not.toThrow();
+      }
     }
   });
 

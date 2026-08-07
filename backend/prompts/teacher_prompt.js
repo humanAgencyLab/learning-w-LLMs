@@ -71,6 +71,20 @@ Ask them what topic or subject they'd like to learn about today.`;
   // The milestone index should already be updated in chatRoutes.js, but we need to handle it here
   let effectiveMilestoneIndex = currentMilestoneIndex;
   let effectiveMilestone = currentMilestone;
+  // Retry count for the milestone being assessed. This was referenced below
+  // but never declared, so the branch that reads it threw a ReferenceError and
+  // the incorrect_second template never rendered in production — a student who
+  // answered wrong twice got the same re-teach again instead of being moved
+  // forward. Second-wrong turns advance the index BEFORE the prompt is built,
+  // so the count for the milestone just failed lives at the previous index too;
+  // take the max so the fallback reads the attempt that was actually graded.
+  const retryCountAt = (idx) => {
+    const m = meta?.milestoneRetryCount;
+    if (!m || idx < 0) return 0;
+    const v = m[idx] ?? m[String(idx)];
+    return Number.isFinite(Number(v)) ? Number(v) : 0;
+  };
+  const milestoneRetryCount = Math.max(retryCountAt(currentMilestoneIndex), retryCountAt(currentMilestoneIndex - 1));
   
   if (isFollowUp && hasAssessmentResult) {
     const { 
@@ -102,11 +116,10 @@ Ask them what topic or subject they'd like to learn about today.`;
         scenarioType = 'clarification_request';
         effectiveMilestoneIndex = currentMilestoneIndex;
         effectiveMilestone = currentMilestone;
-      } else if (isFirstIncorrect || (milestoneRetryCount < 1 && responseType === 'wrong_answer')) {
-        // Student gave wrong answer - use correction scenario
-        scenarioType = 'incorrect_first';
-        effectiveMilestoneIndex = currentMilestoneIndex;
-        effectiveMilestone = currentMilestone;
+      // Second-wrong is checked FIRST: the callers set the explicit flags, and
+      // on a second wrong the milestone index has already advanced, so the
+      // retry-count fallback below would otherwise read 0 for the new index and
+      // mis-route an escalation back into another identical re-teach.
       } else if (isSecondIncorrect || (milestoneRetryCount >= 1 && responseType === 'wrong_answer')) {
         // Second wrong answer - move forward anyway
         scenarioType = 'incorrect_second';
@@ -116,6 +129,11 @@ Ask them what topic or subject they'd like to learn about today.`;
           effectiveMilestoneIndex = currentMilestoneIndex + 1;
           effectiveMilestone = activeModule?.milestones?.[effectiveMilestoneIndex];
         }
+      } else if (isFirstIncorrect || (milestoneRetryCount < 1 && responseType === 'wrong_answer')) {
+        // Student gave wrong answer - use correction scenario
+        scenarioType = 'incorrect_first';
+        effectiveMilestoneIndex = currentMilestoneIndex;
+        effectiveMilestone = currentMilestone;
       } else {
         // Fallback
         scenarioType = 'follow_up';
