@@ -22,7 +22,7 @@ const { useMultiAgent, useStreaming } = require('../agents/framework/featureFlag
 const { runIntentAgent } = require('../agents/intentAgent');
 const { runStudyGraph } = require('../agents/graph/runGraph');
 const { runEngagementAgent } = require('../agents/engagementAgent');
-const { runTeachingAgent } = require('../agents/teachingAgent');
+const { runTeachingAgent, mapAssessmentForTeacher } = require('../agents/teachingAgent');
 
 // Extract question from assistant response
 const extractQuestion = (response) => {
@@ -1143,8 +1143,25 @@ Return ONLY valid JSON in this format:
 
       // ── LangGraph orchestrated learning path ──
       if (useMultiAgent()) {
+        // Streaming parity with the legacy path: chunks flow during teaching
+        // generation. Headers are sent lazily on the FIRST chunk, so turns
+        // that produce no chunks (quiz gate, module completion) still respond
+        // as plain JSON through the headers-aware exits below.
+        const graphWantStream = req.body.stream && useStreaming();
+        const graphWriteChunk = (chunk) => {
+          if (!res.headersSent) {
+            res.setHeader('Content-Type', 'text/event-stream');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Connection', 'keep-alive');
+            res.setHeader('X-Accel-Buffering', 'no');
+            res.flushHeaders();
+          }
+          res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+          if (typeof res.flush === 'function') res.flush();
+        };
+        const graphStreamCallback = graphWantStream ? graphWriteChunk : null;
         try {
-          const graphResult = await runStudyGraph({ session, userMessage, requestType: 'chat', globalInstructions: courseGlobalInstructions });
+          const graphResult = await runStudyGraph({ session, userMessage, requestType: 'chat', globalInstructions: courseGlobalInstructions, streamCallback: graphStreamCallback });
           if (graphResult.success) {
             const gs = graphResult.state;
             const cm = gs.convManagerResult?.payload;
@@ -1158,6 +1175,10 @@ Return ONLY valid JSON in this format:
             if (cm?.shouldStartQuiz || cm?.action === 'start_quiz') {
               session.messages.push({ id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: cm.intent, phaseAtSend: session.phase, graphPath: true } });
               await session.save();
+              if (res.headersSent) {
+                res.write(`data: ${JSON.stringify({ done: true, message: cm.response || "Great — when you're ready, click Start Quiz or type “start quiz”.", phase: session.phase })}\n\n`);
+                return res.end();
+              }
               return res.json({
                 success: true,
                 data: {
@@ -1288,22 +1309,20 @@ Return ONLY valid JSON in this format:
               // IMPORTANT: The graph's teaching result was generated BEFORE we advanced the milestone.
               // Re-generate teaching for the NEW milestone so UI + teaching stay aligned.
               const milestoneInfo = { moveToNextMilestone: true, markMilestoneComplete: true };
-              const assessmentForTeacher = assessment ? {
-                understood: assessment.understood,
-                isClarificationRequest: assessment.responseType === 'clarification_request',
-                isFirstIncorrect: false,
-                isSecondIncorrect: false,
-                needsMoreClarification: assessment.recommendation === 'clarify_again',
-                responseType: assessment.responseType,
-                recommendation: assessment.recommendation,
-              } : null;
+              const assessmentForTeacher = mapAssessmentForTeacher(assessment);
 
+              // This re-teach IS the turn's final content (the in-graph
+              // teaching was suppressed for advancing turns) — stream it, and
+              // keep instructor guidelines constraining it like every other
+              // teaching call.
               const reTeach = await runTeachingAgent({
                 session,
                 userMessage,
                 isFollowUp: true,
                 assessmentResult: assessmentForTeacher,
                 milestoneInfo,
+                globalInstructions: courseGlobalInstructions,
+                streamCallback: graphStreamCallback,
               });
 
               assistantResponse = reTeach?.uiMessage || reTeach?.payload?.content || '';
@@ -1316,19 +1335,7 @@ Return ONLY valid JSON in this format:
               // Teaching agent skipped or failed validation; still return full teaching via unified prompt.
               try {
                 const isFollowUp = !!assessment;
-                const assessmentForTeacher = assessment
-                  ? {
-                      understood: assessment.understood,
-                      isClarificationRequest: assessment.responseType === 'clarification_request',
-                      isFirstIncorrect:
-                        assessment.responseType === 'wrong_answer' && assessment.recommendation === 'clarify_again',
-                      isSecondIncorrect:
-                        assessment.responseType === 'wrong_answer' && assessment.recommendation === 'move_forward_anyway',
-                      needsMoreClarification: assessment.responseType === 'clarification_request',
-                      responseType: assessment.responseType,
-                      recommendation: assessment.recommendation,
-                    }
-                  : null;
+                const assessmentForTeacher = mapAssessmentForTeacher(assessment);
                 const milestoneInfo = cm
                   ? {
                       moveToNextMilestone: cm.moveToNextMilestone,
@@ -1427,6 +1434,13 @@ Return ONLY valid JSON in this format:
               points: session.points || 0,
               meta: buildChatMeta(session),
             };
+            if (res.headersSent) {
+              // Chunks already streamed — close with the done frame carrying
+              // the final composed message (the client replaces streamed text
+              // with it, so post-generation prefixes/decoration still land).
+              res.write(`data: ${JSON.stringify({ done: true, ...data })}\n\n`);
+              return res.end();
+            }
             if (req.body.stream) {
               res.setHeader('Content-Type', 'text/event-stream');
               res.setHeader('Cache-Control', 'no-cache');
@@ -1437,8 +1451,17 @@ Return ONLY valid JSON in this format:
             return res.json({ success: true, data });
           }
           console.warn('[Graph] Learning path returned !success, falling to legacy');
+          if (res.headersSent) {
+            // Cannot fall to legacy on a response that already streamed chunks.
+            res.write(`data: ${JSON.stringify({ error: 'Response interrupted. Please retry.' })}\n\n`);
+            return res.end();
+          }
         } catch (graphErr) {
           console.error('[Graph] Learning path failed, falling to legacy', graphErr.message);
+          if (res.headersSent) {
+            res.write(`data: ${JSON.stringify({ error: 'Response interrupted. Please retry.' })}\n\n`);
+            return res.end();
+          }
         }
       }
       

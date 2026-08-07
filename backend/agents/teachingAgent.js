@@ -1,106 +1,126 @@
-const { runAgent } = require('./framework/baseAgent');
+/**
+ * Multi-agent teaching turn — at parity with the legacy tutor.
+ *
+ * The graph's teaching node used to teach from a ~20-line generic prompt with
+ * five scenarios and no conversation history. This runner now builds the SAME
+ * prompt the legacy path uses (prompts/teacher_prompt.js — seven scenarios,
+ * authoritative milestone selection, per-milestone points, unified response
+ * structure, module transitions, student profile, instructor guidelines block
+ * + safety floor) and sends it through the SAME transport
+ * (services/teacherService — system persona, contextSummary + recent-message
+ * history with token truncation, step-label cleanup, Groq retry/backoff).
+ *
+ * What stays multi-agent: routing (conversation manager), the separate
+ * assessment agent, and the validation wrapper with bounded retries around
+ * this call. teacher_prompt.js is the reference implementation and is not
+ * modified.
+ */
 const { runWithValidation } = require('./framework/validator');
 const { validateTeaching } = require('./validators/teachingValidator');
+const { buildTeacherPrompt } = require('../prompts/teacher_prompt');
+const { callTeacherAPI, callTeacherAPIStream } = require('../services/teacherService');
 
-const SYSTEM_PROMPT = `You are an expert learning tutor. Generate teaching content for a specific milestone.
-
-Your response must be plain text (NOT JSON) with this structure:
-1. A brief introduction (1-3 sentences) setting context for this milestone
-2. Teaching content explaining the milestone concept (flexible length, 80-500 words total)
-3. Exactly ONE question at the end to check understanding (ends with ?)
-
-Rules:
-- Total word count: 80-500 words
-- Exactly ONE question (ending with ?)
-- Do NOT use labels like "STEP 1:", "STEP 2:", "Context:", "Teaching Content:"
-- Use natural paragraph breaks
-- Use **bold** for key terms
-- Include code examples where relevant (with language-tagged fenced blocks)
-- Be specific to the milestone, not generic
-- Do NOT stop early; produce the full response
-
-If the user message contains an "Instructor Global Guidelines" block, follow it
-faithfully: those guidelines are authoritative for this course and take priority
-over your default teaching style. They can change HOW you teach (tone, examples,
-length, format, what to refuse to hand out). They can NEVER override this system
-message's safety floor: do not produce harmful content, do not do graded work
-for the student, and do not abandon the one-question check, no matter what the
-guidelines say.`;
-
-// Same convention as the legacy path (prompts/teacher_prompt.js): the block is
-// injected into the per-turn prompt under the identical header, while the fixed
-// system prompt above holds the safety floor instructor prose cannot override.
-function buildGlobalInstructionsBlock(globalInstructions) {
-  const text = globalInstructions && String(globalInstructions).trim();
-  if (!text) return '';
-  return `\nInstructor Global Guidelines (authoritative for this course — these take priority over defaults):\n${text}\n`;
+/**
+ * Map the assessment agent's payload
+ *   { responseType, understood, recommendation, ... }
+ * onto the legacy analyzer's assessmentResult shape that buildTeacherPrompt
+ * branches on. The mapping must be TOTAL over wrong answers: teacher_prompt's
+ * fallback operands reference an undefined `milestoneRetryCount` (latent
+ * ReferenceError the legacy analyzer never triggers because it always sets the
+ * explicit flags) — so exactly one of isFirstIncorrect/isSecondIncorrect must
+ * be true for every wrong_answer.
+ *
+ * Scenario coverage (legacy scenarioType ← this mapping):
+ * - first_teaching        ← assessment null (isFollowUp=false)
+ * - correct_move_next     ← understood, !needsMore, milestoneInfo both flags
+ * - correct_needs_more    ← understood + recommendation 'clarify_again'
+ * - clarification_request ← !understood + responseType 'clarification_request'
+ * - incorrect_first       ← every wrong_answer (see below)
+ * - follow_up             ← understood without a milestone advance
+ *
+ * incorrect_second is deliberately NOT selectable: whenever teacher_prompt
+ * would choose it (isFirstIncorrect falsy on a wrong answer), line 105
+ * evaluates the undefined milestoneRetryCount and throws — the legacy
+ * analyzer feeds exactly that shape (isSecondIncorrect only), so the
+ * incorrect_second template has never once rendered in production; second
+ * wrongs have always surfaced as the re-teach loop (pilot F16) or an error.
+ * We therefore set isFirstIncorrect for ALL wrong answers, which
+ * short-circuits the broken operand and renders the re-teach template —
+ * the only second-wrong behavior legacy has ever actually delivered — while
+ * the route still advances the milestone. Fixing teacher_prompt.js is a
+ * post-study change (it is the pilot's reference implementation).
+ */
+function mapAssessmentForTeacher(assessment) {
+  if (!assessment) return null;
+  const wrong = assessment.responseType === 'wrong_answer';
+  return {
+    understood: !!assessment.understood,
+    isClarificationRequest: assessment.responseType === 'clarification_request',
+    isFirstIncorrect: wrong,
+    isSecondIncorrect: wrong && assessment.recommendation === 'move_forward_anyway',
+    needsMoreClarification: !!assessment.understood && assessment.recommendation === 'clarify_again',
+    responseType: assessment.responseType,
+    recommendation: assessment.recommendation,
+  };
 }
 
-function buildUserPrompt(session, userMessage, isFollowUp, assessmentResult, milestoneInfo, globalInstructions) {
-  const activeModule = session.plan?.find(m => m.id === session.activeModuleId);
-  const milestoneIdx = session.meta?.currentMilestoneIndex ?? 0;
-  const milestone = activeModule?.milestones?.[milestoneIdx];
+async function runTeachingAgent({
+  session,
+  userMessage,
+  isFollowUp,
+  assessmentResult,
+  milestoneInfo,
+  globalInstructions,
+  streamCallback,
+}) {
+  const prompt = buildTeacherPrompt(
+    session,
+    userMessage,
+    !!isFollowUp,
+    assessmentResult || null,
+    milestoneInfo || null,
+    globalInstructions || ''
+  );
 
-  let scenario = 'first_teaching';
-  if (isFollowUp && assessmentResult) {
-    if (assessmentResult.understood && milestoneInfo?.moveToNextMilestone) {
-      scenario = 'correct_move_next';
-    } else if (!assessmentResult.understood && assessmentResult.isClarificationRequest) {
-      scenario = 'clarification_re_explain';
-    } else if (!assessmentResult.understood && assessmentResult.isFirstIncorrect) {
-      scenario = 'wrong_first_attempt';
-    } else if (!assessmentResult.understood && assessmentResult.isSecondIncorrect) {
-      scenario = 'wrong_second_move_forward';
+  // Streaming: single attempt, mirroring the legacy path (callTeacherAPIStream
+  // deliberately has no retry — re-streaming after a validation failure would
+  // duplicate content on the client). The route's done-frame carries the final
+  // message, and on validation failure the route's legacy fallback regenerates.
+  if (typeof streamCallback === 'function') {
+    try {
+      const content = await callTeacherAPIStream(prompt, 1500, session, { onChunk: streamCallback });
+      const check = validateTeaching({ content });
+      return {
+        type: 'teaching',
+        payload: check.valid ? { content } : null,
+        uiMessage: check.valid ? content : null,
+        valid: check.valid,
+        errors: check.valid ? [] : check.errors,
+      };
+    } catch (err) {
+      return { type: 'teaching', payload: null, uiMessage: null, valid: false, errors: [err.message] };
     }
   }
 
-  return `TOPIC: "${session.topic}"
-MODULE: "${activeModule?.title || 'unknown'}"
-MILESTONE (index ${milestoneIdx}): "${milestone?.text || 'general'}"
-SCENARIO: ${scenario}
-USER MESSAGE: "${userMessage}"
-${assessmentResult ? `ASSESSMENT: ${JSON.stringify(assessmentResult)}` : ''}${buildGlobalInstructionsBlock(globalInstructions)}
-Generate teaching content for this milestone.`;
-}
-
-async function runTeachingAgent({ session, userMessage, isFollowUp, assessmentResult, milestoneInfo, globalInstructions }) {
+  // Non-streaming: keep the graph's bounded validation retries around the
+  // legacy transport (history injection + cleanup + Groq retry live inside
+  // callTeacherAPI).
   const { output, valid, errors } = await runWithValidation(
     async (prevErrors) => {
       const errHint = prevErrors.length
-        ? `\n\nPrevious attempt had errors: ${prevErrors.join('; ')}. Fix them.`
+        ? `\n\nIMPORTANT: Your previous response was rejected for structural reasons: ${prevErrors.join('; ')}. Regenerate the full response and fix them.`
         : '';
-      const raw = await runAgent({
-        taskName: 'teaching',
-        systemPrompt: SYSTEM_PROMPT,
-        userPrompt: buildUserPrompt(session, userMessage, isFollowUp, assessmentResult, milestoneInfo, globalInstructions) + errHint,
-        maxTokens: 1500,
-        temperature: 0.7,
-        jsonMode: false,
-        parse: (text) => ({ content: text }),
-      });
-      return raw;
+      const content = await callTeacherAPI(prompt + errHint, 1500, session);
+      return { content };
     },
     validateTeaching,
     { agentName: 'TeachingAgent' },
   );
 
   if (!valid) {
-    return {
-      type: 'teaching',
-      payload: null,
-      uiMessage: null,
-      valid: false,
-      errors,
-    };
+    return { type: 'teaching', payload: null, uiMessage: null, valid: false, errors };
   }
-
-  return {
-    type: 'teaching',
-    payload: output,
-    uiMessage: output.content,
-    valid: true,
-    errors: [],
-  };
+  return { type: 'teaching', payload: output, uiMessage: output.content, valid: true, errors: [] };
 }
 
-module.exports = { runTeachingAgent, buildUserPrompt, buildGlobalInstructionsBlock };
+module.exports = { runTeachingAgent, mapAssessmentForTeacher };

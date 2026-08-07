@@ -4,7 +4,7 @@ const { runPlanAgent } = require('../planAgent');
 const { runPlanModifyAgent } = require('../planModifyAgent');
 const { runConversationManagerAgent } = require('../conversationManagerAgent');
 const { runAssessmentAgent } = require('../assessmentAgent');
-const { runTeachingAgent } = require('../teachingAgent');
+const { runTeachingAgent, mapAssessmentForTeacher } = require('../teachingAgent');
 const { runQuizAgent } = require('../quizAgent');
 const CourseTopic = require('../../models/CourseTopic');
 const { runFeedbackAgent } = require('../feedbackAgent');
@@ -147,18 +147,22 @@ async function teachingNode(state) {
   const assessment = state.assessmentResult?.payload;
   const isFollowUp = !!assessment;
 
-  const assessmentForTeacher = assessment ? {
-    understood: assessment.understood,
-    isClarificationRequest: assessment.responseType === 'clarification_request',
-    isFirstIncorrect: assessment.responseType === 'wrong_answer' && (assessment.recommendation === 'clarify_again'),
-    isSecondIncorrect: assessment.responseType === 'wrong_answer' && (assessment.recommendation === 'move_forward_anyway'),
-    needsMoreClarification: assessment.responseType === 'clarification_request',
-  } : null;
+  // Canonical mapping to the legacy analyzer shape lives next to the teaching
+  // agent (mapAssessmentForTeacher) so every call site agrees on scenario
+  // semantics — including correct_needs_more, which the old inline mapping
+  // could never express (it keyed needsMoreClarification off
+  // clarification_request, which forces understood=false).
+  const assessmentForTeacher = mapAssessmentForTeacher(assessment);
 
   const milestoneInfo = cm ? {
     moveToNextMilestone: cm.moveToNextMilestone,
     markMilestoneComplete: cm.markMilestoneComplete,
   } : null;
+
+  // When the answer passes and will advance the milestone, the route discards
+  // this in-graph teaching and re-teaches the NEW milestone — don't stream
+  // content that is about to be replaced.
+  const willAdvance = !!(assessment?.understood && assessment?.recommendation !== 'clarify_again');
 
   const result = await runTeachingAgent({
     session: state.session,
@@ -172,6 +176,7 @@ async function teachingNode(state) {
     // blind grading, and PILOT_DECISIONS.md defers grading-behavior changes
     // to after the study window.
     globalInstructions: state.globalInstructions,
+    streamCallback: willAdvance ? null : state.streamCallback,
   });
   return { teachingResult: result };
 }
