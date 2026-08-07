@@ -336,7 +336,7 @@ Return ONLY valid JSON in this format:
     // Handle 'pre' phase - LangGraph orchestrated intent classification
         if (session.phase === 'pre' && useMultiAgent()) {
       try {
-        const graphResult = await runStudyGraph({ session, userMessage, requestType: 'chat' });
+        const graphResult = await runStudyGraph({ session, userMessage, requestType: 'chat', globalInstructions: courseGlobalInstructions });
         if (graphResult.success && graphResult.state?.intentResult) {
           const { payload } = graphResult.state.intentResult;
 
@@ -1144,7 +1144,7 @@ Return ONLY valid JSON in this format:
       // ── LangGraph orchestrated learning path ──
       if (useMultiAgent()) {
         try {
-          const graphResult = await runStudyGraph({ session, userMessage, requestType: 'chat' });
+          const graphResult = await runStudyGraph({ session, userMessage, requestType: 'chat', globalInstructions: courseGlobalInstructions });
           if (graphResult.success) {
             const gs = graphResult.state;
             const cm = gs.convManagerResult?.payload;

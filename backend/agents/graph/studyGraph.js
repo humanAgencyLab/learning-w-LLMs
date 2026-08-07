@@ -18,6 +18,12 @@ const AgentState = Annotation.Root({
   userMessage:        Annotation({ reducer: (_, v) => v, default: () => '' }),
   requestType:        Annotation({ reducer: (_, v) => v, default: () => '' }),
   phase:              Annotation({ reducer: (_, v) => v, default: () => 'pre' }),
+  // Course.globalInstructions for course-scoped sessions ('' otherwise).
+  // Consumed by the teaching node ONLY: quiz generation deliberately never
+  // sees instructor guidelines (documented study finding — do not "fix"),
+  // and assessment stays instruction-blind for this study window (see
+  // teachingNode comment).
+  globalInstructions: Annotation({ reducer: (_, v) => v, default: () => '' }),
 
   intentResult:       Annotation({ reducer: (_, v) => v, default: () => null }),
   planResult:         Annotation({ reducer: (_, v) => v, default: () => null }),
@@ -160,6 +166,12 @@ async function teachingNode(state) {
     isFollowUp,
     assessmentResult: assessmentForTeacher,
     milestoneInfo,
+    // Instructor guidelines constrain tutor OUTPUT here, matching the legacy
+    // path. They are intentionally NOT passed to assessmentNode: all pilot
+    // evidence (grading nondeterminism, P5) was collected with instruction-
+    // blind grading, and PILOT_DECISIONS.md defers grading-behavior changes
+    // to after the study window.
+    globalInstructions: state.globalInstructions,
   });
   return { teachingResult: result };
 }
