@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const MilestoneAttempt = require('../models/MilestoneAttempt');
+const TutorRefusalEvent = require('../models/TutorRefusalEvent');
 const CourseTopic = require('../models/CourseTopic');
 const Course = require('../models/Course');
 const Enrollment = require('../models/Enrollment');
@@ -501,12 +502,17 @@ async function buildRiskInputs(courseId, { excludeSynthetic = true } = {}) {
   }
 
   if (userIds.length) {
-    const [sessions, milestoneDocs] = await Promise.all([
+    const [sessions, milestoneDocs, refusalDocs] = await Promise.all([
+      // messages.role/.timestamp only — projecting the subfields keeps this
+      // cheap; we need the first student-authored turn, not the transcript.
       Session.find({ courseId: courseObjId, userId: { $in: userIds } })
-        .select('userId courseTopicId quizAttempts')
+        .select('userId courseTopicId quizAttempts messages.role messages.timestamp')
         .lean(),
       MilestoneAttempt.find(attemptFilter(courseId, { excludeSynthetic }))
         .select('userId courseTopicId createdAt')
+        .lean(),
+      TutorRefusalEvent.find({ courseId: courseObjId, userId: { $in: userIds } })
+        .select('userId createdAt')
         .lean(),
     ]);
 
@@ -534,6 +540,38 @@ async function buildRiskInputs(courseId, { excludeSynthetic = true } = {}) {
       si.milestoneDatesByTopic.get(tid).push(d);
       if (d && (!si.earliestActivity || d < si.earliestActivity)) si.earliestActivity = d;
     }
+
+    // --- The activity clock (2d) -----------------------------------------
+    // earliestActivity used to derive ONLY from gradeable artifacts (quiz and
+    // milestone attempts), so any student who engaged without producing one
+    // never started the clock: effectiveStart stayed at enrollment, the 7-day
+    // new-enrollee grace never expired, and they scored healthy/new_enrollee
+    // forever — indistinguishable from someone who never logged in. Measured
+    // during the constraint-gate build on a student with six refusals.
+    //
+    // What counts as activity is now "any recorded interaction the STUDENT
+    // caused": attempts (above), student-authored chat turns, and refused
+    // requests. Bare session existence is deliberately NOT counted — sessions
+    // are also created by the provisioning and simulation paths and by course
+    // cloning, so their timestamps are not reliably student-caused and would
+    // start the clock for students who never acted.
+    //
+    // This widens the clock ONLY. The engagement signal remains published-topic
+    // coverage, unchanged: chatting is evidence that a student showed up, not
+    // evidence that they covered material.
+    const noteActivity = (uid, d) => {
+      if (!uid || !d) return;
+      const si = ensure(uid);
+      const dt = new Date(d);
+      if (!si.earliestActivity || dt < si.earliestActivity) si.earliestActivity = dt;
+    };
+    for (const sess of sessions) {
+      const uid = sess.userId?.toString();
+      for (const msg of sess.messages || []) {
+        if (msg.role === 'user' && msg.timestamp) noteActivity(uid, msg.timestamp);
+      }
+    }
+    for (const r of refusalDocs) noteActivity(r.userId?.toString(), r.createdAt);
   }
 
   return { courseData, enrollments, studentInputs };
@@ -786,8 +824,21 @@ async function getCrossCourseKPIs(instructorId, { excludeSynthetic = true } = {}
       autoAdvanced: a.autoAdvanced,
       passRate: a.attempts ? Math.round((a.passes / a.attempts) * 1000) / 10 : 0,
       atRiskCount,
+      // 2a (second call site): the briefing described Maya as "struggling the
+      // most, with a pass rate of 0%" because only the legacy milestone pass
+      // rate was passed. Send both sensors so an active quiz-only student is
+      // never reported as having done nothing.
       hottestStruggle: atRiskRows[0]
-        ? { name: atRiskRows[0].name, flags: atRiskRows[0].flags, passRate: atRiskRows[0].passRate }
+        ? {
+          name: atRiskRows[0].name,
+          flags: atRiskRows[0].flags,
+          milestonePassRate: atRiskRows[0].passRate,
+          milestoneAttempts: atRiskRows[0].attempts || 0,
+          quizAttempts: atRiskRows[0].quizAttemptCount || 0,
+          quizAvgScore: atRiskRows[0].quizScore,
+          quizPassRate: atRiskRows[0].quizPassRate,
+          totalAttempts: (atRiskRows[0].attempts || 0) + (atRiskRows[0].quizAttemptCount || 0),
+        }
         : null,
     };
   });

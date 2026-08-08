@@ -8,7 +8,10 @@ Rules:
 - 1-8 modules per topic; each module has 2-8 milestones (short, teachable bullets).
 - moduleId must be unique per module (slug like "mod_intro_1").
 - points per module: 5-25 integer.
-- difficulty per module: intro | core | apply.
+- difficulty per module: intro | core | apply. Judge against THIS COURSE's level
+  (intro = first meeting the concept, core = standard competence, apply =
+  synthesis/transfer). Do not reflexively tag the first module "intro", and do
+  correct an existing plan whose tiers are clearly wrong for the material.
 - For quizPattern.cognitiveLevel use only: remember | understand | apply | analyze | evaluate | create
 - syllabusAnchors: keep existing ones unless the change logically requires updating them.
 

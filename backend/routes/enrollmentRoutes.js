@@ -139,7 +139,10 @@ router.get('/:courseId/topics', requireAuth, requireEnrolledStudent, async (req,
       status: 'published'
     })
       .sort({ orderIndex: 1, createdAt: 1 })
-      .select('title objective orderIndex status publishedAt version')
+      // 2b: `modules` was absent, so the student topic card counted over
+      // undefined and rendered "0 modules · 0 milestones" for every published
+      // topic, and suppressed the points badge and difficulty pills too.
+      .select('title objective orderIndex status publishedAt version modules')
       .lean();
 
     // Attach existing sessionId (if any) so UI can show "Continue learning".

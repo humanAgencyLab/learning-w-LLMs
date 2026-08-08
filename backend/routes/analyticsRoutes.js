@@ -326,7 +326,10 @@ router.get('/courses/:courseId/sessions/:sessionId/quizzes', requireAuth, requir
       return res.status(400).json({ success: false, error: 'Invalid session id', code: 'VALIDATION_ERROR' });
     }
 
-    const session = await Session.findById(sessionId).select('courseId enrollmentId quizAttempts').lean();
+    // 3a: `plan` is loaded so each attempt can carry its module TITLE. The
+    // viewer rendered `Module ${attempt.moduleId}` — raw slugs like
+    // "mod_intro_1" — for every student, because no title ever reached it.
+    const session = await Session.findById(sessionId).select('courseId enrollmentId quizAttempts plan').lean();
     const ok = assertSessionBelongsToCourse(session, courseId);
     if (!ok.ok) return res.status(ok.status).json({ success: false, error: ok.error, code: ok.code });
 
@@ -341,12 +344,17 @@ router.get('/courses/:courseId/sessions/:sessionId/quizzes', requireAuth, requir
 
     // Only submitted attempts are useful to the instructor (drafts are still
     // in-progress). Return just the presentation fields, most recent first.
+    const planModules = Array.isArray(session.plan) ? session.plan : [];
+    const titleByModuleId = new Map(planModules.map((m) => [m.id, m.title]));
+    const indexByModuleId = new Map(planModules.map((m, i) => [m.id, i + 1]));
     const all = Array.isArray(session.quizAttempts) ? session.quizAttempts : [];
     const attempts = all
       .filter((a) => a && a.status === 'submitted')
       .map((a) => ({
         id: a.id,
         moduleId: a.moduleId,
+        moduleTitle: titleByModuleId.get(a.moduleId) || null,
+        moduleIndex: indexByModuleId.get(a.moduleId) ?? null,
         attemptNo: a.attemptNo,
         status: a.status,
         items: Array.isArray(a.items)

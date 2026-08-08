@@ -18,12 +18,27 @@ import * as instructorApi from '../../../lib/instructorApi';
 const GREEN_BTN = 'bg-approve-tint border border-approve-border rounded-lg px-3 py-1.5 text-xs font-semibold text-approve hover:bg-approve-tintDeep transition-colors disabled:opacity-50';
 const OUTLINE_BTN = 'bg-surface border border-hairline-strong rounded-lg px-3 py-1.5 text-xs font-semibold text-ink-600 hover:border-brand hover:text-brand transition-colors';
 
-// Topic-level tier badge: the most common module difficulty (modules carry the
-// intro/core/apply tier; topics don't have one of their own).
+const DIFFICULTY_RANK = { intro: 0, core: 1, apply: 2, challenge: 3 };
+
+/**
+ * Topic-level tier badge (modules carry the tier; topics don't have one).
+ *
+ * 2c: this used to take the most COMMON module tier. With the two-modules-per
+ * -topic shape the generator produces, [intro, core] is a 1-1 tie, and because
+ * Object.entries preserves insertion order and Array.sort is stable, the FIRST
+ * module's tier always won — so every topic rendered INTRO, including graphs,
+ * sorting and web application security. Verified against stored data: those
+ * topics really are [intro, core]; only the badge was wrong. The databases
+ * course escaped it purely by generating one module per topic.
+ *
+ * A topic is now summarised by its HIGHEST tier: a topic containing apply-level
+ * work is not an "intro" topic, and the result is independent of module order.
+ */
 function dominantDifficulty(topic) {
-  const counts = {};
-  for (const m of topic.modules || []) counts[m.difficulty || 'core'] = (counts[m.difficulty || 'core'] || 0) + 1;
-  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  const tiers = (topic.modules || []).map((m) => m.difficulty || 'core');
+  if (!tiers.length) return null;
+  return tiers.reduce((best, t) =>
+    (DIFFICULTY_RANK[t] ?? 1) > (DIFFICULTY_RANK[best] ?? 1) ? t : best);
 }
 
 export default function TopicRow({ topic, courseId, busy, onAction }) {

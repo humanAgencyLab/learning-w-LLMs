@@ -208,9 +208,15 @@ function lastAttemptPerModule(attempts) {
 }
 
 function QuizAttemptCard({ attempt, open, onToggle }) {
+  // 3a: the module TITLE, not the raw slug. This rendered "Module mod_intro_1"
+  // for every student because no title was ever sent; the route now joins the
+  // session plan. The slug remains the last-resort fallback.
+  const moduleLabel = attempt.moduleTitle
+    ? `Module ${attempt.moduleIndex ?? ''}${attempt.moduleIndex ? ': ' : ''}${attempt.moduleTitle}`
+    : `Module ${attempt.moduleId}`;
   const title = attempt.isRevision
     ? `Revision quiz${attempt.revisionTopic ? ` · ${attempt.revisionTopic}` : ''}`
-    : `Module ${attempt.moduleId}`;
+    : moduleLabel;
   const passed = !!attempt.passed;
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">

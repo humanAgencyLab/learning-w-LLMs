@@ -55,6 +55,11 @@ Rules:
 - If the instructor has zero courses, say so ("You don't have any courses yet — create one to start seeing insights.") and return no other content.
 - If every course has zero enrollments or zero attempts, say so honestly.
 - Treat synthetic students (isSynthetic=true) as real classroom data — the study cohort is the study data.
+- ⚠️ hottestStruggle carries TWO attempt sensors: milestoneAttempts and
+  quizAttempts, plus totalAttempts. A student can have zero milestone attempts
+  and still be highly active through quizzes. NEVER say a student has "no
+  attempts", "0 attempts", or a "0% pass rate" unless totalAttempts is 0; when
+  quizAttempts > 0, describe quizAvgScore instead of milestonePassRate.
 
 Return strict JSON matching this shape:
 { "briefing": "<2-3 sentences>" }`;
@@ -93,6 +98,14 @@ Rules:
 - Include one concrete number (fail rate, attempts, or at-risk count).
 - No greeting, no markdown, just the single sentence.
 
+⚠️ ATTEMPTS: each student carries TWO independent counts — milestoneAttempts
+and quizAttempts — and totalAttempts is their sum. A student can have zero
+milestone attempts and still be highly active through quizzes. NEVER describe a
+student as having "no attempts", "0 attempts", or a "0% pass rate" unless
+totalAttempts is 0. When quizAttempts > 0, cite quizAvgScore rather than
+milestonePassRate; a student with a high quiz average is not failing, whatever
+the milestone counters say.
+
 Return strict JSON:
 { "hotSignal": "<one sentence>" }`;
 
@@ -107,13 +120,27 @@ async function runHotSignal({ milestones = [], atRisk = [], courseTitle = '' } =
       attempts: m.attempts,
       passRate: m.passRate,
     }));
+  // 2a: this used to map ONLY the legacy milestone-attempt aggregates
+  // (r.attempts / r.passRate), which are zero for a student whose work is in
+  // embedded quiz attempts. That is how Maya — 8 attempts, 90.4% average — was
+  // described to the instructor as having "0 attempts and a 0% pass rate".
+  // The risk model already computes the quiz-derived fields correctly; they
+  // were simply never passed through. Both sensors are now sent, labelled, with
+  // a combined total so the model cannot describe an active student as idle.
   const risky = (atRisk || [])
     .filter((r) => r.atRisk)
     .slice(0, 5)
     .map((r) => ({
       name: r.name || r.username,
-      passRate: r.passRate,
-      attempts: r.attempts,
+      milestoneAttempts: r.attempts || 0,
+      milestonePassRate: r.passRate,
+      quizAttempts: r.quizAttemptCount || 0,
+      quizAvgScore: r.quizScore,
+      quizPassRate: r.quizPassRate,
+      totalAttempts: (r.attempts || 0) + (r.quizAttemptCount || 0),
+      topicsTouched: r.attemptedPublished,
+      topicsPublished: r.publishedN,
+      daysSinceEnrollment: r.daysSinceEnrollment,
       flags: r.flags,
     }));
 
@@ -150,6 +177,10 @@ Rules:
 - At least one card must reference the hardest milestone if data is present.
 - If the course has near-zero data, return 1 card titled "Not enough data yet" with body explaining what's needed and chartRef "none".
 
+⚠️ ATTEMPTS: each student carries milestoneAttempts and quizAttempts, plus
+totalAttempts. Never describe a student as having no attempts or a 0% pass
+rate unless totalAttempts is 0; when quizAttempts > 0 cite quizAvgScore.
+
 Return strict JSON:
 { "insightCards": [ { "id": "<slug>", "title": "...", "body": "...", "chartRef": "tree|milestones|heatmap|atRisk|none" } ] }`;
 
@@ -181,10 +212,15 @@ async function runInsightCards({ tree, milestones = [], heatmap = {}, atRisk = [
   const risky = (atRisk || [])
     .filter((r) => r.atRisk)
     .slice(0, 6)
+    // 2a (third call site — the Insights cards had the same defect as the hot
+    // signal and the briefing: legacy milestone aggregates only).
     .map((r) => ({
       name: r.name || r.username,
-      passRate: r.passRate,
-      attempts: r.attempts,
+      milestonePassRate: r.passRate,
+      milestoneAttempts: r.attempts || 0,
+      quizAttempts: r.quizAttemptCount || 0,
+      quizAvgScore: r.quizScore,
+      totalAttempts: (r.attempts || 0) + (r.quizAttemptCount || 0),
       personaTag: r.personaTag,
       flags: r.flags,
     }));

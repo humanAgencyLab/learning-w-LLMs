@@ -15,7 +15,17 @@ Other rules:
 - Each topic has 1-8 modules; each module has 2-8 milestones (short, teachable bullets).
 - moduleId must be unique per module (slug like "mod_intro_1").
 - points per module: 5-25 integer.
-- difficulty per module: intro | core | apply.
+- difficulty per module: intro | core | apply. Judge this against the LEVEL OF
+  THIS COURSE, not against programming in general, and vary it to reflect what
+  the module actually demands:
+    intro  = orientation/definitions a student meets the concept with
+    core   = the standard working competence of this course
+    apply  = synthesis, non-obvious transfer, or multi-concept problem solving
+  Do NOT make the first module of every topic "intro" by reflex. An upper-level
+  course (data structures, databases, security) may legitimately have few or no
+  intro modules; a late topic in any course is rarely intro. Advanced subject
+  matter — graph traversal, sorting analysis, injection defence — should not
+  be tagged intro.
 - Order topics in a logical teaching sequence.
 
 Return ONLY valid JSON:
