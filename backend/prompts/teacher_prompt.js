@@ -116,12 +116,18 @@ Ask them what topic or subject they'd like to learn about today.`;
         scenarioType = 'clarification_request';
         effectiveMilestoneIndex = currentMilestoneIndex;
         effectiveMilestone = currentMilestone;
-      // Second-wrong is checked FIRST: the callers set the explicit flags, and
-      // on a second wrong the milestone index has already advanced, so the
-      // retry-count fallback below would otherwise read 0 for the new index and
-      // mis-route an escalation back into another identical re-teach.
-      } else if (isSecondIncorrect || (milestoneRetryCount >= 1 && responseType === 'wrong_answer')) {
-        // Second wrong answer - move forward anyway
+      // The EXPLICIT flags are authoritative and are checked before the
+      // retry-count fallback, in both directions. The callers know which
+      // attempt this is; the stored count does not, because the legacy route
+      // increments it BEFORE the prompt is built (so a first wrong answer
+      // already reads retryCount 1) and advances the milestone index on a
+      // second wrong (so the new index reads 0). Either way the raw count
+      // mis-routes. The fallback below applies only when neither flag is set.
+      } else if (isFirstIncorrect) {
+        scenarioType = 'incorrect_first';
+        effectiveMilestoneIndex = currentMilestoneIndex;
+        effectiveMilestone = currentMilestone;
+      } else if (isSecondIncorrect) {
         scenarioType = 'incorrect_second';
         effectiveMilestoneIndex = currentMilestoneIndex;
         effectiveMilestone = activeModule?.milestones?.[currentMilestoneIndex];
@@ -129,8 +135,16 @@ Ask them what topic or subject they'd like to learn about today.`;
           effectiveMilestoneIndex = currentMilestoneIndex + 1;
           effectiveMilestone = activeModule?.milestones?.[effectiveMilestoneIndex];
         }
-      } else if (isFirstIncorrect || (milestoneRetryCount < 1 && responseType === 'wrong_answer')) {
-        // Student gave wrong answer - use correction scenario
+      } else if (responseType === 'wrong_answer' && milestoneRetryCount >= 1) {
+        // Fallback: no explicit flag, but this milestone has a prior failure.
+        scenarioType = 'incorrect_second';
+        effectiveMilestoneIndex = currentMilestoneIndex;
+        effectiveMilestone = activeModule?.milestones?.[currentMilestoneIndex];
+        if (!effectiveMilestone && nextMilestoneText !== 'N/A') {
+          effectiveMilestoneIndex = currentMilestoneIndex + 1;
+          effectiveMilestone = activeModule?.milestones?.[effectiveMilestoneIndex];
+        }
+      } else if (responseType === 'wrong_answer') {
         scenarioType = 'incorrect_first';
         effectiveMilestoneIndex = currentMilestoneIndex;
         effectiveMilestone = currentMilestone;

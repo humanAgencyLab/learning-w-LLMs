@@ -224,6 +224,22 @@ describe('escalation path (was dead: undeclared milestoneRetryCount)', () => {
     expect(prompt).toContain('INCORRECT SECOND ATTEMPT - MOVE TO NEXT MILESTONE');
   });
 
+  it('an explicit first-wrong flag beats a retry count the route already incremented', () => {
+    // Live regression: the legacy route increments milestoneRetryCount BEFORE
+    // building the prompt, so a FIRST wrong answer arrives with count 1. The
+    // retry-count fallback used to win and the tutor handed over the correct
+    // answer on attempt one instead of re-teaching.
+    const session = makeSession();
+    session.meta.milestoneRetryCount = { 1: 1 };
+    const prompt = buildTeacherPrompt(
+      session, 'wrong once', true,
+      { understood: false, isClarificationRequest: false, isFirstIncorrect: true, responseType: 'wrong_answer' },
+      { moveToNextMilestone: false, markMilestoneComplete: false }, ''
+    );
+    expect(prompt).toContain('INCORRECT FIRST ATTEMPT - RE-TEACH SAME MILESTONE');
+    expect(prompt).not.toContain('INCORRECT SECOND ATTEMPT');
+  });
+
   it('a FIRST wrong answer still re-teaches the same milestone (no premature escalation)', () => {
     const prompt = buildTeacherPrompt(
       makeSession(), 'wrong once', true,
