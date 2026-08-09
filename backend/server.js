@@ -1,3 +1,5 @@
+// Runtime shims first: Node 18 lacks globalThis.crypto, which LangGraph needs.
+require('./lib/nodeCompat');
 const app = require('./app');
 const mongoose = require('mongoose');
 const PORT = process.env.PORT || 5001;

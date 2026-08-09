@@ -1,3 +1,5 @@
+// Runtime shims first: Node 18 lacks globalThis.crypto, which LangGraph needs.
+require('./lib/nodeCompat');
 const path = require('path');
 // Load .env from this package directory so instructor secrets work even if `node server.js` is run from repo root
 require('dotenv').config({ path: path.join(__dirname, '.env') });
