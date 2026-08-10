@@ -110,6 +110,101 @@ const buildChatMeta = (session) => {
   };
 };
 
+/**
+ * Exact-match UI control commands, the only messages the gate may skip.
+ *
+ * Every pattern is ANCHORED (^...$) on purpose. The quizzing branch used to test
+ * `/start\s+quiz/i` as a SUBSTRING, so "give me the working exploit code and
+ * then start quiz" satisfied it and reached START_QUIZ with no guardrail. An
+ * anchored match means the entire message is the command and carries no
+ * free-text payload for the gate to evaluate.
+ *
+ * Keep this list minimal. Anything admitted here is, by construction, never
+ * checked against the instructor's rules or the safety floor.
+ */
+const CONTROL_COMMANDS = [
+  /^\s*start\s+quiz\s*$/i,
+  /^\s*ready\s*$/i,
+  /^\s*start\s*$/i,
+  /^\s*(restart\s+revision|restart|start\s+revision|revision)\s*$/i,
+  /^\s*_reset_module_session_\s*$/,
+];
+
+const isControlCommand = (msg) =>
+  typeof msg === 'string' && CONTROL_COMMANDS.some((re) => re.test(msg));
+
+/**
+ * Single enforcement point for the constraint gate (pilot finding 1b).
+ *
+ * Encapsulates evaluate → refuse → record → persist → respond, so protecting a
+ * response path costs one call instead of forty copied lines. The duplication is
+ * what let the quizzing-phase path drift ungated for the whole pilot.
+ *
+ * Returns true when it has ALREADY answered the request; the caller must then
+ * return immediately and do nothing else. A refused turn must not grade, record
+ * an attempt, increment a retry count, advance a milestone, or change phase —
+ * refusing a student must never be a way to move them forward.
+ */
+async function enforceConstraints({ session, userMessage, globalInstructions, res, pathTag }) {
+  // The control-command skip lives HERE rather than at the call site, so the
+  // call site can be an unconditional `if (await enforceConstraints(...)) return;`.
+  // That matters beyond tidiness: scripts/auditChatGuardrails.js only credits a
+  // gate that is unconditionally evaluated, so wrapping this call in
+  // `if (!isControlCommand(...))` would — correctly — stop it counting as
+  // protection for everything downstream.
+  if (isControlCommand(userMessage)) return false;
+
+  const verdict = await evaluateConstraints({ userMessage, globalInstructions });
+  if (!verdict.violates) return false;
+
+  const activeModule = session.plan?.find((m) => m.id === session.activeModuleId);
+  const milestone = activeModule?.milestones?.[session.meta?.currentMilestoneIndex ?? 0];
+  const refusalText = buildRefusalMessage(verdict, {
+    outstandingCheck: session.meta?.outstandingCheck,
+  });
+
+  await recordRefusal(verdict, {
+    courseId: session.courseId,
+    courseTopicId: session.courseTopicId,
+    sessionId: session._id,
+    userId: session.userId,
+    userMessage,
+    milestoneText: milestone?.text || '',
+  });
+
+  session.messages.push(
+    {
+      id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(),
+      metadata: { intent: 'refused', phaseAtSend: session.phase, refusalPath: pathTag },
+    },
+    {
+      id: `msg_${Date.now() + 1}`, role: 'assistant', content: refusalText, timestamp: new Date(),
+      metadata: {
+        intent: 'refusal', phaseAtSend: session.phase, refusal: true,
+        refusalCategory: verdict.category, refusalPath: pathTag,
+      },
+    }
+  );
+  await session.save();
+
+  res.json({
+    success: true,
+    data: {
+      message: refusalText,
+      phase: session.phase, // deliberately unchanged
+      refusal: true,
+      refusalCategory: verdict.category,
+      currentMilestoneIndex: session.meta?.currentMilestoneIndex ?? 0,
+      plan: session.plan,
+      activeModuleId: session.activeModuleId,
+      progressPct: session.progressPct || 0,
+      points: session.points || 0,
+      meta: buildChatMeta(session),
+    },
+  });
+  return true;
+}
+
 // POST /v1/chat - Teacher chat endpoint (requires authentication)
 router.post('/v1/chat', requireAuth, async (req, res) => {
   const startTime = Date.now();
@@ -218,7 +313,39 @@ router.post('/v1/chat', requireAuth, async (req, res) => {
       session.mode = requestedMode;
       await session.save();
     }
-    
+
+    // ══ THE CONSTRAINT GATE ═══════════════════════════════════════════════════
+    // ONE call, before ANY phase branch. This placement is the whole point.
+    //
+    // The gate previously lived in three places, all of them inside phase
+    // branches: the graph's constraintGateNode (reachable only for phase
+    // 'learning'), the legacy path, and the quizzing block. Every branch added
+    // since was therefore unprotected by default, and an audit of all 45
+    // response paths found five that answered the student with no guardrail —
+    // including feedback phase, where an exploit request drew congratulations
+    // and a quiz prompt, and pre phase, where it drew a model-authored reply.
+    //
+    // A gate that each branch must remember to call is a gate that new branches
+    // will keep missing. Hoisting it above the branch point makes coverage a
+    // property of the route's shape rather than of anyone's diligence, and
+    // tests/constraintGateCoverage.test.js fails if a response path ever
+    // appears above this line without an explicit GATE-EXEMPT annotation.
+    //
+    // Anchored control commands are skipped: they are exact-match strings with
+    // no free-text payload, so there is nothing to evaluate, and paying for a
+    // model call on every "start quiz" would tax the commonest action in the
+    // app. Anchored is load-bearing — the old quizzing branch used a SUBSTRING
+    // test, which let "give me the working exploit, then start quiz" through.
+    if (await enforceConstraints({
+      session,
+      userMessage,
+      globalInstructions: courseGlobalInstructions,
+      res,
+      pathTag: `phase:${session.phase}`,
+    })) {
+      return;
+    }
+
     // Handle revision mode - if in revision mode and pre phase, generate revision quiz
     if (session.mode === 'reviewing' && session.phase === 'pre') {
       // Use LLM to extract/generate topic and chatTitle from user message (like study sessions)
@@ -403,6 +530,9 @@ Return ONLY valid JSON in this format:
     if (session.phase === 'pre') {
         // If we've already entered quizzing or the user explicitly asks to start the quiz
         const wantsQuiz = typeof userMessage === 'string' && /start\s+quiz/i.test(userMessage);
+        // NOTE: unreachable. This sits inside `if (session.phase === 'pre')`, so the
+        // phase can never also be quizzing/quiz. Dead since the pre-phase refactor; kept
+        // only because deleting it is a behaviour change to verify separately.
         if ((session.phase === 'quizzing' || session.phase === 'quiz') && (wantsQuiz || !session.meta?.milestoneBeingTaught)) {
           const userMessageObj = {
             id: `msg_${Date.now()}`,
@@ -632,6 +762,10 @@ Return ONLY valid JSON in this format:
     
     // Handle 'quizzing' phase - user wants to start the quiz
     if (session.phase === 'quizzing' || session.phase === 'quiz') {
+      // No gate call here: the hoisted gate above has already run for this turn.
+      // Note wantsQuiz is still a substring test, which is now safe only because
+      // anything violating was refused before reaching this block — "give me the
+      // working exploit, then start quiz" no longer gets here.
       const wantsQuiz = typeof userMessage === 'string' && /start\s+quiz/i.test(userMessage);
       if (wantsQuiz) {
         const userMessageObj = {
@@ -693,6 +827,10 @@ Return ONLY valid JSON in this format:
       }
       
       // Handle reset module session - show message and wait for "ready"
+      // NOTE (gate): listed in CONTROL_COMMANDS, so the gate skips it.
+      // Fires only on the exact literal sentinel `_reset_module_session_`, which
+      // the client emits for the Close-quiz control. An exact-match command carries no
+      // free-text payload, so there is nothing for the gate to evaluate.
       if (typeof userMessage === 'string' && userMessage.trim() === '_reset_module_session_') {
         const activeModule = session.plan.find(m => m.id === session.activeModuleId);
         if (activeModule) {
@@ -812,6 +950,9 @@ Return ONLY valid JSON in this format:
       }
       
       // Handle "ready" message - reset to first milestone of current module
+      // NOTE: anchored exact match on the single word "ready" (^\s*ready\s*$), so no
+      // free-text payload can ride along. The teaching content it generates is produced from
+      // the module plan, not from anything the student wrote.
       if (typeof userMessage === 'string' && /^\s*ready\s*$/i.test(userMessage.trim())) {
         const activeModule = session.plan.find(m => m.id === session.activeModuleId);
         if (activeModule && activeModule.milestones && activeModule.milestones.length > 0) {
@@ -997,7 +1138,9 @@ Return ONLY valid JSON in this format:
             
             session.messages.push(assistantMessageObj);
             await session.save();
-            
+
+            // NOTE: same anchored restart command as above; this is the branch taken
+            // when the thread has no stored topic, and it only asks the student to name one.
             return res.json({
               success: true,
               data: {
@@ -1029,6 +1172,9 @@ Return ONLY valid JSON in this format:
           await session.save();
           
           // Return response that triggers automatic quiz start
+          // NOTE: reached only when isRestartCommand matched the anchored regex
+          // /^\s*(restart revision|restart|start revision|revision)\s*$/i — an exact control
+          // command with no free-text payload.
           return res.json({
             success: true,
             data: {
@@ -1049,6 +1195,8 @@ Return ONLY valid JSON in this format:
       // Handle "start" message - move to next module's first milestone (if passed)
       // NOTE: If quiz was passed, activeModuleId was already advanced during quiz submission
       // So we need to check if we're already on the next module before advancing
+      // NOTE: anchored exact match on the single word "start" (^\s*start\s*$). Same
+      // reasoning as the "ready" branch above — no student free text reaches the tutor.
       if (typeof userMessage === 'string' && /^\s*start\s*$/i.test(userMessage.trim()) && session.phase === 'feedback') {
         // Find the last passed module to determine what the "next" module should be
         const lastPassedModuleIndex = session.plan.findLastIndex(m => m.status === 'passed');
@@ -1181,6 +1329,11 @@ Return ONLY valid JSON in this format:
         };
         const graphStreamCallback = graphWantStream ? graphWriteChunk : null;
         try {
+          // GATE-PROVIDED-BY: the hoisted gate at the top of this handler already ran for this
+          // turn, unconditionally and before any phase branch, so every exit in this block is
+          // downstream of it. The graph no longer carries a gate node of its own — it only ever
+          // covered phase 'learning' (routeAfterRouter has no 'feedback' branch), which is how a
+          // feedback-phase exploit request came to be answered with congratulations.
           const graphResult = await runStudyGraph({ session, userMessage, requestType: 'chat', globalInstructions: courseGlobalInstructions, streamCallback: graphStreamCallback });
           if (graphResult.success) {
             const gs = graphResult.state;
@@ -1192,48 +1345,9 @@ Return ONLY valid JSON in this format:
             const milestoneIdx = session.meta?.currentMilestoneIndex ?? 0;
             const currentMilestone = activeModule?.milestones?.[milestoneIdx];
 
-            // ── Constraint gate (1b) ──────────────────────────────────────
-            // Checked FIRST, ahead of the quiz-gate short-circuit: the pilot
-            // found an exploit request typed at a module gate was swallowed by
-            // the flow manager with a canned "type start quiz" reply, so no
-            // guardrail ran. A refusal records NO attempt, increments NO retry
-            // count, advances NO milestone, and leaves outstandingCheck intact
-            // — a refused turn must never be able to move a student forward.
-            if (gs.refusalResult?.violates) {
-              const refusalText = buildRefusalMessage(gs.refusalResult, {
-                outstandingCheck: session.meta?.outstandingCheck,
-              });
-              await recordRefusal(gs.refusalResult, {
-                courseId: session.courseId,
-                courseTopicId: session.courseTopicId,
-                sessionId: session._id,
-                userId: session.userId,
-                userMessage,
-                milestoneText: currentMilestone?.text || '',
-              });
-              session.messages.push(
-                { id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: 'refused', phaseAtSend: session.phase, graphPath: true } },
-                { id: `msg_${Date.now() + 1}`, role: 'assistant', content: refusalText, timestamp: new Date(), metadata: { intent: 'refusal', phaseAtSend: session.phase, graphPath: true, refusal: true, refusalCategory: gs.refusalResult.category } }
-              );
-              await session.save();
-              const refusalData = {
-                message: refusalText,
-                phase: session.phase,
-                refusal: true,
-                refusalCategory: gs.refusalResult.category,
-                currentMilestoneIndex: session.meta?.currentMilestoneIndex ?? 0,
-                plan: session.plan,
-                activeModuleId: session.activeModuleId,
-                progressPct: session.progressPct || 0,
-                points: session.points || 0,
-                meta: buildChatMeta(session),
-              };
-              if (res.headersSent) {
-                res.write(`data: ${JSON.stringify({ done: true, ...refusalData })}\n\n`);
-                return res.end();
-              }
-              return res.json({ success: true, data: refusalData });
-            }
+            // The graph's own constraint-gate node was removed along with the two other
+            // scattered gate sites; state.refusalResult no longer exists. Refusals are decided
+            // once, above, before this block is entered.
 
             if (cm?.shouldStartQuiz || cm?.action === 'start_quiz') {
               session.messages.push({ id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: cm.intent, phaseAtSend: session.phase, graphPath: true } });
@@ -1529,57 +1643,21 @@ Return ONLY valid JSON in this format:
           console.error('[Graph] Learning path failed, falling to legacy', graphErr.message);
           if (res.headersSent) {
             res.write(`data: ${JSON.stringify({ error: 'Response interrupted. Please retry.' })}\n\n`);
+            // NOTE: the graph threw after chunks had already streamed, so we cannot fall
+            // back to legacy on this response. Terminates a broken SSE stream with an error and
+            // returns no tutor content. Note the un-streamed case falls through to the legacy
+            // gate below rather than answering here.
             return res.end();
           }
         }
       }
       
-      // ── Constraint gate (1b), legacy path ───────────────────────────────
-      // Runs before the conversation decision AND before the assessment block,
-      // so refusal behaviour is identical whichever side of USE_MULTI_AGENT
-      // the deployment is on. Same invariants: no grading, no retry, no
-      // attempt, no advance, outstandingCheck preserved.
-      {
-        const legacyVerdict = await evaluateConstraints({
-          userMessage,
-          globalInstructions: courseGlobalInstructions,
-        });
-        if (legacyVerdict.violates) {
-          const activeModuleForRefusal = session.plan?.find((m) => m.id === session.activeModuleId);
-          const milestoneForRefusal = activeModuleForRefusal?.milestones?.[session.meta?.currentMilestoneIndex ?? 0];
-          const refusalText = buildRefusalMessage(legacyVerdict, {
-            outstandingCheck: session.meta?.outstandingCheck,
-          });
-          await recordRefusal(legacyVerdict, {
-            courseId: session.courseId,
-            courseTopicId: session.courseTopicId,
-            sessionId: session._id,
-            userId: session.userId,
-            userMessage,
-            milestoneText: milestoneForRefusal?.text || '',
-          });
-          session.messages.push(
-            { id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: 'refused', phaseAtSend: session.phase } },
-            { id: `msg_${Date.now() + 1}`, role: 'assistant', content: refusalText, timestamp: new Date(), metadata: { intent: 'refusal', phaseAtSend: session.phase, refusal: true, refusalCategory: legacyVerdict.category } }
-          );
-          await session.save();
-          return res.json({
-            success: true,
-            data: {
-              message: refusalText,
-              phase: session.phase,
-              refusal: true,
-              refusalCategory: legacyVerdict.category,
-              currentMilestoneIndex: session.meta?.currentMilestoneIndex ?? 0,
-              plan: session.plan,
-              activeModuleId: session.activeModuleId,
-              progressPct: session.progressPct || 0,
-              points: session.points || 0,
-              meta: buildChatMeta(session),
-            },
-          });
-        }
-      }
+      // The legacy-path constraint gate used to live here. It is gone because
+      // the hoisted gate near the top of the handler already ran for this turn,
+      // on both sides of USE_MULTI_AGENT and in every phase — which is strictly
+      // more coverage than this call had, since it sat inside the
+      // learning/feedback branch and could not protect pre, quizzing, revision,
+      // or (via the graph's missing 'feedback' route) feedback itself.
 
       // Capture state at turn start for safety checks later
       const hadOutstandingQuestionAtTurnStart = !!session.meta?.outstandingCheck;
@@ -2486,11 +2564,13 @@ Return ONLY valid JSON in this format:
       });
       
       const { statusCode, response } = ERROR_RESPONSES.VALIDATION_ERROR(fieldErrors);
+      // GATE-EXEMPT: 4xx validation error from the top-level handler; success:false, no tutor content.
       return res.status(statusCode).json(response);
     }
-    
+
     if (error.message.includes('GROQ_API_ERROR')) {
       const { statusCode, response } = ERROR_RESPONSES.LLM_PROVIDER_ERROR(error.message);
+      // GATE-EXEMPT: upstream LLM failure surfaced as an error; success:false, no tutor content.
       return res.status(statusCode).json(response);
     }
     

@@ -99,70 +99,91 @@ describe('refusal message — explicit, quotes the instructor, redirects', () =>
   });
 });
 
-describe('graph wiring — the gate cannot be bypassed by any downstream verdict', () => {
-  const src = require('fs').readFileSync(require.resolve('../agents/graph/studyGraph.js'), 'utf8');
+describe('placement — the gate is above the branch point, not inside it', () => {
+  const fs = require('fs');
+  const graph = fs.readFileSync(require.resolve('../agents/graph/studyGraph.js'), 'utf8');
+  const src = fs.readFileSync(require.resolve('../routes/chatRoutes.js'), 'utf8');
 
-  it('convManager hands off to constraintGate unconditionally', () => {
-    expect(src).toMatch(/\.addEdge\('convManager',\s*'constraintGate'\)/);
+  // These assertions replace an earlier set that pinned the gate INSIDE the
+  // LangGraph router. That placement was the bug: constraintGateNode was
+  // reachable only through convManager, and routeAfterRouter routes to
+  // convManager for phase 'learning' only. A feedback-phase turn ran the graph
+  // to END with no gate, and the route congratulated a student who had just
+  // asked for working exploit code. The invariants below are the same ones the
+  // old tests protected; only the location they protect has moved.
+
+  it('the graph carries no gate of its own — a router cannot be a guardrail', () => {
+    expect(graph).not.toMatch(/constraintGate|refusalResult|evaluateConstraints/);
   });
 
-  it('the gate, not convManager, decides what runs next', () => {
-    expect(src).toMatch(/\.addConditionalEdges\('constraintGate',\s*routeAfterGate\)/);
-    expect(src).not.toMatch(/\.addConditionalEdges\('convManager'/);
+  it('exactly one gate call exists in the request path', () => {
+    expect((src.match(/evaluateConstraints\(\{/g) || []).length).toBe(1);
+    expect((src.match(/await enforceConstraints\(\{/g) || []).length).toBe(1);
   });
 
-  it('a violation ends the graph before assessment or teaching', () => {
-    expect(src).toMatch(/function routeAfterGate[\s\S]*?refusalResult\?\.violates\)\s*return END/);
+  it('the gate runs before every phase branch', () => {
+    const gate = src.indexOf('await enforceConstraints({');
+    expect(gate).toBeGreaterThan(-1);
+    for (const branch of [
+      "if (session.mode === 'reviewing' && session.phase === 'pre')",
+      "if (session.phase === 'pre')",
+      "if (session.phase === 'assessing')",
+      "if (session.phase === 'quizzing' || session.phase === 'quiz')",
+      "if (['learning', 'feedback'].includes(session.phase))",
+    ]) {
+      const idx = src.indexOf(branch);
+      expect(idx).toBeGreaterThan(-1);
+      expect(gate).toBeLessThan(idx);
+    }
+  });
+
+  it('the call site is unconditional, so nothing can route around it', () => {
+    // Wrapping it in `if (!isControlCommand(...))` would make coverage
+    // conditional; the skip therefore lives inside the helper.
+    expect(src).toMatch(/if \(await enforceConstraints\(\{[\s\S]{0,240}?\}\)\) \{\s*\n\s*return;/);
+    expect(src).not.toMatch(/if \(!isControlCommand\([\s\S]{0,80}?await enforceConstraints/);
   });
 
   it('the gate never receives the milestone or a grade', () => {
-    const node = src.slice(src.indexOf('async function constraintGateNode'), src.indexOf('function routeAfterGate'));
-    expect(node).toMatch(/userMessage/);
-    expect(node).toMatch(/globalInstructions/);
-    expect(node).not.toMatch(/milestone/i);
-    expect(node).not.toMatch(/assessmentResult/);
+    const svc = fs.readFileSync(require.resolve('../services/constraintGateService.js'), 'utf8');
+    const fn = svc.slice(svc.indexOf('async function evaluateConstraints'), svc.indexOf('function buildRefusalMessage'));
+    expect(fn).toMatch(/userMessage/);
+    expect(fn).toMatch(/globalInstructions/);
+    expect(fn).not.toMatch(/milestone/i);
+    expect(fn).not.toMatch(/assessmentResult|understood|responseType/);
   });
 });
 
 describe('route invariants — a refused turn moves nobody forward', () => {
   const src = require('fs').readFileSync(require.resolve('../routes/chatRoutes.js'), 'utf8');
-  const graphRefusalBlock = src.slice(
-    src.indexOf('if (gs.refusalResult?.violates)'),
-    src.indexOf("if (cm?.shouldStartQuiz || cm?.action === 'start_quiz')")
-  );
-
-  it('is checked before the quiz-gate short-circuit that swallowed the pilot exploit request', () => {
-    expect(src.indexOf('if (gs.refusalResult?.violates)')).toBeLessThan(
-      src.indexOf("if (cm?.shouldStartQuiz || cm?.action === 'start_quiz')")
-    );
-  });
+  const helper = (() => {
+    const h = src.slice(src.indexOf('async function enforceConstraints('));
+    return h.slice(0, h.indexOf('\n}\n'));
+  })();
 
   it('records no MilestoneAttempt, no retry increment, and no milestone advance', () => {
-    expect(graphRefusalBlock).not.toMatch(/recordMilestoneAttempt/);
-    expect(graphRefusalBlock).not.toMatch(/milestoneRetryCount\s*\[/);
-    expect(graphRefusalBlock).not.toMatch(/currentMilestoneIndex\s*=/);
-    expect(graphRefusalBlock).not.toMatch(/completed\s*=\s*true/);
+    expect(helper).not.toMatch(/recordMilestoneAttempt/);
+    expect(helper).not.toMatch(/milestoneRetryCount\s*\[/);
+    expect(helper).not.toMatch(/currentMilestoneIndex\s*=/);
+    expect(helper).not.toMatch(/completed\s*=\s*true/);
+  });
+
+  it('never changes phase', () => {
+    expect(helper).not.toMatch(/session\.phase\s*=/);
   });
 
   it('preserves outstandingCheck rather than clearing or replacing it', () => {
-    expect(graphRefusalBlock).not.toMatch(/outstandingCheck\s*=/);
-    expect(graphRefusalBlock).toMatch(/outstandingCheck: session\.meta\?\.outstandingCheck/);
+    expect(helper).not.toMatch(/outstandingCheck\s*=/);
+    expect(helper).toMatch(/outstandingCheck: session\.meta\?\.outstandingCheck/);
   });
 
   it('persists the violation to the instructor-visible log', () => {
-    expect(graphRefusalBlock).toMatch(/recordRefusal\(/);
+    expect(helper).toMatch(/recordRefusal\(/);
   });
 
-  it('the legacy path runs the same gate before its assessment block', () => {
-    const legacyIdx = src.indexOf('Constraint gate (1b), legacy path');
-    expect(legacyIdx).toBeGreaterThan(-1);
-    // Compare against the CALL SITE, not the import at the top of the file.
-    const assessmentCallSite = src.indexOf('const assessmentPrompt = buildAssessmentAnalysisPrompt');
-    expect(assessmentCallSite).toBeGreaterThan(-1);
-    expect(legacyIdx).toBeLessThan(assessmentCallSite);
-    const legacyBlock = src.slice(legacyIdx, src.indexOf('Capture state at turn start'));
-    expect(legacyBlock).toMatch(/recordRefusal\(/);
-    expect(legacyBlock).not.toMatch(/recordMilestoneAttempt/);
-    expect(legacyBlock).not.toMatch(/milestoneRetryCount\s*\[/);
+  it('runs before the quiz short-circuit that swallowed the pilot exploit request', () => {
+    expect(src.indexOf('await enforceConstraints({')).toBeLessThan(
+      src.indexOf("if (cm?.shouldStartQuiz || cm?.action === 'start_quiz')")
+    );
   });
 });
