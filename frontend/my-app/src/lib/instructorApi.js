@@ -317,6 +317,46 @@ export async function getStudentProgress(courseId) {
   );
 }
 
+/** Run simulation: two synthetic students work a module against the real tutor. */
+export async function startSimulation(courseId, topicId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/simulations`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify({ topicId }),
+    })
+  );
+}
+
+export async function getSimulation(courseId, runId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/simulations/${runId}`, {
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function listSimulations(courseId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/simulations`, {
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
+export async function discardSimulation(courseId, runId) {
+  return parse(
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/simulations/${runId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    })
+  );
+}
+
 /** Tutor-refusal log. Omit studentId for the whole course. */
 export async function getRefusalLog(courseId, studentId) {
   const qs = studentId ? `?studentId=${studentId}` : '';

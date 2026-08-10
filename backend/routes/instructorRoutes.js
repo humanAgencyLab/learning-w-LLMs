@@ -24,6 +24,8 @@ const { runCourseTopicPlanModifyAgent } = require('../agents/courseTopicPlanModi
 const { runTopicDraftModifyAgent } = require('../agents/topicDraftModifyAgent');
 const { validateTopicPlanPayload, validateSingleTopicPayload, normalizeTopicTitleKey } = require('../agents/validators/topicPlanValidator');
 const { runIngestion } = require('../services/bookIngestionService');
+const SimulationRun = require('../models/SimulationRun');
+const { startRun, discardRun } = require('../services/simulation/simulationRunService');
 const { useBookSources } = require('../agents/framework/featureFlag');
 const logger = require('../utils/logger');
 
@@ -552,6 +554,92 @@ router.get('/courses/:courseId/book-coverage', requireCourseOwner, async (req, r
       };
     });
     res.json({ success: true, data: { books: data, planContextTruncated: req.course.planContextTruncated ?? null } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Run simulation (SIMULATION_FEATURE_PLAN.md Section 3)
+// ---------------------------------------------------------------------------
+
+/** POST /v1/instructor/courses/:courseId/simulations  body { topicId } */
+router.post('/courses/:courseId/simulations', requireCourseOwner, async (req, res, next) => {
+  try {
+    const topicId = String(req.body?.topicId || '');
+    if (!mongoose.Types.ObjectId.isValid(topicId)) {
+      return res.status(400).json({ success: false, error: 'A published topicId is required', code: 'VALIDATION_ERROR' });
+    }
+    const topic = await CourseTopic.findOne({ _id: topicId, courseId: req.course._id }).select('title status').lean();
+    if (!topic) {
+      return res.status(404).json({ success: false, error: 'Topic not found on this course', code: 'NOT_FOUND' });
+    }
+    // Mirror of the student start guard: only a published topic can be entered.
+    if (topic.status !== 'published') {
+      return res.status(409).json({
+        success: false,
+        error: 'Publish this topic before running a simulation — students can only enter published topics.',
+        code: 'TOPIC_NOT_PUBLISHED',
+      });
+    }
+    const active = await SimulationRun.findOne({
+      courseId: req.course._id,
+      status: { $in: ['queued', 'running'] },
+    }).select('_id').lean();
+    if (active) {
+      return res.status(409).json({
+        success: false,
+        error: 'A simulation is already running for this course.',
+        code: 'SIMULATION_RUNNING',
+        details: { runId: active._id },
+      });
+    }
+    const run = await startRun({ course: req.course, topic, instructorId: req.userId });
+    res.status(202).json({ success: true, data: { runId: run._id, status: run.status } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** GET /v1/instructor/courses/:courseId/simulations — past runs (re-run entry point) */
+router.get('/courses/:courseId/simulations', requireCourseOwner, async (req, res, next) => {
+  try {
+    const runs = await SimulationRun.find({ courseId: req.course._id })
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .lean();
+    res.json({ success: true, data: { runs } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** GET /v1/instructor/courses/:courseId/simulations/:runId — polling */
+router.get('/courses/:courseId/simulations/:runId', requireCourseOwner, async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.runId)) {
+      return res.status(400).json({ success: false, error: 'Invalid run id', code: 'VALIDATION_ERROR' });
+    }
+    const run = await SimulationRun.findOne({ _id: req.params.runId, courseId: req.course._id }).lean();
+    if (!run) return res.status(404).json({ success: false, error: 'Run not found', code: 'NOT_FOUND' });
+    res.json({ success: true, data: { run } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * DELETE /v1/instructor/courses/:courseId/simulations/:runId[?dryRun=1]
+ * Scoped teardown: deletes exactly the users/enrollments/sessions/attempts this
+ * run created, never "all synthetic users".
+ */
+router.delete('/courses/:courseId/simulations/:runId', requireCourseOwner, async (req, res, next) => {
+  try {
+    const run = await SimulationRun.findOne({ _id: req.params.runId, courseId: req.course._id }).select('_id').lean();
+    if (!run) return res.status(404).json({ success: false, error: 'Run not found', code: 'NOT_FOUND' });
+    const dryRun = req.query.dryRun === '1' || req.query.dryRun === 'true';
+    const result = await discardRun(run._id, { dryRun });
+    res.json({ success: true, data: result });
   } catch (e) {
     next(e);
   }

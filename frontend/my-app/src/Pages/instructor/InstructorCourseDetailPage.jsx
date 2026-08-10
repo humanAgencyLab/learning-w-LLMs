@@ -4,6 +4,7 @@ import * as instructorApi from '../../lib/instructorApi';
 import HotSignalCard from '../../components/instructor/HotSignalCard';
 import TopicRow from '../../components/instructor/desk/TopicRow';
 import { SourceIngestControls, BookCoveragePanel } from '../../components/instructor/BookSourcePanel';
+import RunSimulationCard from '../../components/instructor/RunSimulationCard';
 import useToastStore from '../../state/toastStore';
 
 function CopyButton({ text }) {
@@ -111,6 +112,7 @@ export default function InstructorCourseDetailPage() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [instrSaved, setInstrSaved] = useState(false);
+  const [simulationActive, setSimulationActive] = useState(false);
 
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -541,7 +543,18 @@ export default function InstructorCourseDetailPage() {
           </span>
           <span className="text-xs text-ink-200">Applies to all topics</span>
         </div>
+        {/* Soft lock: the tutor re-reads instructions on every message, so an
+            edit mid-run changes the tutor mid-transcript. The run also stores an
+            instructionsSnapshot taken at launch. */}
+        {simulationActive && (
+          <p className="mt-3 text-xs text-risk-high bg-risk-highTint border border-hairline-soft rounded-lg px-3 py-2">
+            A simulation is running; edits will affect it mid-conversation.
+          </p>
+        )}
       </section>
+
+      {/* Run simulation — directly under the instructions it tests */}
+      <RunSimulationCard courseId={courseId} topics={topics} busy={busy} onActiveChange={setSimulationActive} />
 
       {/* Sources */}
       <section className="bg-surface border border-hairline rounded-2xl shadow-card p-5">

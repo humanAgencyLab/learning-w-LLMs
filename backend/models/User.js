@@ -201,6 +201,20 @@ const UserSchema = new mongoose.Schema({
       type: Boolean,
       default: false
     },
+    /**
+     * Set ONLY on students created by the instructor-facing "Run simulation"
+     * feature. Distinct from isSynthetic on purpose: the study's demo cohort
+     * carries isSynthetic:false so Maya blends in, and the two dashboard call
+     * sites that feed the briefing and insights deliberately pass
+     * excludeSynthetic:false. Simulation students must NEVER blend in — they
+     * are the instructor's own test students and must not enter any analytic
+     * that Part B relies on being byte-comparable across participants
+     * (SIMULATION_FEATURE_PLAN.md Section 2 and risk 5).
+     */
+    isSimulation: {
+      type: Boolean,
+      default: false
+    },
     personaTag: {
       type: String,
       default: null

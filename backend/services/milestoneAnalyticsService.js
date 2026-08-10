@@ -607,7 +607,7 @@ async function getAtRiskStudents(courseId, {
   const userIds = enrollments.map((e) => e.studentId);
   if (!userIds.length) return [];
 
-  const userSelect = 'name username avatarUrl profile.isSynthetic profile.personaTag profile.programmingExposure profile.selfConfidence';
+  const userSelect = 'name username avatarUrl profile.isSynthetic profile.isSimulation profile.personaTag profile.programmingExposure profile.selfConfidence';
   const users = await User.find({ _id: { $in: userIds } }).select(userSelect).lean();
   const userMap = new Map(users.map((u) => [u._id.toString(), u]));
 
@@ -676,6 +676,14 @@ async function getAtRiskStudents(courseId, {
       const user = userMap.get(uid);
       if (!user) return null;
       if (excludeSynthetic && user.profile?.isSynthetic) return null;
+      // Simulation students are the instructor's own test students and are
+      // excluded UNCONDITIONALLY — including from the two dashboard call sites
+      // that deliberately pass excludeSynthetic:false (analyticsService.js:107
+      // and :338, feeding the briefing and insights). Part B's analytics are
+      // the study stimulus and must stay byte-comparable across participants,
+      // and the clone acceptance checks assume exact tier counts
+      // (SIMULATION_FEATURE_PLAN.md Section 2 and risk 5).
+      if (user.profile?.isSimulation) return null;
 
       // --- legacy descriptive fields (B8/B9 — unchanged semantics) ---
       const s = statMap.get(uid);
