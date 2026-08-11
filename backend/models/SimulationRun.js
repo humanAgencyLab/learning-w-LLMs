@@ -35,6 +35,16 @@ const SimulationStudentSchema = new mongoose.Schema(
     /** Which tutor branch each verbatim probe landed in (grading is nondeterministic). */
     probeOutcomes: { type: mongoose.Schema.Types.Mixed, default: null },
     error: { type: String, default: '' },
+    /**
+     * How many times this persona has been executed, including re-runs. A
+     * re-run creates a NEW account and session rather than resuming the old
+     * one — /start resumes an existing session, so reusing the account would
+     * hand the tutor a half-finished transcript and make the second run
+     * incomparable with every other participant's.
+     */
+    attempts: { type: Number, default: 0 },
+    /** userIds from superseded attempts, so discard still reaps them. */
+    supersededUserIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
   },
   { _id: false }
 );
@@ -66,6 +76,13 @@ const SimulationRunSchema = new mongoose.Schema(
     students: { type: [SimulationStudentSchema], default: [] },
     startedAt: { type: Date, default: null },
     finishedAt: { type: Date, default: null },
+    /**
+     * Bumped on every persisted step. The runner is an in-process job, so a
+     * container restart mid-run (Cloud Run scales to zero) leaves a document
+     * stuck in 'running' with nothing left to finish it. The watchdog reads
+     * this rather than startedAt so a slow-but-alive run is never reaped.
+     */
+    lastProgressAt: { type: Date, default: null },
     error: { type: String, default: '' },
     tokenEstimate: { type: Number, default: 0 },
   },

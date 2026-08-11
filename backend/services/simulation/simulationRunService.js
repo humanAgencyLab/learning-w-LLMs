@@ -117,6 +117,8 @@ function classifyProbeOutcome(chatData) {
 async function persistStudent(runId, index, patch) {
   const $set = {};
   for (const [k, v] of Object.entries(patch)) $set[`students.${index}.${k}`] = v;
+  // Every persisted step is also a liveness beat for the watchdog.
+  $set.lastProgressAt = new Date();
   await SimulationRun.updateOne({ _id: runId }, { $set });
 }
 
@@ -285,15 +287,29 @@ async function runOneStudent({ run, index, persona, course, topic }) {
 }
 
 /** Execute the whole run. Never throws; records everything on the document. */
-async function executeRun(runId) {
+/**
+ * @param {object} [opts]
+ * @param {number} [opts.onlyIndex] re-run just this persona, leaving the other
+ *   student's completed record untouched.
+ */
+async function executeRun(runId, { onlyIndex = null } = {}) {
   const run = await SimulationRun.findById(runId);
   if (!run) return;
   try {
-    await SimulationRun.updateOne({ _id: runId }, { $set: { status: 'running', startedAt: new Date() } });
+    await SimulationRun.updateOne({ _id: runId }, {
+      $set: {
+        status: 'running',
+        lastProgressAt: new Date(),
+        // A re-run keeps the original startedAt: the record is of one run that
+        // needed two attempts, not of a second run.
+        ...(onlyIndex === null ? { startedAt: new Date() } : {}),
+      },
+    });
     const course = await Course.findById(run.courseId).select('accessCode globalInstructions title').lean();
     const topic = await CourseTopic.findById(run.courseTopicId).select('title').lean();
 
     for (let i = 0; i < run.students.length; i++) {
+      if (onlyIndex !== null && i !== onlyIndex) continue;
       const persona = PERSONAS[run.students[i].persona];
       try {
         const outcome = await runOneStudent({ run, index: i, persona, course, topic });
@@ -353,11 +369,106 @@ async function startRun({ course, topic, instructorId }) {
   return run;
 }
 
+/**
+ * Re-run ONE persona of an existing run (SIMULATION_FEATURE_PLAN Phase 2).
+ *
+ * Deliberately creates a fresh account and session rather than resuming: the
+ * student /start endpoint RESUMES an existing session, so reusing the failed
+ * account would hand the tutor a half-finished transcript and make that
+ * persona's transcript incomparable with every other participant's — which is
+ * the one property the fixed probe turns exist to protect.
+ *
+ * The superseded account is kept on the record (not deleted here) so discard
+ * still reaps it, and so a failed first attempt remains inspectable.
+ */
+async function retryStudent(runId, personaId) {
+  const run = await SimulationRun.findById(runId);
+  if (!run) return { ok: false, code: 'NOT_FOUND' };
+  if (run.status === 'discarded') return { ok: false, code: 'RUN_DISCARDED' };
+  if (['queued', 'running'].includes(run.status)) return { ok: false, code: 'RUN_ACTIVE' };
+
+  const index = run.students.findIndex((s) => s.persona === personaId);
+  if (index === -1) return { ok: false, code: 'NO_SUCH_PERSONA' };
+  if (run.students[index].status !== 'failed') return { ok: false, code: 'NOT_FAILED' };
+
+  const prevUserId = run.students[index].userId;
+  const $set = {
+    status: 'running',
+    [`students.${index}.status`]: 'pending',
+    [`students.${index}.stage`]: 'queued for re-run',
+    [`students.${index}.error`]: '',
+    [`students.${index}.turns`]: 0,
+    [`students.${index}.probeOutcomes`]: {},
+    [`students.${index}.userId`]: null,
+    [`students.${index}.enrollmentId`]: null,
+    [`students.${index}.sessionId`]: null,
+    [`students.${index}.intendedQuizCorrect`]: null,
+    [`students.${index}.quizQuestionCount`]: null,
+    [`students.${index}.scoredQuizPct`]: null,
+    [`students.${index}.quizSkipped`]: false,
+    finishedAt: null,
+    lastProgressAt: new Date(),
+  };
+  const update = { $set, $inc: { [`students.${index}.attempts`]: 1 } };
+  if (prevUserId) update.$push = { [`students.${index}.supersededUserIds`]: prevUserId };
+  await SimulationRun.updateOne({ _id: runId }, update);
+
+  setImmediate(() => { executeRun(runId, { onlyIndex: index }).catch(() => {}); });
+  return { ok: true, index };
+}
+
+/**
+ * Fail runs whose in-process job died with them.
+ *
+ * The runner is an in-process setImmediate job, so a container restart — which
+ * Cloud Run does routinely on scale-to-zero — leaves the document in 'running'
+ * with nothing alive to finish it, and the instructor's card polls forever.
+ * Called on read rather than on a timer: the card polls every 3s while anyone
+ * is looking, which is exactly when staleness matters, and it needs no
+ * scheduler in a service that may have no instance running at all.
+ *
+ * Keyed on lastProgressAt, not startedAt, so a legitimately slow run (two
+ * students x 8 min budget) is never reaped mid-flight.
+ */
+const STALE_AFTER_MS = Number(process.env.SIM_STALE_AFTER_MS || 12 * 60 * 1000);
+
+async function reapStaleRuns(filter = {}) {
+  const cutoff = new Date(Date.now() - STALE_AFTER_MS);
+  const stale = await SimulationRun.find({
+    ...filter,
+    status: { $in: ['queued', 'running'] },
+    $or: [
+      { lastProgressAt: { $lt: cutoff } },
+      { lastProgressAt: null, createdAt: { $lt: cutoff } },
+    ],
+  }).select('_id students').lean();
+
+  for (const run of stale) {
+    const $set = {
+      status: 'failed',
+      error: 'Run stalled — the server restarted or the job died before finishing. Discard it and run again.',
+      finishedAt: new Date(),
+    };
+    (run.students || []).forEach((s, i) => {
+      if (s.status === 'pending' || s.status === 'running') {
+        $set[`students.${i}.status`] = 'failed';
+        $set[`students.${i}.stage`] = 'stalled';
+        $set[`students.${i}.error`] = 'interrupted before completion';
+      }
+    });
+    await SimulationRun.updateOne({ _id: run._id }, { $set });
+    logger.warn({ runId: String(run._id) }, '[simulation] reaped stale run');
+  }
+  return stale.length;
+}
+
 /** Delete exactly what a run created (scoped teardown, not "all synthetic"). */
 async function discardRun(runId, { dryRun = false } = {}) {
   const run = await SimulationRun.findById(runId).lean();
   if (!run) return null;
-  const userIds = (run.students || []).map((s) => s.userId).filter(Boolean);
+  // Superseded accounts from re-runs must be reaped too, or a re-run would
+  // silently leave its first attempt's student behind in the course.
+  const userIds = (run.students || []).flatMap((s) => [s.userId, ...(s.supersededUserIds || [])]).filter(Boolean);
   const counts = {};
   const db = mongoose.connection.db;
   const targets = [
@@ -382,6 +493,9 @@ module.exports = {
   startRun,
   executeRun,
   discardRun,
+  retryStudent,
+  reapStaleRuns,
+  STALE_AFTER_MS,
   runOneStudent,
   generateStudentReply,
   classifyProbeOutcome,

@@ -19,7 +19,7 @@ const TERMINAL = ['completed', 'partial', 'failed', 'discarded'];
 
 const PERSONA_LABEL = { earnest: 'earnest learner', boundary: 'boundary tester' };
 
-function StudentLine({ courseId, student }) {
+function StudentLine({ courseId, student, onRetry, retrying, canRetry }) {
   const label = PERSONA_LABEL[student.persona] || student.persona;
   const done = student.status === 'completed';
   const failed = student.status === 'failed';
@@ -29,9 +29,25 @@ function StudentLine({ courseId, student }) {
         <span className="text-sm font-semibold text-ink-800">{student.displayName || label}</span>
         <span className="text-[11px] uppercase font-bold px-1.5 py-0.5 rounded bg-assistant-tint text-assistant">sim</span>
         <span className="text-xs text-ink-400">{label}</span>
+        {student.attempts > 1 && (
+          <span className="text-[11px] text-ink-400">attempt {student.attempts}</span>
+        )}
         <span className={`text-xs ml-auto ${failed ? 'text-risk-critical' : done ? 'text-approve-strong' : 'text-ink-500'}`}>
           {failed ? `failed — ${student.error || 'unknown error'}` : student.stage || student.status}
         </span>
+        {failed && canRetry && (
+          // Re-runs only this student. The usual failure is a transient upstream
+          // error on one persona, and re-running everything would throw away a
+          // good transcript for the other one.
+          <button
+            type="button"
+            disabled={retrying}
+            onClick={() => onRetry(student.persona)}
+            className="text-xs text-brand hover:underline font-medium disabled:opacity-50"
+          >
+            {retrying ? 'Restarting…' : 'Re-run this student'}
+          </button>
+        )}
       </div>
       {(done || failed) && (
         <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-ink-500">
@@ -74,6 +90,9 @@ export default function RunSimulationCard({ courseId, topics = [], busy, onActiv
   const [topicId, setTopicId] = useState('');
   const [error, setError] = useState(null);
   const [starting, setStarting] = useState(false);
+  const [retrying, setRetrying] = useState(null);
+  const [discardPreview, setDiscardPreview] = useState(null);
+  const [discarding, setDiscarding] = useState(false);
   const pollRef = useRef(null);
 
   const published = topics.filter((t) => t.status === 'published');
@@ -133,6 +152,43 @@ export default function RunSimulationCard({ courseId, topics = [], busy, onActiv
     }
   };
 
+  const retry = async (persona) => {
+    setRetrying(persona);
+    setError(null);
+    try {
+      await instructorApi.retrySimulationStudent(courseId, run._id, persona);
+      await poll(run._id); // flips the card back into its polling state
+    } catch (e) {
+      setError(e.message || 'Could not re-run that student');
+    } finally {
+      setRetrying(null);
+    }
+  };
+
+  // Dry run first: show the instructor the actual row counts before deleting.
+  const openDiscard = async () => {
+    setError(null);
+    try {
+      const res = await instructorApi.discardSimulation(courseId, run._id, { dryRun: true });
+      setDiscardPreview(res.data);
+    } catch (e) {
+      setError(e.message || 'Could not check what discard would remove');
+    }
+  };
+
+  const confirmDiscard = async () => {
+    setDiscarding(true);
+    try {
+      await instructorApi.discardSimulation(courseId, run._id);
+      setDiscardPreview(null);
+      setRun(null);
+    } catch (e) {
+      setError(e.message || 'Could not discard the run');
+    } finally {
+      setDiscarding(false);
+    }
+  };
+
   const active = !!(run && !TERMINAL.includes(run.status));
 
   // Drives the instructions-card soft-lock banner on the parent page.
@@ -175,13 +231,61 @@ export default function RunSimulationCard({ courseId, topics = [], busy, onActiv
             >
               Run again
             </button>
+            <button
+              type="button"
+              onClick={openDiscard}
+              className="text-xs text-risk-critical hover:underline font-medium"
+            >
+              Discard
+            </button>
           </div>
           <ul className="space-y-2">
             {(run.students || []).map((s) => (
-              <StudentLine key={s.persona} courseId={courseId} student={s} />
+              <StudentLine
+                key={s.persona}
+                courseId={courseId}
+                student={s}
+                onRetry={retry}
+                retrying={retrying === s.persona}
+                canRetry={!active}
+              />
             ))}
           </ul>
           {run.error && <p className="mt-2 text-xs text-risk-critical">{run.error}</p>}
+        </div>
+      )}
+
+      {discardPreview && (
+        <div className="fixed inset-0 z-[80] bg-ink-900/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="bg-surface rounded-2xl shadow-popover max-w-md w-full p-5">
+            <h3 className="text-base font-bold text-ink-900 mb-1">Discard this simulation?</h3>
+            <p className="text-sm text-ink-500 mb-3">
+              This permanently deletes the simulated students and everything they produced. Your course,
+              your instructions and your real students are untouched.
+            </p>
+            {/* Real counts from a dry run, so "discard" is not a word to be taken on trust. */}
+            <ul className="text-sm text-ink-600 border border-hairline-soft rounded-lg divide-y divide-hairline-soft mb-4">
+              {Object.entries(discardPreview.counts || {}).map(([coll, n]) => (
+                <li key={coll} className="flex justify-between px-3 py-1.5">
+                  <span className="capitalize">{coll.replace(/s$/, '').replace(/([a-z])([A-Z])/g, '$1 $2')}</span>
+                  <span className={n > 0 ? 'font-semibold text-ink-800' : 'text-ink-300'}>{n}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setDiscardPreview(null)} className="text-sm px-3 py-1.5 rounded-lg text-ink-600 hover:bg-surface-hover">
+                Keep it
+              </button>
+              <button
+                type="button"
+                disabled={discarding}
+                onClick={confirmDiscard}
+                className="text-sm px-3 py-1.5 rounded-lg bg-risk-critical text-white font-semibold hover:opacity-90 disabled:opacity-50"
+              >
+                {discarding ? 'Discarding…' : 'Discard'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

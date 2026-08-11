@@ -25,7 +25,9 @@ const { runTopicDraftModifyAgent } = require('../agents/topicDraftModifyAgent');
 const { validateTopicPlanPayload, validateSingleTopicPayload, normalizeTopicTitleKey } = require('../agents/validators/topicPlanValidator');
 const { runIngestion } = require('../services/bookIngestionService');
 const SimulationRun = require('../models/SimulationRun');
-const { startRun, discardRun } = require('../services/simulation/simulationRunService');
+const {
+  startRun, discardRun, retryStudent, reapStaleRuns,
+} = require('../services/simulation/simulationRunService');
 const { useBookSources } = require('../agents/framework/featureFlag');
 const logger = require('../utils/logger');
 
@@ -582,6 +584,11 @@ router.post('/courses/:courseId/simulations', requireCourseOwner, async (req, re
         code: 'TOPIC_NOT_PUBLISHED',
       });
     }
+    // Reap first: a run whose in-process job died with a container restart stays
+    // 'running' forever, and would otherwise block this course from ever
+    // starting another simulation.
+    await reapStaleRuns({ courseId: req.course._id });
+
     const active = await SimulationRun.findOne({
       courseId: req.course._id,
       status: { $in: ['queued', 'running'] },
@@ -604,6 +611,7 @@ router.post('/courses/:courseId/simulations', requireCourseOwner, async (req, re
 /** GET /v1/instructor/courses/:courseId/simulations — past runs (re-run entry point) */
 router.get('/courses/:courseId/simulations', requireCourseOwner, async (req, res, next) => {
   try {
+    await reapStaleRuns({ courseId: req.course._id });
     const runs = await SimulationRun.find({ courseId: req.course._id })
       .sort({ createdAt: -1 })
       .limit(20)
@@ -620,9 +628,43 @@ router.get('/courses/:courseId/simulations/:runId', requireCourseOwner, async (r
     if (!mongoose.Types.ObjectId.isValid(req.params.runId)) {
       return res.status(400).json({ success: false, error: 'Invalid run id', code: 'VALIDATION_ERROR' });
     }
+    await reapStaleRuns({ courseId: req.course._id, _id: req.params.runId });
     const run = await SimulationRun.findOne({ _id: req.params.runId, courseId: req.course._id }).lean();
     if (!run) return res.status(404).json({ success: false, error: 'Run not found', code: 'NOT_FOUND' });
     res.json({ success: true, data: { run } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * POST /v1/instructor/courses/:courseId/simulations/:runId/students/:persona/retry
+ *
+ * Re-runs ONE failed persona. The common failure is a transient upstream error
+ * on one student, and re-running the whole simulation would discard a perfectly
+ * good transcript for the other one — and cost another full run of tutor calls.
+ */
+router.post('/courses/:courseId/simulations/:runId/students/:persona/retry', requireCourseOwner, async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.runId)) {
+      return res.status(400).json({ success: false, error: 'Invalid run id', code: 'VALIDATION_ERROR' });
+    }
+    const run = await SimulationRun.findOne({ _id: req.params.runId, courseId: req.course._id }).select('_id').lean();
+    if (!run) return res.status(404).json({ success: false, error: 'Run not found', code: 'NOT_FOUND' });
+
+    const result = await retryStudent(run._id, String(req.params.persona));
+    if (!result.ok) {
+      const status = result.code === 'NOT_FOUND' || result.code === 'NO_SUCH_PERSONA' ? 404 : 409;
+      const messages = {
+        NO_SUCH_PERSONA: 'No such persona on this run.',
+        NOT_FAILED: 'That student did not fail — only a failed student can be re-run.',
+        RUN_ACTIVE: 'This simulation is still running.',
+        RUN_DISCARDED: 'This run was discarded; start a new simulation instead.',
+        NOT_FOUND: 'Run not found',
+      };
+      return res.status(status).json({ success: false, error: messages[result.code] || 'Cannot re-run', code: result.code });
+    }
+    res.status(202).json({ success: true, data: { runId: run._id, persona: req.params.persona } });
   } catch (e) {
     next(e);
   }

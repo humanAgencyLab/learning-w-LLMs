@@ -347,13 +347,29 @@ export async function listSimulations(courseId) {
   );
 }
 
-export async function discardSimulation(courseId, runId) {
+/**
+ * Discard a run. Pass dryRun to COUNT what would be deleted without deleting —
+ * the card uses that to show the instructor exactly what discard will remove
+ * before they confirm, rather than asking them to trust the word "discard".
+ */
+export async function discardSimulation(courseId, runId, { dryRun = false } = {}) {
+  const qs = dryRun ? '?dryRun=1' : '';
   return parse(
-    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/simulations/${runId}`, {
+    await fetch(`${API_BASE}/v1/instructor/courses/${courseId}/simulations/${runId}${qs}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
       credentials: 'include',
     })
+  );
+}
+
+/** Re-run one failed persona, keeping the other student's transcript. */
+export async function retrySimulationStudent(courseId, runId, persona) {
+  return parse(
+    await fetch(
+      `${API_BASE}/v1/instructor/courses/${courseId}/simulations/${runId}/students/${persona}/retry`,
+      { method: 'POST', headers: getAuthHeaders(), credentials: 'include' }
+    )
   );
 }
 
