@@ -759,7 +759,68 @@ Return ONLY valid JSON in this format:
         hint: 'Use the assessment endpoint to answer clarification questions'
       });
     }
-    
+
+    /**
+     * 'planning' — the student has a draft plan awaiting approval.
+     *
+     * This branch did not exist, and planning matched no other branch, so the
+     * request fell out of the handler with the socket never written: the client
+     * spun until it timed out, and nothing was logged because nothing threw.
+     *
+     * Answered with 200 + the plan rather than the 409 ILLEGAL_PHASE its
+     * 'assessing' sibling uses, deliberately, for two reasons:
+     *
+     * 1. The client's 409 handler calls resumeSessionFromServer and then RETRIES
+     *    the same message. sendChatMessage early-returns for phase 'assessing',
+     *    which is what stops that becoming a loop — there is no such guard for
+     *    'planning', so a 409 here would replace a hang with an infinite retry
+     *    spin. That is not better.
+     * 2. Unlike 'assessing', the server has the useful answer in hand. The
+     *    student's next action really is approve-or-modify, so returning the
+     *    plan lets a client whose phase state has drifted render the approval
+     *    surface immediately instead of making another round trip.
+     *
+     * Nothing is persisted to session.messages: this is a statement of session
+     * state, not a tutor turn, and writing it would inflate the message counts
+     * that feed the engagement sensor and therefore the risk model. Note the
+     * constraint gate has already run above, so a violating message never
+     * reaches this line — it was refused and logged first.
+     */
+    if (session.phase === 'planning') {
+      return res.json({
+        success: true,
+        data: {
+          message: 'Your learning plan is ready and waiting for you. Take a look at it above, then approve it or tell me what you would like changed.',
+          phase: 'planning',
+          nextAction: 'APPROVE_PLAN',
+          plan: session.plan,
+          activeModuleId: session.activeModuleId,
+          hint: 'Use the assessment approve or modify endpoint to continue.',
+        },
+      });
+    }
+
+    /**
+     * 'completed' — the topic is finished. Same silent-hang defect as planning.
+     * The completion surface offers Start Revision Quiz and Summarize, so the
+     * reply points at those rather than inventing a new affordance. Also not
+     * persisted, for the same reason.
+     */
+    if (session.phase === 'completed') {
+      return res.json({
+        success: true,
+        data: {
+          message: "You've already finished this topic — nice work. You can start a revision quiz to test what stuck, or ask for a summary of what you covered.",
+          phase: 'completed',
+          plan: session.plan,
+          activeModuleId: session.activeModuleId,
+          progressPct: session.progressPct || 0,
+          points: session.points || 0,
+        },
+      });
+    }
+
+
     // Handle 'quizzing' phase - user wants to start the quiz
     if (session.phase === 'quizzing' || session.phase === 'quiz') {
       // No gate call here: the hoisted gate above has already run for this turn.
@@ -2546,7 +2607,42 @@ Return ONLY valid JSON in this format:
         });
       }
     }
-    
+
+    /**
+     * TERMINAL BACKSTOP — the handler must never fall off its own end.
+     *
+     * Reaching here means a session phase matched no branch above. That is a
+     * server bug, and until this existed its symptom was the worst available
+     * one: no response at all, no exception, no log line, and a client spinning
+     * until it timed out. Two phases ('planning', 'completed') sat in exactly
+     * that state.
+     *
+     * Answers 200 rather than 500 or 409 on purpose. 500 would be untrue —
+     * nothing failed — and 409 would feed the client's resume-and-retry path,
+     * turning a hang into a retry spin for any phase that lacks a client-side
+     * guard. A neutral 200 is the least bad thing for a student to see while
+     * the loud log below is what tells us. tests/chatNoResponse.test.js walks
+     * the whole Session phase enum, so a new phase that lands here fails CI
+     * before it can reach anyone.
+     */
+    req.logger?.error?.('Chat handler reached terminal backstop — no branch handled this phase', {
+      sessionId,
+      phase: session.phase,
+      mode: session.mode,
+      multiAgent: useMultiAgent(),
+    });
+    console.error('[chat] UNHANDLED_PHASE reached terminal backstop', { sessionId, phase: session.phase });
+    return res.json({
+      success: true,
+      data: {
+        message: "I can't pick this conversation up from where it is right now. Try reopening the topic from your course page.",
+        phase: session.phase,
+        code: 'UNHANDLED_PHASE',
+        plan: session.plan,
+        activeModuleId: session.activeModuleId,
+      },
+    });
+
   } catch (error) {
     console.error('Chat failed:', {
       requestId: req.requestId || 'unknown',

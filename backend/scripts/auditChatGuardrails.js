@@ -228,7 +228,173 @@ function analyze(filePath) {
   return { file: filePath, route: handler.route, gates, sites };
 }
 
-module.exports = { analyze };
+/**
+ * COMPANION CHECK: can a path through the handler terminate without responding?
+ *
+ * The guardrail audit above asks "does a gate dominate this response?". This
+ * asks the adjacent question the same route failed: "is there a response at
+ * all?". Two phases — 'planning' and 'completed' — matched no branch, so the
+ * request fell out of the handler with the socket never written. No exception,
+ * so no 500, no log line, and a client spinning until it timed out. A hang is a
+ * worse failure than an error because nothing anywhere records it.
+ *
+ * The analysis is a standard definite-completion walk: respondsDefinitely(n) is
+ * true when EVERY path through n writes a response or throws (a throw is fine —
+ * the catch answers). An `if` with no `else` is therefore never definite, which
+ * is exactly why a chain of `if (phase === X) return res.json(...)` guards needs
+ * a terminal unconditional responder underneath it.
+ *
+ * `return;` with no response is treated as a hole, EXCEPT when the enclosing
+ * if-test calls a helper that answers on its own (enforceConstraints returns
+ * true only after it has already called res.json). Those helpers are detected
+ * from the file rather than hard-coded.
+ */
+const RESPONDER_HELPER_RE = /^(enforceConstraints)$/;
+
+const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'all', 'use']);
+
+/** Every Express handler defined in a file, as {method, route, node}. */
+function findHandlers(ast) {
+  const found = [];
+  walk(ast, null, (n) => {
+    if (n.type !== 'CallExpression') return;
+    const c = n.callee;
+    if (c?.type !== 'MemberExpression' || !HTTP_METHODS.has(c.property?.name)) return;
+    const first = n.arguments[0];
+    if (first?.type !== 'StringLiteral') return;
+    const last = n.arguments[n.arguments.length - 1];
+    if (isFunction(last)) found.push({ method: c.property.name, route: first.value, node: last });
+  });
+  return found;
+}
+
+function analyzeHandlerCompleteness(handler) {
+  const holes = [];
+
+  const isResponseCall = (node) => {
+    if (node?.type !== 'CallExpression') return false;
+    const c = node.callee;
+    if (c?.type !== 'MemberExpression' || !RESPONSE_METHODS.has(c.property?.name)) return false;
+    let base = c.object;
+    while (base?.type === 'CallExpression') base = base.callee?.object;
+    return base?.type === 'Identifier' && base.name === 'res';
+  };
+
+  /** Does the test of this if-statement delegate answering to a helper? */
+  const testDelegates = (ifNode) => {
+    let found = false;
+    walk(ifNode.test, ifNode, (n) => {
+      if (n.type === 'CallExpression' && n.callee?.type === 'Identifier' &&
+          RESPONDER_HELPER_RE.test(n.callee.name)) found = true;
+    });
+    return found;
+  };
+
+  function respondsDefinitely(node, ctx = {}) {
+    if (!node) return false;
+    switch (node.type) {
+      case 'ReturnStatement':
+        if (node.argument && isResponseCall(node.argument)) return true;
+        if (node.argument?.type === 'CallExpression' &&
+            node.argument.callee?.type === 'Identifier' &&
+            node.argument.callee.name === 'next') return true;
+        // `return;` after a helper already answered is fine.
+        if (ctx.delegated) return true;
+        holes.push({
+          line: node.loc.start.line,
+          kind: 'bare-return',
+          detail: 'returns without writing a response',
+        });
+        return false;
+      case 'ThrowStatement':
+        return true; // the handler's catch answers
+      case 'ExpressionStatement': {
+        const e = node.expression?.type === 'AwaitExpression' ? node.expression.argument : node.expression;
+        // next(err) hands off to Express error middleware, which responds.
+        if (e?.type === 'CallExpression' && e.callee?.type === 'Identifier' && e.callee.name === 'next') return true;
+        // Handing `res` to a callee gives it ownership of responding — covers
+        // both `await runTopicPlanPipeline(req, res, …)` and `stream.pipe(res)`.
+        if (e?.type === 'CallExpression' &&
+            e.arguments.some((a) => a.type === 'Identifier' && a.name === 'res')) return true;
+        return isResponseCall(node.expression);
+      }
+      case 'BlockStatement':
+        // The first statement that definitely responds ends the path.
+        return node.body.some((s) => respondsDefinitely(s, ctx));
+      case 'IfStatement': {
+        const delegated = testDelegates(node);
+        const c = respondsDefinitely(node.consequent, { delegated });
+        if (!node.alternate) return false; // no else — falls through
+        return c && respondsDefinitely(node.alternate, ctx);
+      }
+      case 'TryStatement':
+        return respondsDefinitely(node.block, ctx) &&
+               (node.handler ? respondsDefinitely(node.handler.body, ctx) : false);
+      case 'SwitchStatement': {
+        const hasDefault = node.cases.some((k) => !k.test);
+        if (!hasDefault) return false;
+        return node.cases.every((k) =>
+          k.consequent.length === 0 || k.consequent.some((s) => respondsDefinitely(s, ctx)));
+      }
+      case 'LabeledStatement':
+        return respondsDefinitely(node.body, ctx);
+      default:
+        return false;
+    }
+  }
+
+  const body = handler.node.body;
+  const complete = respondsDefinitely(body);
+
+  // Locate the specific fall-through: the try block that can complete normally.
+  const tryStmt = body.body.find((s) => s.type === 'TryStatement');
+  const tryFallsThrough = tryStmt ? !respondsDefinitely(tryStmt.block) : false;
+  const lastTryStmt = tryStmt?.block?.body?.[tryStmt.block.body.length - 1] || null;
+
+  // Mirror-image defect: a response written without returning, with code after
+  // it, risks a second write (ERR_HTTP_HEADERS_SENT).
+  const unreturned = [];
+  const TERMINATORS = new Set(['ReturnStatement', 'ThrowStatement', 'BreakStatement', 'ContinueStatement']);
+  walk(handler.node, handler.node.__parent, (n) => {
+    if (n.type !== 'BlockStatement') return;
+    n.body.forEach((s, i) => {
+      if (s.type !== 'ExpressionStatement' || !isResponseCall(s.expression)) return;
+      const next = n.body[i + 1];
+      // `res.end(); return;` is fine — the path ends either way. Only an
+      // unreturned response with real code after it can write twice.
+      if (next && !TERMINATORS.has(next.type)) {
+        unreturned.push({ line: s.loc.start.line, kind: 'unreturned-response' });
+      }
+    });
+  });
+
+  return {
+    method: handler.method,
+    route: handler.route,
+    line: handler.node.loc.start.line,
+    complete,
+    tryFallsThrough,
+    lastTryStatementLine: lastTryStmt ? lastTryStmt.loc.start.line : null,
+    holes,
+    unreturned,
+  };
+}
+
+/** Every Express handler in a file, analysed for response completeness. */
+function sweepFile(filePath) {
+  const src = fs.readFileSync(filePath, 'utf8');
+  const ast = parser.parse(src, { sourceType: 'unambiguous', errorRecovery: false });
+  return findHandlers(ast).map((h) => ({ file: filePath, ...analyzeHandlerCompleteness(h) }));
+}
+
+/** The POST /chat handler specifically — what the regression test asserts on. */
+function analyzeResponseCompleteness(filePath) {
+  const hit = sweepFile(filePath).find((h) => h.method === 'post' && /\/chat$/.test(h.route));
+  if (!hit) throw new Error(`could not locate a POST .../chat handler in ${filePath}`);
+  return hit;
+}
+
+module.exports = { analyze, analyzeResponseCompleteness, sweepFile };
 
 if (require.main === module) {
   const target = process.argv[2] ||
@@ -245,6 +411,16 @@ if (require.main === module) {
       : '*** no gate dominates this response ***';
     console.log(`  ${tag} L${String(s.line).padStart(4)}  ${s.kind.padEnd(9)} ${why}`);
   }
+  const rc = analyzeResponseCompleteness(target);
+  console.log('--- response completeness ---');
+  console.log(`  every path answers: ${rc.complete ? 'YES' : 'NO'}`);
+  if (rc.tryFallsThrough) {
+    console.log(`  *** the try block can complete normally (last statement L${rc.lastTryStatementLine})`);
+    console.log('      a request reaching there gets NO response at all — no error, no log, client hangs');
+  }
+  for (const h of rc.holes) console.log(`  HOLE     L${h.line}  ${h.kind}: ${h.detail}`);
+  for (const u of rc.unreturned) console.log(`  WARN     L${u.line}  response written without return, with code after it`);
   console.log('');
-  process.exit((counts.UNGATED || 0) > 0 ? 1 : 0);
+
+  process.exit(((counts.UNGATED || 0) > 0 || !rc.complete) ? 1 : 0);
 }
