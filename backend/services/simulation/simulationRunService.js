@@ -190,6 +190,10 @@ async function runOneStudent({ run, index, persona, course, topic }) {
   const delivered = {};
   const probesPending = () => isBoundary && PROBE_SEQUENCE.some((p) => !delivered[p.key]);
   let heldTurns = 0;
+  // Second layer against losing a probe (see the note above the loop).
+  let onLastMilestone = false;
+  let lastChanceUsed = 0;
+  let windowClosed = false;
 
   // Session state as of the last tutor reply, which is what gates the probes.
   // The opener is a real teaching turn, so its reply — not the pre-chat session
@@ -206,7 +210,23 @@ async function runOneStudent({ run, index, persona, course, topic }) {
     && consecutiveFailures < MAX_CONSECUTIVE_FAILURES
   ) {
     const turnNumber = outcome.turns; // 1-indexed for the persona script below
-    const scripted = nextProbe(persona, { turnNumber, state: sessionState, delivered });
+    /**
+     * SECOND LAYER — independent of the persona.
+     *
+     * Layer one is the persona holding the module open (it answers with
+     * clarifications while a probe is pending). That is a single point of
+     * failure: on a short topic the module can complete before turn
+     * PROBE_MIN_TURN, and once it does, chatRoutes clears outstandingCheck
+     * (:1548) and the guard at :1617 never re-sets it, so isProbeReady is
+     * false forever and the probe is lost.
+     *
+     * So when the student is on the module's LAST milestone and the state is
+     * still valid, deliver now even if the turn floor has not been reached.
+     * This is the final turn on which a mid-teaching placement is possible.
+     */
+    const lastChance = onLastMilestone && probesPending() && turnNumber < PROBE_MIN_TURN;
+    const scripted = nextProbe(persona, { turnNumber, state: sessionState, delivered, lastChance });
+    if (scripted && lastChance) lastChanceUsed += 1;
     if (!scripted && probesPending() && turnNumber >= PROBE_MIN_TURN) heldTurns += 1;
 
     let userMessage;
@@ -242,7 +262,18 @@ async function runOneStudent({ run, index, persona, course, topic }) {
     tutorMessage = data?.message || '';
     activeModuleId = data?.activeModuleId || activeModuleId;
     history.push({ role: 'user', content: userMessage }, { role: 'assistant', content: tutorMessage });
-    shouldQuiz = !!data?.shouldGenerateQuiz || !!data?.moduleCompleted;
+    // STICKY. Recomputing from the last reply alone loses the signal: the
+    // constraint-gate refusal payload carries neither shouldGenerateQuiz nor
+    // moduleCompleted, so EVERY probe turn used to reset this to false. A
+    // module that completed stays completed.
+    shouldQuiz = shouldQuiz || !!data?.shouldGenerateQuiz || !!data?.moduleCompleted;
+
+    // Is the student on the module's final milestone? Answering it correctly
+    // ends the module and closes the probe window for good, so this is the
+    // trigger for last-chance delivery below.
+    const totalMs = Number(data?.totalMilestones || 0);
+    const idxMs = Number(data?.currentMilestoneIndex ?? 0);
+    onLastMilestone = totalMs > 0 && idxMs >= totalMs - 1;
 
     // Refresh the gate inputs from the reply the tutor just sent.
     sessionState = {
@@ -273,6 +304,27 @@ async function runOneStudent({ run, index, persona, course, topic }) {
       stage: shouldQuiz ? 'module complete · taking quiz' : `learning · turn ${outcome.turns}`,
       probeOutcomes: outcome.probeOutcomes,
     });
+
+    /**
+     * The window is provably shut: the module has completed and the state is
+     * no longer probe-ready. chatRoutes cannot re-open it — outstandingCheck is
+     * cleared on completion and the :1617 guard prevents it being re-set — so
+     * every remaining turn is wasted budget and the probe can never land
+     * mid-teaching.
+     *
+     * Stop here and report, rather than burning ~15 turns to reach the same
+     * conclusion. Deliberately NOT firing the probe anyway: post-hoist a probe
+     * at a gate would still draw a gate refusal and a log row, which is exactly
+     * what makes it dangerous — it looks like usable A6 material but is a
+     * different stimulus (no outstanding check to return to, so no "Back to
+     * where we were" line, and the student is not mid-task). Accepting it would
+     * silently reintroduce the August placement defect wearing a valid-looking
+     * label. A loud gap is worth more to the study than a quiet mismatch.
+     */
+    if (shouldQuiz && probesPending() && !isProbeReady(sessionState)) {
+      windowClosed = true;
+      break;
+    }
   }
 
   /**
@@ -291,7 +343,8 @@ async function runOneStudent({ run, index, persona, course, topic }) {
    * forbids, so holding and reporting is the correct outcome, not a fallback.
    */
   if (probesPending()) {
-    const budget = outcome.turns >= MAX_TURNS_PER_STUDENT ? 'turn budget'
+    const budget = windowClosed ? 'module completed and the tutor cannot re-open a check question'
+      : outcome.turns >= MAX_TURNS_PER_STUDENT ? 'turn budget'
       : Date.now() - started >= WALL_CLOCK_MS_PER_STUDENT ? 'wall clock'
       : consecutiveFailures >= MAX_CONSECUTIVE_FAILURES ? 'consecutive chat failures'
       : 'module completed with no further teaching turns';
@@ -301,7 +354,9 @@ async function runOneStudent({ run, index, persona, course, topic }) {
       outcome.probesUndelivered.push(p.key);
       outcome.probeOutcomes[p.key] = {
         delivered: false,
-        reason: `never reached learning phase with an outstanding check question before the ${budget} ran out`,
+        reason: windowClosed
+          ? 'module completed with the probe still pending; outstandingCheck is cleared on completion and never re-set, so a mid-teaching placement was no longer possible'
+          : `never reached learning phase with an outstanding check question before the ${budget} ran out`,
         heldTurns,
         turnsUsed: outcome.turns,
         lastPhase: sessionState.phase,
@@ -338,15 +393,30 @@ async function runOneStudent({ run, index, persona, course, topic }) {
         outcome.scoredQuizPct = submitted?.scorePct ?? null;
       } else {
         outcome.quizSkipped = true;
+        outcome.quizSkippedReason = 'the quiz generator returned no questions';
       }
     } catch (e) {
       logger.warn({ err: e.message, persona: persona.id }, '[simulation] quiz step failed; skipping');
       outcome.quizSkipped = true;
+      outcome.quizSkippedReason = `quiz step failed: ${String(e.message).slice(0, 160)}`;
     }
   } else if (!shouldQuiz) {
     outcome.quizSkipped = true;
+    outcome.quizSkippedReason = 'the module never completed, so no quiz was offered';
+  } else {
+    // shouldQuiz true but activeModuleId falsy. This branch used to set nothing
+    // and log nothing: quizSkipped stayed false and scoredQuizPct stayed null,
+    // so the instructor card rendered neither a score nor "quiz skipped" —
+    // a blank with no record anywhere of why.
+    outcome.quizSkipped = true;
+    outcome.quizSkippedReason = 'the module completed but no activeModuleId was ever returned, so no quiz could be started';
+    logger.warn(
+      { persona: persona.id, runId: String(runId), turns: outcome.turns },
+      '[simulation] module complete but activeModuleId missing; quiz skipped'
+    );
   }
 
+  outcome.lastChanceProbes = lastChanceUsed;
   return outcome;
 }
 
@@ -391,6 +461,8 @@ async function executeRun(runId, { onlyIndex = null } = {}) {
           quizQuestionCount: outcome.quizQuestionCount ?? null,
           scoredQuizPct: outcome.scoredQuizPct ?? null,
           quizSkipped: !!outcome.quizSkipped,
+          quizSkippedReason: outcome.quizSkippedReason || '',
+          lastChanceProbes: outcome.lastChanceProbes || 0,
           probeOutcomes: outcome.probeOutcomes,
           error: outcome.error || '',
         });

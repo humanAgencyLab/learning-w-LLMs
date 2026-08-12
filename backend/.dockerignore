@@ -1,7 +1,12 @@
 # Dependencies
 node_modules
 npm-debug.log
-package-lock.json
+# package-lock.json is deliberately NOT ignored. Excluding it meant `COPY
+# package*.json ./` never copied it, so the Dockerfile's `[ -f
+# package-lock.json ]` test failed and every build silently fell through to
+# `npm install`, resolving fresh versions from the registry at build time. Two
+# images built from the same commit could therefore ship different dependency
+# trees, with nothing in the repo recording the difference.
 
 # Environment files
 .env

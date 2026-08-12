@@ -53,8 +53,12 @@ function StudentLine({ courseId, student, onRetry, retrying, canRetry }) {
         <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-ink-500">
           <span>{student.turns} turns</span>
           {student.quizSkipped
-            ? <span className="text-ink-300">quiz skipped</span>
-            : student.scoredQuizPct != null && (
+            ? <span className="text-ink-300" title={student.quizSkippedReason || undefined}>
+                quiz skipped{student.quizSkippedReason ? ` — ${student.quizSkippedReason}` : ''}
+              </span>
+            : student.scoredQuizPct == null
+              ? <span className="text-ink-300">no quiz recorded</span>
+              : (
               // Intent shown beside the platform score on purpose: the answer
               // key is LLM-generated and unverified, so a divergence here is
               // study material rather than a fact about the student.

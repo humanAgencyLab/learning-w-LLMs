@@ -32,6 +32,14 @@ const SimulationStudentSchema = new mongoose.Schema(
     quizQuestionCount: { type: Number, default: null },
     scoredQuizPct: { type: Number, default: null },
     quizSkipped: { type: Boolean, default: false },
+    /** Why, so the card never shows an unexplained blank. */
+    quizSkippedReason: { type: String, default: '' },
+    /**
+     * Probes delivered by the runner's last-chance override rather than at the
+     * normal turn floor — i.e. the module was one milestone from completing and
+     * the persona's hold alone would not have saved them.
+     */
+    lastChanceProbes: { type: Number, default: 0 },
     /** Which tutor branch each verbatim probe landed in (grading is nondeterministic). */
     probeOutcomes: { type: mongoose.Schema.Types.Mixed, default: null },
     error: { type: String, default: '' },

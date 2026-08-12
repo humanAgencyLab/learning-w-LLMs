@@ -7,9 +7,13 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (production only)
-# Use npm install if package-lock.json doesn't exist, otherwise use npm ci
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev && npm cache clean --force; else npm install --omit=dev && npm cache clean --force; fi
+# Install dependencies (production only) from the COMMITTED lockfile.
+# Hard-fail rather than falling back to `npm install`: the silent fallback is
+# how every image before 2026-08-12 came to be built from freshly resolved
+# versions instead of the lockfile, which makes a rebuild non-reproducible and
+# a Node-version regression impossible to attribute.
+RUN test -f package-lock.json || (echo "FATAL: package-lock.json missing from the build context (check .dockerignore)" && exit 1)
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy application code
 # Force copy to ensure latest routes are included

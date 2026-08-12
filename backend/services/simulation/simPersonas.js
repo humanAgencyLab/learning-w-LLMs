@@ -199,9 +199,15 @@ function hintForIntent(intent) {
  * @param {object} ctx.state        {phase, outstandingCheck} after the last turn
  * @param {object} ctx.delivered    map of probe key -> truthy once sent
  */
-function nextProbe(persona, { turnNumber, state, delivered = {} }) {
+function nextProbe(persona, { turnNumber, state, delivered = {}, lastChance = false }) {
   if (persona.id !== 'boundary') return null;
-  if (turnNumber < PROBE_MIN_TURN) return null;
+  // The turn floor keeps the opening exchange natural. `lastChance` overrides
+  // it when the runner can see the module is one milestone from completing:
+  // after completion the tutor cannot re-open a check question, so this is the
+  // final turn on which a mid-teaching placement exists at all. Better an
+  // early real probe than a lost one.
+  if (turnNumber < PROBE_MIN_TURN && !lastChance) return null;
+  // The state gate itself is never bypassed, not even by lastChance.
   if (!isProbeReady(state)) return null;
   return PROBE_SEQUENCE.find((p) => !delivered[p.key]) || null;
 }

@@ -100,6 +100,76 @@ describe('personas — probe placement is a STATE, not a turn index', () => {
   });
 });
 
+describe('probe placement does not rest on the persona alone', () => {
+  const runner = read('services/simulation/simulationRunService.js');
+
+  it('shouldQuiz is sticky — a probe turn must not erase module completion', () => {
+    // The refusal payload carries neither shouldGenerateQuiz nor
+    // moduleCompleted, so a non-sticky assignment reset it on every probe turn.
+    expect(runner).toMatch(/shouldQuiz = shouldQuiz \|\| !!data\?\.shouldGenerateQuiz \|\| !!data\?\.moduleCompleted;/);
+  });
+
+  it('delivers on the last milestone even before the turn floor', () => {
+    // Layer two: independent of the persona. On a short topic the module can
+    // complete before PROBE_MIN_TURN, and completion closes the window forever.
+    expect(runner).toMatch(/const lastChance = onLastMilestone && probesPending\(\) && turnNumber < PROBE_MIN_TURN;/);
+    expect(nextProbe(PERSONAS.boundary, {
+      turnNumber: 1,
+      state: { phase: 'learning', outstandingCheck: 'what does it say?' },
+      delivered: {},
+      lastChance: true,
+    })).toEqual({ key: 'A', text: PROBE_A });
+  });
+
+  it('lastChance never bypasses the state gate itself', () => {
+    // Early delivery is allowed; delivery into the WRONG state never is.
+    for (const state of [
+      { phase: 'quizzing', outstandingCheck: 'q?' },
+      { phase: 'learning', outstandingCheck: null },
+      { phase: 'feedback', outstandingCheck: '' },
+    ]) {
+      expect(nextProbe(PERSONAS.boundary, { turnNumber: 1, state, delivered: {}, lastChance: true })).toBeNull();
+    }
+  });
+
+  it('still respects the turn floor when the module is not about to complete', () => {
+    const state = { phase: 'learning', outstandingCheck: 'what does it say?' };
+    expect(nextProbe(PERSONAS.boundary, { turnNumber: 1, state, delivered: {}, lastChance: false })).toBeNull();
+    expect(nextProbe(PERSONAS.boundary, { turnNumber: 3, state, delivered: {}, lastChance: false })).toEqual({ key: 'A', text: PROBE_A });
+  });
+
+  it('stops immediately once the window is provably shut, rather than burning budget', () => {
+    expect(runner).toMatch(/if \(shouldQuiz && probesPending\(\) && !isProbeReady\(sessionState\)\) \{\s*\n\s*windowClosed = true;\s*\n\s*break;/);
+  });
+
+  it('never fires a probe at a gate as a fallback', () => {
+    // A gate-placed probe would still draw a refusal post-hoist, which is what
+    // makes it dangerous: usable-looking A6 material from a different stimulus.
+    const tail = runner.slice(runner.indexOf('if (probesPending())'));
+    expect(tail.slice(0, 1200)).not.toMatch(/client\.chat\(/);
+    expect(runner).toMatch(/probesUndelivered/);
+  });
+});
+
+describe('a skipped quiz is always explained', () => {
+  const runner = read('services/simulation/simulationRunService.js');
+
+  it('the fourth path sets a reason and logs instead of leaving a blank', () => {
+    // shouldQuiz true + activeModuleId falsy previously set nothing at all:
+    // quizSkipped false, score null, and the card rendered neither.
+    const tail = runner.slice(runner.indexOf('} else if (!shouldQuiz) {'));
+    expect(tail).toMatch(/activeModuleId was ever returned/);
+    expect(tail).toMatch(/\[simulation\] module complete but activeModuleId missing/);
+  });
+
+  it('every quizSkipped assignment is paired with a reason', () => {
+    const assigns = [...runner.matchAll(/outcome\.quizSkipped = true;/g)].length;
+    const reasons = [...runner.matchAll(/outcome\.quizSkippedReason = /g)].length;
+    expect(assigns).toBeGreaterThanOrEqual(4);
+    expect(reasons).toBe(assigns);
+  });
+});
+
 describe('the boundary tester does not finish the module before it probes', () => {
   // Acceptance run 2 (2026-08-11) completed its module by turn 3, so the state
   // gate correctly held both probes until the budget expired and the transcript
