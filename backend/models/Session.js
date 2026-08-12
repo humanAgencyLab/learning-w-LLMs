@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { DIFFICULTY_TIERS } = require('../constants/difficulty');
 
 const SessionSchema = new mongoose.Schema({
   // Core session fields
@@ -76,7 +77,7 @@ const SessionSchema = new mongoose.Schema({
     },
     difficulty: {
       type: String,
-      enum: ['intro', 'core', 'apply', 'challenge'],
+      enum: [...DIFFICULTY_TIERS],
       default: 'core'
     },
     // Optional instructor-defined quiz style (course-topic sessions)

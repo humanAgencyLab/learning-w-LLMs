@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { DIFFICULTY_TIERS, DEFAULT_DIFFICULTY } = require('../constants/difficulty');
 
 const QuizPatternSchema = new mongoose.Schema({
   questionCount: { type: Number, default: 5, min: 3, max: 10 },
@@ -28,7 +29,7 @@ const ModuleSchema = new mongoose.Schema({
   moduleId: { type: String, required: true },
   title: { type: String, required: true, trim: true },
   description: { type: String, trim: true, default: '' },
-  difficulty: { type: String, enum: ['intro', 'core', 'apply'], default: 'core' },
+  difficulty: { type: String, enum: [...DIFFICULTY_TIERS], default: DEFAULT_DIFFICULTY },
   points: { type: Number, required: true, min: 0 },
   milestones: {
     type: [MilestoneSchema],

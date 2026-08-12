@@ -23,7 +23,7 @@ const User = require('../../models/User');
 const { useMultiAgent } = require('../../agents/framework/featureFlag');
 const { SimStudentClient, sleep } = require('./simStudentClient');
 const {
-  PERSONAS, intentForTurn, hintForIntent, scriptedTurn, PROBE_A_TURN, PROBE_B_TURN,
+  PERSONAS, intentForTurn, hintForIntent, nextProbe, PROBE_SEQUENCE, PROBE_MIN_TURN,
 } = require('./simPersonas');
 const logger = require('../../utils/logger');
 
@@ -162,6 +162,7 @@ async function runOneStudent({ run, index, persona, course, topic }) {
   let consecutiveFailures = 0;
   let shouldQuiz = false;
   let activeModuleId = sessionRaw?.activeModuleId || null;
+  let openerState = null;
 
   // Open the conversation so the tutor produces its first teaching turn.
   try {
@@ -171,17 +172,32 @@ async function runOneStudent({ run, index, persona, course, topic }) {
     history.push({ role: 'user', content: 'Hi, I\'m ready to start this module.' }, { role: 'assistant', content: tutorMessage });
     outcome.turns += 1;
     shouldQuiz = !!opener?.shouldGenerateQuiz;
+    openerState = {
+      phase: opener?.phase || 'learning',
+      outstandingCheck: opener?.meta?.outstandingCheck ?? null,
+    };
   } catch (e) {
     consecutiveFailures += 1;
     logger.warn({ err: e.message }, '[simulation] opener failed');
   }
 
   // The boundary persona's two verbatim probes are the whole point of that
-  // transcript: comparability across participants depends on both sentences
-  // appearing. A short module can complete before turn 3, so module completion
-  // must NOT end the loop while a probe is still undelivered.
-  const probeTurns = persona.id === 'boundary' ? [PROBE_A_TURN, PROBE_B_TURN] : [];
-  const probesPending = () => probeTurns.some((t) => !outcome.probeOutcomes[t === PROBE_A_TURN ? 'A' : 'B']);
+  // transcript. Comparability now depends on both sentences appearing IN THE
+  // RIGHT STATE (learning phase, check question outstanding), not at a fixed
+  // turn — see the note above isProbeReady. So the loop must not end while a
+  // probe is undelivered, and a probe is held rather than fired at a gate.
+  const isBoundary = persona.id === 'boundary';
+  const delivered = {};
+  const probesPending = () => isBoundary && PROBE_SEQUENCE.some((p) => !delivered[p.key]);
+  let heldTurns = 0;
+
+  // Session state as of the last tutor reply, which is what gates the probes.
+  // The opener is a real teaching turn, so its reply — not the pre-chat session
+  // document — is what establishes the first outstanding check question.
+  let sessionState = openerState || {
+    phase: sessionRaw?.phase || 'learning',
+    outstandingCheck: sessionRaw?.meta?.outstandingCheck || null,
+  };
 
   while (
     (!shouldQuiz || probesPending())
@@ -190,15 +206,9 @@ async function runOneStudent({ run, index, persona, course, topic }) {
     && consecutiveFailures < MAX_CONSECUTIVE_FAILURES
   ) {
     const turnNumber = outcome.turns; // 1-indexed for the persona script below
-    // If the module ended early, deliver any outstanding probe now rather than
-    // dropping it. Where it lands is recorded (mid-teaching vs module gate) so
-    // analysis can condition on it — the pilot showed the flow manager can
-    // swallow a probe typed at the completion gate.
-    let scripted = scriptedTurn(persona, turnNumber);
-    if (!scripted && shouldQuiz && probesPending()) {
-      const nextProbeTurn = probeTurns.find((t) => !outcome.probeOutcomes[t === PROBE_A_TURN ? 'A' : 'B']);
-      scripted = scriptedTurn(persona, nextProbeTurn);
-    }
+    const scripted = nextProbe(persona, { turnNumber, state: sessionState, delivered });
+    if (!scripted && probesPending() && turnNumber >= PROBE_MIN_TURN) heldTurns += 1;
+
     let userMessage;
     if (scripted) {
       userMessage = scripted.text;
@@ -209,6 +219,7 @@ async function runOneStudent({ run, index, persona, course, topic }) {
       });
     }
 
+    const stateBeforeTurn = { ...sessionState };
     const shouldQuizBeforeTurn = shouldQuiz;
     let data;
     try {
@@ -231,16 +242,28 @@ async function runOneStudent({ run, index, persona, course, topic }) {
     history.push({ role: 'user', content: userMessage }, { role: 'assistant', content: tutorMessage });
     shouldQuiz = !!data?.shouldGenerateQuiz || !!data?.moduleCompleted;
 
+    // Refresh the gate inputs from the reply the tutor just sent.
+    sessionState = {
+      phase: data?.phase || sessionState.phase,
+      outstandingCheck: data?.meta?.outstandingCheck ?? null,
+    };
+
     if (scripted) {
-      outcome.probeOutcomes[scripted.probe] = {
+      delivered[scripted.key] = true;
+      outcome.probeOutcomes[scripted.key] = {
+        delivered: true,
         turn: turnNumber,
-        // Where the probe landed: normal teaching flow, or after the module
-        // had already completed (short module) where the flow manager may
-        // answer with the canned quiz-gate line instead of a guardrail.
+        // The state the probe actually landed in, captured BEFORE the turn.
+        // 'mid-teaching' is the only value the study design accepts; the others
+        // are recorded rather than hidden so a bad placement is visible.
         context: shouldQuizBeforeTurn ? 'module-gate' : 'mid-teaching',
+        phaseAtSend: stateBeforeTurn.phase,
+        milestoneIndexAtSend: data?.currentMilestoneIndex ?? null,
+        outstandingCheckAtSend: String(stateBeforeTurn.outstandingCheck || '').slice(0, 200),
+        heldTurns,
         ...classifyProbeOutcome(data),
       };
-      await tagProbeMessage(sessionId, scripted.text, scripted.probe);
+      await tagProbeMessage(sessionId, scripted.text, scripted.key);
     }
 
     await persistStudent(runId, index, {
@@ -248,6 +271,45 @@ async function runOneStudent({ run, index, persona, course, topic }) {
       stage: shouldQuiz ? 'module complete · taking quiz' : `learning · turn ${outcome.turns}`,
       probeOutcomes: outcome.probeOutcomes,
     });
+  }
+
+  /**
+   * Budget exhausted with a probe still held.
+   *
+   * State-gated delivery can fail to fire: if the tutor never returns to
+   * learning-phase-with-an-outstanding-check — it keeps the student at a module
+   * gate, or stops asking check questions — the probe is held until the turn or
+   * wall-clock budget runs out.
+   *
+   * That transcript is NOT comparable with the others: the instructor would be
+   * judging a boundary tester that never tested a boundary. So it is recorded
+   * explicitly rather than left as an absent key, the student is marked
+   * probes_undelivered, and executeRun downgrades the whole run to 'partial'.
+   * Firing the probe anyway at a gate is exactly the placement the study design
+   * forbids, so holding and reporting is the correct outcome, not a fallback.
+   */
+  if (probesPending()) {
+    const budget = outcome.turns >= MAX_TURNS_PER_STUDENT ? 'turn budget'
+      : Date.now() - started >= WALL_CLOCK_MS_PER_STUDENT ? 'wall clock'
+      : consecutiveFailures >= MAX_CONSECUTIVE_FAILURES ? 'consecutive chat failures'
+      : 'module completed with no further teaching turns';
+    outcome.probesUndelivered = [];
+    for (const p of PROBE_SEQUENCE) {
+      if (delivered[p.key]) continue;
+      outcome.probesUndelivered.push(p.key);
+      outcome.probeOutcomes[p.key] = {
+        delivered: false,
+        reason: `never reached learning phase with an outstanding check question before the ${budget} ran out`,
+        heldTurns,
+        turnsUsed: outcome.turns,
+        lastPhase: sessionState.phase,
+        branch: 'not_delivered',
+      };
+    }
+    logger.warn(
+      { persona: persona.id, undelivered: outcome.probesUndelivered, heldTurns, budget, runId: String(runId) },
+      '[simulation] probe(s) never reached a valid mid-teaching state'
+    );
   }
 
   // --- quiz (best effort; the transcript is the primary artifact)
@@ -313,9 +375,15 @@ async function executeRun(runId, { onlyIndex = null } = {}) {
       const persona = PERSONAS[run.students[i].persona];
       try {
         const outcome = await runOneStudent({ run, index: i, persona, course, topic });
+        // A held probe is not a clean completion: the boundary transcript is
+        // unusable for A6 if the probe never landed, so it must not read 'done'.
+        const undelivered = outcome.probesUndelivered || [];
         await persistStudent(runId, i, {
           status: outcome.error ? 'failed' : 'completed',
-          stage: outcome.error ? 'failed' : 'done',
+          stage: outcome.error ? 'failed'
+            : undelivered.length ? `done · probe ${undelivered.join(' & ')} never placed`
+            : 'done',
+          probesUndelivered: undelivered,
           turns: outcome.turns,
           intendedQuizCorrect: outcome.intendedQuizCorrect ?? null,
           quizQuestionCount: outcome.quizQuestionCount ?? null,

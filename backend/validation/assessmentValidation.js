@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { DIFFICULTY_TIERS } = require('../constants/difficulty');
 
 // Import profile schema from session validation
 const { profileSchema } = require('./sessionValidation');
@@ -28,7 +29,7 @@ const moduleSchema = z.object({
     .int('Points must be integer')
     .min(1, 'Points must be positive')
     .max(60, 'Single module cannot exceed 60 points'),
-  difficulty: z.enum(['intro', 'core', 'apply', 'challenge']).optional()
+  difficulty: z.enum([...DIFFICULTY_TIERS]).optional()
 });
 
 // Assessment plan response schema

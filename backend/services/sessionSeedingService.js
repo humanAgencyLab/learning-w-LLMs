@@ -1,14 +1,24 @@
 const mongoose = require('mongoose');
+const { coerceDifficulty } = require('../constants/difficulty');
+const logger = require('../utils/logger');
 const Session = require('../models/Session');
 const User = require('../models/User');
 const { userProfileToSessionProfile } = require('../utils/userProfileToSessionProfile');
 
 /**
- * Map instructor topic module difficulty to session plan enum (adds challenge unused).
+ * Map a CourseTopic module difficulty onto the session plan enum.
+ *
+ * Both sides now share one tier list, so this is a pass-through with a loud
+ * fallback. It used to hand back 'core' for anything that was not intro/apply —
+ * the third place a 'challenge' module was quietly flattened, and the last one
+ * standing between the instructor's plan and what the student's session said.
  */
 function mapDifficulty(d) {
-  if (d === 'intro' || d === 'apply') return d;
-  return 'core';
+  const { value, coerced, original } = coerceDifficulty(d);
+  if (coerced) {
+    logger.warn({ original, coercedTo: value }, '[seeding] unknown module difficulty; coerced');
+  }
+  return value;
 }
 
 /**

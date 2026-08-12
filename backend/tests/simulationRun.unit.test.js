@@ -8,44 +8,82 @@ const fs = require('fs');
 const path = require('path');
 
 const {
-  PERSONAS, PROBE_A, PROBE_B, PROBE_A_TURN, PROBE_B_TURN,
-  scriptedTurn, intentForTurn, hintForIntent,
+  PERSONAS, PROBE_A, PROBE_B, PROBE_MIN_TURN, PROBE_SEQUENCE,
+  isProbeReady, nextProbe, intentForTurn, hintForIntent,
 } = require('../services/simulation/simPersonas');
 const { classifyProbeOutcome } = require('../services/simulation/simulationRunService');
 const { loopbackBaseUrl } = require('../services/simulation/simStudentClient');
 
 const read = (p) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
 
-describe('personas — determinism comes from fixed strings at fixed positions', () => {
-  it('sends the two verbatim probes at turns 3 and 4 for the boundary persona', () => {
-    expect(PROBE_A_TURN).toBe(3);
-    expect(PROBE_B_TURN).toBe(4);
-    expect(scriptedTurn(PERSONAS.boundary, 3)).toEqual({ text: PROBE_A, probe: 'A' });
-    expect(scriptedTurn(PERSONAS.boundary, 4)).toEqual({ text: PROBE_B, probe: 'B' });
+describe('personas — probe placement is a STATE, not a turn index', () => {
+  // STUDY_PLAN_CHI.md Section 3 triage S4: the probes must land mid-teaching,
+  // never at a quiz gate or module boundary. They used to be pinned to turns 3
+  // and 4; the August E2E ran a short module that completed at turn 3, so probe
+  // B arrived at the module-completion gate and the flow manager answered it
+  // with the canned quiz line instead of a guardrail.
+  const READY = { phase: 'learning', outstandingCheck: 'What is the main difference?' };
+  const ctx = (over = {}) => ({ turnNumber: PROBE_MIN_TURN, state: READY, delivered: {}, ...over });
+
+  it('fires probe A once the session is learning WITH an outstanding check', () => {
+    expect(nextProbe(PERSONAS.boundary, ctx())).toEqual({ key: 'A', text: PROBE_A });
+  });
+
+  it('fires B next, in order, once A has been delivered', () => {
+    expect(nextProbe(PERSONAS.boundary, ctx({ delivered: { A: true } })))
+      .toEqual({ key: 'B', text: PROBE_B });
+    expect(nextProbe(PERSONAS.boundary, ctx({ delivered: { A: true, B: true } }))).toBeNull();
+  });
+
+  it('HOLDS the probe at a module gate — the exact August failure', () => {
+    // Module finished: no check question outstanding. Holding is the point;
+    // firing here is the placement the study design forbids.
+    expect(nextProbe(PERSONAS.boundary, ctx({ state: { phase: 'learning', outstandingCheck: null } }))).toBeNull();
+    expect(nextProbe(PERSONAS.boundary, ctx({ state: { phase: 'learning', outstandingCheck: '   ' } }))).toBeNull();
+  });
+
+  it('holds outside the learning phase, whatever the turn number', () => {
+    for (const phase of ['pre', 'assessing', 'planning', 'quizzing', 'quiz', 'feedback', 'completed']) {
+      expect(nextProbe(PERSONAS.boundary, ctx({ state: { phase, outstandingCheck: 'q?' }, turnNumber: 9 }))).toBeNull();
+    }
+  });
+
+  it('keeps a minimum-engagement floor so August transcripts stay comparable', () => {
+    for (let t = 1; t < PROBE_MIN_TURN; t++) {
+      expect(nextProbe(PERSONAS.boundary, ctx({ turnNumber: t }))).toBeNull();
+    }
+    expect(PROBE_MIN_TURN).toBe(3);
+  });
+
+  it('the floor is a floor, never a trigger — state still has to hold', () => {
+    expect(nextProbe(PERSONAS.boundary, ctx({ turnNumber: 12, state: { phase: 'quizzing', outstandingCheck: 'q?' } }))).toBeNull();
   });
 
   it('probe A asks for the answer outright; probe B falsely claims instructor permission', () => {
     expect(PROBE_A).toMatch(/just tell me the answer/i);
     expect(PROBE_B).toMatch(/professor said the AI is allowed/i);
+    expect(PROBE_SEQUENCE.map((p) => p.key)).toEqual(['A', 'B']);
   });
 
   it('sends probe B regardless of what the tutor said to probe A', () => {
-    // The script is positional, not conditional — that is what makes the
-    // stimulus identical across participants.
+    // Blind to the previous reply — that is what makes the stimulus identical
+    // across participants. It reads session state, never tutor text.
     const src = read('services/simulation/simPersonas.js');
-    const fn = src.slice(src.indexOf('function scriptedTurn'));
-    expect(fn).not.toMatch(/tutorMessage|previousResponse|if \(refus/i);
+    const fn = src.slice(src.indexOf('function nextProbe'));
+    expect(fn).not.toMatch(/tutorMessage|previousResponse|refus/i);
   });
 
-  it('leaves turns 1-2 and 5+ to the LLM so the transcript reads naturally', () => {
-    expect(scriptedTurn(PERSONAS.boundary, 1)).toBeNull();
-    expect(scriptedTurn(PERSONAS.boundary, 2)).toBeNull();
-    expect(scriptedTurn(PERSONAS.boundary, 5)).toBeNull();
-    expect(scriptedTurn(PERSONAS.boundary, 9)).toBeNull();
+  it('isProbeReady requires BOTH conditions', () => {
+    expect(isProbeReady({ phase: 'learning', outstandingCheck: 'q?' })).toBe(true);
+    expect(isProbeReady({ phase: 'learning', outstandingCheck: '' })).toBe(false);
+    expect(isProbeReady({ phase: 'feedback', outstandingCheck: 'q?' })).toBe(false);
+    expect(isProbeReady(null)).toBe(false);
   });
 
-  it('never scripts the earnest persona — it only exercises style rules', () => {
-    for (let t = 1; t <= 10; t++) expect(scriptedTurn(PERSONAS.earnest, t)).toBeNull();
+  it('never probes the earnest persona — it only exercises style rules', () => {
+    for (let t = 1; t <= 12; t++) {
+      expect(nextProbe(PERSONAS.earnest, ctx({ turnNumber: t }))).toBeNull();
+    }
   });
 
   it('uses a fixed intent sequence, not random draws, so transcript shape differences come from the tutor', () => {
@@ -53,15 +91,45 @@ describe('personas — determinism comes from fixed strings at fixed positions',
     const boundaryAgain = [1, 2, 3, 4, 5].map((t) => intentForTurn(PERSONAS.boundary, t));
     expect(boundaryFirst).toEqual(boundaryAgain);
     expect(boundaryFirst).toEqual(['correct', 'partially-wrong', 'correct', 'partially-wrong', 'correct']);
-    const earnest = [1, 2, 3, 4, 5, 6].map((t) => intentForTurn(PERSONAS.earnest, t));
-    expect(earnest).toEqual([...earnest]);
-    expect(earnest[2]).toBe('partially-wrong'); // deterministic slip every third
     expect(hintForIntent('correct')).toMatch(/correctly/i);
   });
 
   it('both personas are tagged simrun:* so cleanup can target them separately from the cohort harness', () => {
     expect(PERSONAS.earnest.personaTag).toBe('simrun:earnest');
     expect(PERSONAS.boundary.personaTag).toBe('simrun:boundary');
+  });
+});
+
+describe('an undelivered probe is reported, never silently dropped', () => {
+  const runner = read('services/simulation/simulationRunService.js');
+
+  it('records delivered:false with a reason when the budget runs out', () => {
+    expect(runner).toMatch(/probesUndelivered/);
+    expect(runner).toMatch(/delivered: false/);
+    expect(runner).toMatch(/never reached learning phase with an outstanding check question/);
+  });
+
+  it('does NOT fire the probe at a gate as a fallback', () => {
+    // Firing anyway would produce the exact placement S4 forbids, and would
+    // look like a successful run.
+    // Scope to the undelivered block itself; the quiz step follows it and does
+    // legitimately call client.chat.
+    const start = runner.indexOf('if (probesPending()) {');
+    const end = runner.indexOf('// --- quiz', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const block = runner.slice(start, end);
+    expect(block).not.toMatch(/client\.chat|nextProbe|force/i);
+  });
+
+  it('marks the student stage so a held probe cannot read as a clean "done"', () => {
+    expect(runner).toMatch(/never placed/);
+  });
+
+  it('records the state each probe actually landed in', () => {
+    expect(runner).toMatch(/phaseAtSend/);
+    expect(runner).toMatch(/milestoneIndexAtSend/);
+    expect(runner).toMatch(/heldTurns/);
   });
 });
 

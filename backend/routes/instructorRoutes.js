@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const mongoose = require('mongoose');
+const { DIFFICULTY_TIERS, coerceDifficulty } = require('../constants/difficulty');
 const Course = require('../models/Course');
 const CourseTopic = require('../models/CourseTopic');
 const Enrollment = require('../models/Enrollment');
@@ -162,6 +163,25 @@ function sanitizeQuizPattern(qp) {
   return out;
 }
 
+/**
+ * Coerce a module difficulty, complaining loudly when it has to.
+ *
+ * This was `['intro','core','apply'].includes(d) ? d : 'core'` — the second of
+ * two silent downgrades on the same value (the topic-plan validator was the
+ * first). 'challenge' is a real tier everywhere else in the system, so it now
+ * survives; anything genuinely unrecognised is logged rather than swallowed.
+ */
+function normalizeDifficulty(m) {
+  const { value, coerced, original } = coerceDifficulty(m && m.difficulty);
+  if (coerced) {
+    logger.warn(
+      { original, coercedTo: value, moduleTitle: m && m.title, valid: DIFFICULTY_TIERS },
+      '[topic-plan] module arrived with an unknown difficulty; coerced'
+    );
+  }
+  return value;
+}
+
 function normalizeModules(modules) {
   return (modules || []).map((m, i) => {
     const moduleId = m.moduleId && String(m.moduleId).trim()
@@ -174,7 +194,7 @@ function normalizeModules(modules) {
       moduleId,
       title: String(m.title || `Module ${i + 1}`).trim(),
       description: String(m.description || '').trim(),
-      difficulty: ['intro', 'core', 'apply'].includes(m.difficulty) ? m.difficulty : 'core',
+      difficulty: normalizeDifficulty(m),
       points: typeof m.points === 'number' ? m.points : 10,
       milestones: milestones.length >= 2 ? milestones : [
         { text: 'Objective A' },

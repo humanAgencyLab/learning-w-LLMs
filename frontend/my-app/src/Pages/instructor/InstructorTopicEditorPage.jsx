@@ -2,12 +2,16 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import * as instructorApi from '../../lib/instructorApi';
 
-const DIFFICULTIES = ['intro', 'core', 'apply'];
-const DIFFICULTY_LABELS = { intro: 'Intro', core: 'Core', apply: 'Apply' };
+// Must match backend/constants/difficulty.js. 'challenge' was missing here
+// while TopicRow already ranked it, so a challenge module rendered with the
+// fallback "Core" badge and the editor's dropdown could not express it.
+const DIFFICULTIES = ['intro', 'core', 'apply', 'challenge'];
+const DIFFICULTY_LABELS = { intro: 'Intro', core: 'Core', apply: 'Apply', challenge: 'Challenge' };
 const DIFFICULTY_COLORS = {
   intro: 'bg-green-50 text-green-700 border-green-200',
   core: 'bg-blue-50 text-blue-700 border-blue-200',
   apply: 'bg-purple-50 text-purple-700 border-purple-200',
+  challenge: 'bg-amber-50 text-amber-800 border-amber-200',
 };
 const COGNITIVE_LEVELS = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'];
 const QUESTION_TYPES = ['conceptual', 'applied', 'recall', 'analytical'];

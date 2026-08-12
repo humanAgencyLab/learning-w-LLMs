@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { DIFFICULTY_TIERS, DEFAULT_DIFFICULTY, isDifficulty } = require('../../constants/difficulty');
 
 const MilestoneSchema = z.object({
   text: z.string().min(1).max(2000)
@@ -8,7 +9,7 @@ const ModuleSchema = z.object({
   moduleId: z.string().min(1).max(80),
   title: z.string().min(1).max(300),
   description: z.string().max(2000).optional().default(''),
-  difficulty: z.enum(['intro', 'core', 'apply']).optional().default('core'),
+  difficulty: z.enum([...DIFFICULTY_TIERS]).optional().default(DEFAULT_DIFFICULTY),
   points: z.number().min(0).max(1000),
   milestones: z.array(MilestoneSchema).min(2).max(8),
   quizPattern: z.record(z.unknown()).optional()
@@ -129,7 +130,15 @@ function repairTopic(topic, label, warnings) {
     if (typeof m.description === 'string' && m.description.length > LIMITS.descriptionMax) {
       m.description = truncateAtWordBoundary(m.description, LIMITS.descriptionMax);
     }
-    if (m.difficulty != null && !['intro', 'core', 'apply'].includes(m.difficulty)) {
+    // An unrecognised difficulty is REPORTED, not silently dropped. This used
+    // to `delete m.difficulty` so the schema default quietly rewrote it to
+    // 'core' — the instructor then saw a Core badge on the module the model had
+    // judged hardest, with nothing anywhere recording the change.
+    if (m.difficulty != null && !isDifficulty(m.difficulty)) {
+      warnings.push(
+        `Module "${m.title || m.moduleId || 'untitled'}" on ${label} came back with an unknown difficulty ` +
+        `"${String(m.difficulty).slice(0, 40)}"; set to ${DEFAULT_DIFFICULTY}. Valid tiers: ${DIFFICULTY_TIERS.join(', ')}.`
+      );
       delete m.difficulty; // falls back to the schema default
     }
     // Always normalize points to an in-range NUMBER — Number("100") passes a
