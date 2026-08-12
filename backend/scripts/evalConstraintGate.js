@@ -101,10 +101,45 @@ if (MODE === 'clauses') {
   const prefilterOnLegit = FX.gateCases.filter((c) => c.label === 'allow' && prefilterViolation(c.message)).map((c) => c.id);
   const prefilterOnViolations = FX.gateCases.filter((c) => c.label === 'refuse' && prefilterViolation(c.message)).map((c) => c.id);
 
+  // Per-FAMILY rates. A single averaged number hid the production failure:
+  // safety-floor behaviour was fine while tutor-directed rules were refusing
+  // ordinary student answers, and the blend still looked acceptable.
+  const families = {};
+  for (const c of FX.gateCases) {
+    const fam = c.family || 'untagged';
+    families[fam] = families[fam] || { caught: 0, violations: 0, refusedLegit: 0, legit: 0 };
+    const runs = byCase.get(c.id) || [];
+    const majority = runs.filter((r) => r.got === 'refuse').length > runs.length / 2 ? 'refuse' : 'allow';
+    if (c.label === 'refuse') {
+      families[fam].violations += 1;
+      if (majority === 'refuse') families[fam].caught += 1;
+    } else {
+      families[fam].legit += 1;
+      if (majority === 'refuse') families[fam].refusedLegit += 1;
+    }
+  }
+  const pct = (n, d) => (d === 0 ? 'n/a' : `${n}/${d} (${((n / d) * 100).toFixed(1)}%)`);
+  const byFamily = {};
+  for (const [fam, f] of Object.entries(families)) {
+    byFamily[fam] = {
+      catchRate: pct(f.caught, f.violations),
+      falsePositiveRate: pct(f.refusedLegit, f.legit),
+    };
+  }
+
+  // The 2026-08-11 production regressions specifically.
+  const observed = FX.gateCases.filter((c) => c.observedFalsePositive);
+  const observedStillRefused = observed.filter((c) => {
+    const runs = byCase.get(c.id) || [];
+    return runs.filter((r) => r.got === 'refuse').length > runs.length / 2;
+  });
+
   const summary = {
     runsPerCase: RUNS,
-    catchRate: `${violationsCaught}/${violationsTotal} (${((violationsCaught / violationsTotal) * 100).toFixed(1)}%)`,
-    falsePositiveRate: `${legitRefused}/${legitTotal} (${((legitRefused / legitTotal) * 100).toFixed(1)}%)`,
+    byFamily,
+    observedProductionFalsePositives: pct(observedStillRefused.length, observed.length) + ' still refused',
+    catchRateOverall: `${violationsCaught}/${violationsTotal} (${((violationsCaught / violationsTotal) * 100).toFixed(1)}%)`,
+    falsePositiveRateOverall: `${legitRefused}/${legitTotal} (${((legitRefused / legitTotal) * 100).toFixed(1)}%)`,
     overRefusalByDomain: byDomain,
     unstableCases: `${unstable}/${FX.gateCases.length}`,
     deterministicPrefilter: {
@@ -112,7 +147,7 @@ if (MODE === 'clauses') {
       firesOnLegitimate: `${prefilterOnLegit.length}/${legitTotal}`,
       legitimateCaught: prefilterOnLegit,
     },
-    falsePositives: falsePositives.map((f) => ({ id: f.id, domain: f.domain, msg: f.message.slice(0, 90), outs: f.outs.join('/') })),
+    falsePositives: falsePositives.map((f) => ({ id: f.id, family: f.family, domain: f.domain, msg: f.message.slice(0, 90), outs: f.outs.join('/') })),
     falseNegatives: falseNegatives.map((f) => ({ id: f.id, msg: f.message.slice(0, 90), outs: f.outs.join('/') })),
     gateErrors: results.filter((r) => r.gateError).length,
   };

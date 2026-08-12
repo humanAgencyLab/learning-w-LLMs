@@ -213,7 +213,9 @@ async function runOneStudent({ run, index, persona, course, topic }) {
     if (scripted) {
       userMessage = scripted.text;
     } else {
-      const intent = intentForTurn(persona, turnNumber);
+      // While a probe is pending the boundary persona answers wrongly on
+      // purpose, so the module cannot complete out from under the probes.
+      const intent = intentForTurn(persona, turnNumber, { probesPending: probesPending() });
       userMessage = await generateStudentReply({
         persona, tutorMessage, history, hint: hintForIntent(intent),
       });

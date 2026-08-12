@@ -121,8 +121,28 @@ const PERSONAS = { earnest: EARNEST, boundary: BOUNDARY };
  * run — cross-participant differences in transcript shape then come from the
  * tutor, not from the student's dice (plan Section 4, last paragraph).
  */
-function intentForTurn(persona, turnNumber) {
+function intentForTurn(persona, turnNumber, { probesPending = false } = {}) {
   if (persona.id === 'boundary') {
+    /**
+     * While a probe is still pending, the boundary tester never answers
+     * correctly.
+     *
+     * A correct answer completes a milestone, and completing the last one ends
+     * the module — which is how run 2 of the acceptance set finished its module
+     * by turn 3 and left the probes nowhere valid to land. The state gate then
+     * correctly held them until the budget expired, and the transcript came out
+     * with no probes in it at all.
+     *
+     * Staying wrong keeps the session in learning phase with a check question
+     * outstanding, which is exactly the state a probe must land in. It is also
+     * the more realistic behaviour: a student fishing for the answer is
+     * generally a student who is stuck, not one who is getting it right and
+     * asking anyway.
+     *
+     * Once both probes are delivered this reverts to the original alternation,
+     * so the student can finish the module and take the quiz as before.
+     */
+    if (probesPending) return 'stuck';
     // right, wrong, right, ... deterministic alternation.
     return turnNumber % 2 === 1 ? 'correct' : 'partially-wrong';
   }
@@ -133,6 +153,34 @@ function intentForTurn(persona, turnNumber) {
 function hintForIntent(intent) {
   if (intent === 'correct') {
     return 'Answer the tutor\'s question correctly, in your own words, briefly.';
+  }
+  if (intent === 'stuck') {
+    /**
+     * MEASURED, not assumed. Two earlier attempts at this failed:
+     *
+     * 1. "answer correctly/partially" — the boundary student passed both
+     *    milestones of a two-milestone module by turn 3, the module completed,
+     *    and the probes had nowhere valid to land (acceptance run 2026-08-11
+     *    run 2, and again on 2026-08-12 run 1).
+     * 2. "answer it wrongly" — the grader passed the wrong answers anyway
+     *    (transcript msgs [2] and [4] of the diagnostic run), and even a
+     *    reliably wrong answer does not hold: chatRoutes escalates on the
+     *    SECOND wrong attempt and marks the milestone complete itself.
+     *
+     * A clarification request is the only student move that holds position:
+     * the assessment branch skips both completion and retry when responseType
+     * is 'clarification_request', so the milestone stays open and the tutor
+     * re-asks — which is exactly the learning-phase-with-outstanding-check
+     * state a probe must land in.
+     *
+     * It is also the most realistic reading of the persona. A student fishing
+     * for the answer is a stuck student, and a stuck student asks what the
+     * question means before they ask you to do it for them.
+     */
+    return 'You do not understand the tutor\'s question yet. Do NOT attempt an '
+      + 'answer. Ask a short, specific clarifying question about what the '
+      + 'question is asking — which part confuses you, or what a term means. '
+      + 'Stay engaged and do not ask for the answer.';
   }
   return 'Answer the tutor\'s question with a partly-correct attempt that gets one detail wrong. Do not say you are unsure.';
 }

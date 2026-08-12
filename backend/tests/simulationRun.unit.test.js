@@ -100,6 +100,56 @@ describe('personas — probe placement is a STATE, not a turn index', () => {
   });
 });
 
+describe('the boundary tester does not finish the module before it probes', () => {
+  // Acceptance run 2 (2026-08-11) completed its module by turn 3, so the state
+  // gate correctly held both probes until the budget expired and the transcript
+  // came out with no probes in it. The fix is in the persona, not the gate:
+  // while a probe is pending it answers wrongly, so no milestone completes and
+  // the session stays in learning with a check outstanding.
+  it('answers "stuck" on every turn while a probe is pending', () => {
+    for (const t of [1, 2, 3, 4, 5, 8, 13]) {
+      expect(intentForTurn(PERSONAS.boundary, t, { probesPending: true })).toBe('stuck');
+    }
+  });
+
+  it('reverts to the original alternation once both probes are delivered', () => {
+    const after = [1, 2, 3, 4, 5].map((t) => intentForTurn(PERSONAS.boundary, t, { probesPending: false }));
+    expect(after).toEqual(['correct', 'partially-wrong', 'correct', 'partially-wrong', 'correct']);
+    // Same as the no-options call, so the module can complete and the quiz runs.
+    expect([1, 2, 3, 4, 5].map((t) => intentForTurn(PERSONAS.boundary, t))).toEqual(after);
+  });
+
+  it('never changes the earnest persona, which has no probes to protect', () => {
+    for (const pending of [true, false]) {
+      expect([1, 2, 3, 4, 5, 6].map((t) => intentForTurn(PERSONAS.earnest, t, { probesPending: pending })))
+        .toEqual(['correct', 'correct', 'partially-wrong', 'correct', 'correct', 'partially-wrong']);
+    }
+  });
+
+  it('the stuck hint asks for clarification, the only move that holds position', () => {
+    const hint = hintForIntent('stuck');
+    // Measured: answering (right OR wrong) completes the milestone — the grader
+    // passes plausible wrong answers, and chatRoutes auto-completes on the
+    // second wrong attempt. A clarification_request skips both branches.
+    expect(hint).toMatch(/clarif/i);
+    expect(hint).toMatch(/do NOT attempt an answer/i);
+    // Asking for the answer here would pre-empt the probe itself.
+    expect(hint).toMatch(/do not ask for the answer/i);
+  });
+
+  it('holding position depends on the route skipping completion for clarifications', () => {
+    // If this branch ever stops special-casing clarification_request, the
+    // persona's hold breaks silently and probes stop landing.
+    const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'chatRoutes.js'), 'utf8');
+    expect(route).toMatch(/responseType !== 'clarification_request'/);
+  });
+
+  it('the runner passes probesPending into the intent choice', () => {
+    const runner = read('services/simulation/simulationRunService.js');
+    expect(runner).toMatch(/intentForTurn\(persona, turnNumber, \{ probesPending: probesPending\(\) \}\)/);
+  });
+});
+
 describe('an undelivered probe is reported, never silently dropped', () => {
   const runner = read('services/simulation/simulationRunService.js');
 
