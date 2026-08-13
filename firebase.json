@@ -51,6 +51,15 @@
       ],
       "headers": [
         {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, must-revalidate"
+            }
+          ]
+        },
+        {
           "source": "**/*.@(js|css)",
           "headers": [
             {
@@ -60,11 +69,20 @@
           ]
         },
         {
-          "source": "**/*.@(jpg|jpeg|gif|png|svg|webp)",
+          "source": "**/*.@(jpg|jpeg|gif|png|svg|webp|woff|woff2|ico)",
           "headers": [
             {
               "key": "Cache-Control",
               "value": "max-age=31536000"
+            }
+          ]
+        },
+        {
+          "source": "/service-worker.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, must-revalidate"
             }
           ]
         }
