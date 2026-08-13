@@ -25,7 +25,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "build:iitl": "BUILD_PATH=build-iitl REACT_APP_API_BASE_URL=$IITL_API_URL react-scripts build",
+    "build:iitl": "test -n \"$IITL_API_URL\" || (echo 'FATAL: IITL_API_URL unset, refusing to build' && exit 1) && BUILD_PATH=build-iitl REACT_APP_API_BASE_URL=$IITL_API_URL react-scripts build",
     "test": "react-scripts test --env=jsdom",
     "lint": "eslint src --ext .js,.jsx",
     "lint:fix": "eslint src --ext .js,.jsx --fix",
