@@ -1,14 +1,26 @@
 const request = require('supertest');
+const mongoose = require('mongoose');
 const app = require('../app');
+
+/**
+ * These assertions used to demand 200 while ALLOWING status 'degraded'. That
+ * combination is what let a database-less instance look healthy to Cloud Run
+ * during the 2026-08-13 outage. The contract is now: 200 iff the database is
+ * connected, 503 otherwise — so the expected code is derived from the live
+ * readyState rather than hard-coded.
+ */
+const expectedHealthCode = () => (mongoose.connection.readyState === 1 ? 200 : 503);
 
 describe('Health Endpoints', () => {
   describe('GET /v1/health', () => {
     it('should return health status with required fields', async () => {
       const response = await request(app)
         .get('/v1/health')
-        .expect(200);
+        .expect(expectedHealthCode());
 
       expect(['healthy', 'degraded']).toContain(response.body.status);
+      // status string and status code must agree
+      expect(response.body.status === 'healthy').toBe(response.status === 200);
       expect(response.body).toHaveProperty('timestamp');
       expect(response.body).toHaveProperty('uptimeSec');
       expect(response.body).toHaveProperty('startedAt');
@@ -33,7 +45,7 @@ describe('Health Endpoints', () => {
     it('should return valid timestamp format', async () => {
       const response = await request(app)
         .get('/v1/health')
-        .expect(200);
+        .expect(expectedHealthCode());
 
       // Verify timestamp is valid ISO string
       expect(new Date(response.body.timestamp).toISOString()).toBe(response.body.timestamp);
@@ -43,7 +55,7 @@ describe('Health Endpoints', () => {
     it('should return non-negative uptime', async () => {
       const response = await request(app)
         .get('/v1/health')
-        .expect(200);
+        .expect(expectedHealthCode());
 
       expect(response.body.uptimeSec).toBeGreaterThanOrEqual(0);
     });

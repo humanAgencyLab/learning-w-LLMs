@@ -36,10 +36,25 @@ router.get('/v1/health', (req, res) => {
     requestId: req.requestId,
     endpoint: '/v1/health',
     uptimeSec,
+    dbConnected,
     memoryUsed: healthData.memory.used
   }, 'Health check requested');
 
-  res.json(healthData);
+  /**
+   * 503 when the database is unreachable — NOT 200 with a "degraded" body.
+   *
+   * This endpoint used to return 200 whatever the database was doing. On
+   * 2026-08-13 an instance lost its Mongo connection, server.js had no
+   * reconnect path, and every login returned 500 for ~15 minutes across all 14
+   * participant accounts. Cloud Run never replaced the instance because a 200
+   * told it the container was fine. The body already said dbConnected:false;
+   * nothing was reading it.
+   *
+   * A non-2xx makes the platform do the recovery for us: the failed instance is
+   * taken out of rotation and a fresh one — which connects cleanly on boot —
+   * serves the traffic. That turns a silent outage into a blip.
+   */
+  res.status(dbConnected ? 200 : 503).json(healthData);
 });
 
 /**

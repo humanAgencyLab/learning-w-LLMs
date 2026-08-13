@@ -20,7 +20,72 @@ process.on('uncaughtException', (error) => {
 });
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ai_edu_app')
+/**
+ * Connection options and reconnection.
+ *
+ * The original code called mongoose.connect() once, logged on failure and
+ * carried on. On 2026-08-13 a live instance lost its connection and never got
+ * it back: every login returned 500 for ~15 minutes across all 14 participant
+ * accounts, because nothing here retries and nothing tells the platform the
+ * instance is dead.
+ *
+ * Two layers now:
+ *  - the driver's own recovery. serverSelectionTimeoutMS bounds how long a
+ *    request waits for a usable server, and bufferCommands keeps a query
+ *    queued across a brief blip instead of throwing instantly — a transient
+ *    election or network hiccup should not surface to a participant.
+ *  - an explicit 'disconnected' handler, because driver-level recovery does
+ *    not cover every case (an initial connect that never succeeded has no
+ *    topology to recover). It retries with backoff, forever, since a study
+ *    session may be in progress and a degraded instance is useless.
+ *
+ * /v1/health returns 503 while this is down, so Cloud Run replaces the
+ * instance in parallel; whichever heals first, the participant sees a working
+ * service.
+ */
+const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/ai_edu_app';
+const MONGO_OPTS = {
+  serverSelectionTimeoutMS: 10000,
+  socketTimeoutMS: 45000,
+  heartbeatFrequencyMS: 10000,
+  maxPoolSize: 10,
+  retryWrites: true,
+  retryReads: true,
+};
+// Queue commands during a blip rather than failing them outright.
+mongoose.set('bufferCommands', true);
+
+let reconnectTimer = null;
+let reconnectAttempt = 0;
+const scheduleReconnect = (why) => {
+  if (reconnectTimer) return;            // one in flight is enough
+  if (mongoose.connection.readyState === 1) return;
+  reconnectAttempt += 1;
+  const delay = Math.min(30000, 1000 * 2 ** Math.min(reconnectAttempt, 5)); // 2s..30s
+  console.error(`⚠️  MongoDB ${why} — reconnect attempt ${reconnectAttempt} in ${delay}ms`);
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
+    try {
+      await mongoose.connect(MONGO_URI, MONGO_OPTS);
+    } catch (e) {
+      console.error('❌ MongoDB reconnect failed:', e.message);
+      scheduleReconnect('reconnect failed');
+    }
+  }, delay);
+  if (typeof reconnectTimer.unref === 'function') reconnectTimer.unref();
+};
+
+mongoose.connection.on('disconnected', () => scheduleReconnect('disconnected'));
+mongoose.connection.on('error', (err) => {
+  console.error('❌ MongoDB connection error event:', err.message);
+  scheduleReconnect('error event');
+});
+mongoose.connection.on('connected', () => {
+  if (reconnectAttempt > 0) console.log(`✅ MongoDB reconnected after ${reconnectAttempt} attempt(s)`);
+  reconnectAttempt = 0;
+});
+
+mongoose.connect(MONGO_URI, MONGO_OPTS)
   .then(async () => {
     console.log('✅ Connected to MongoDB');
     
@@ -72,9 +137,11 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ai_edu_ap
     }
   })
   .catch((error) => {
-    console.error('❌ MongoDB connection error:', error);
-    console.error('⚠️  Server will keep running but API requests requiring the database will fail. Start MongoDB (e.g. mongod) to fix.');
-    // Do not exit: keep HTTP server up so proxy can reach it; health and API will reflect DB unreachable
+    console.error('❌ MongoDB connection error:', error.message);
+    console.error('⚠️  Server is up but the database is unreachable. /v1/health now returns 503 so the platform can replace this instance, and a reconnect is scheduled below.');
+    // Do not exit: the HTTP server stays up so the platform can probe it, and
+    // /v1/health reports 503 until the reconnect below succeeds.
+    scheduleReconnect('initial connect failed');
   });
 
 // Check for Groq API key
