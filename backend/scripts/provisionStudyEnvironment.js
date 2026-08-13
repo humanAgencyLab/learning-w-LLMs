@@ -15,6 +15,15 @@
  *   verify         Re-run the acceptance checks for every clone in a manifest.
  *   rollback       Delete everything a manifest's provisioning created
  *                  (accounts + clones; shared synthetic students untouched).
+ *   truncate       Cut a provisioned clone to the study's topic window:
+ *                  keep topics 1-N published with all their sessions, quiz
+ *                  attempts and transcripts; unpublish the rest and delete
+ *                  the activity attached to them; then re-anchor. Takes a
+ *                  label, a course id, or --all for every account in the
+ *                  newest manifest. DATA-ONLY and idempotent — an already-cut
+ *                  clone is detected and not cut twice. Transcript realism is
+ *                  the scarce asset, which is why this truncates rather than
+ *                  re-seeding a shorter course.
  *   prep-session   Run ~15 min before a participant session, one argument:
  *                  the label (P01) or the clone's course id. Re-anchors the
  *                  clone's dates, clears its Insights Assistant chat, then
@@ -30,7 +39,8 @@
  *   --accounts P01-P14   label range for `provision` (default P01-P14)
  *   --only LABEL         provision a single label (e.g. --only TEST01)
  *   --anchor-days-ago N  latest clone activity lands N days before now (default 2)
- *   --manifest PATH      manifest file for verify/rollback
+ *   --manifest PATH      manifest file for verify/rollback/truncate --all
+ *   --cut-order N        truncate: keep topics with orderIndex < N (default 10)
  *   --service-url URL    Cloud Run base url for prep-session's probe test
  *
  * Usage (URI from Secret Manager — never paste into files):
@@ -486,6 +496,180 @@ async function rollback(db, { dryRun }) {
   console.log(dryRun ? 'DRY RUN — nothing deleted.' : '✓ rollback complete (shared synthetic students untouched)');
 }
 
+// ---------- shared study-shape checks ----------
+/**
+ * The data-shape acceptance the study depends on, in one place so `truncate`
+ * and `prep-session` can never disagree about what "ready" means.
+ * Returns { checks:[{name,ok,detail}], mix, maya, methods, rank, weakest }.
+ */
+async function dataShapeChecks(courseId) {
+  const rows = await getAtRiskStudents(courseId, { excludeSynthetic: false });
+  const mix = {};
+  for (const r of rows) mix[r.riskLevel] = (mix[r.riskLevel] || 0) + 1;
+  const maya = rows.find((r) => r.name === MAYA.name);
+
+  const perf = await getCoursePerformanceSummary(courseId);
+  const diff = (perf.quizByTopic || [])
+    .filter((t) => t.firstAttemptPassRate != null)
+    .sort((a, b) => a.firstAttemptPassRate - b.firstAttemptPassRate);
+  const methods = diff.find((t) => /^methods/i.test(t.title));
+  const rank = methods ? diff.indexOf(methods) + 1 : null;
+  const weakest = diff[0] || null;
+
+  const checks = [
+    {
+      name: 'tier mix 1 Critical / 1 High / 5 Watch / 14 Healthy',
+      ok: mix.critical === 1 && mix.high === 1 && mix.watch === 5 && mix.healthy === 14,
+      detail: `${mix.critical || 0}/${mix.high || 0}/${mix.watch || 0}/${mix.healthy || 0} over ${rows.length}`,
+    },
+    {
+      name: 'Maya Critical ~75 with 90.4% visible',
+      ok: !!maya && maya.riskLevel === 'critical' && Math.abs(maya.riskScore - 75) <= 5 && maya.quizScore === 90.4,
+      detail: maya ? `${maya.riskLevel} ${Math.round(maya.riskScore)}, avg ${maya.quizScore}` : 'Maya not found',
+    },
+    {
+      name: 'Methods ~63.2% at rank 4 of 10, Variables 57.9% weakest',
+      ok: !!methods && Math.abs(methods.firstAttemptPassRate - 63.2) <= 3 && rank === 4 && diff.length === 10
+          && !!weakest && /^variables/i.test(weakest.title) && Math.abs(weakest.firstAttemptPassRate - 57.9) <= 3,
+      detail: methods
+        ? `Methods ${methods.firstAttemptPassRate}% rank ${rank}/${diff.length}; weakest ${weakest.title} ${weakest.firstAttemptPassRate}%`
+        : 'Methods ABSENT from the table',
+    },
+  ];
+  return { checks, mix, maya, methods, rank, weakest, tableRows: diff.length };
+}
+
+// ---------- truncate (cut a provisioned clone to the study's topic window) ----------
+/**
+ * Keep topics [0, cutOrder) published with every session, quiz attempt and
+ * transcript intact; unpublish the rest and delete the activity attached to
+ * them. Then re-anchor.
+ *
+ * DATA-ONLY: no course, topic, user or enrollment id is created or rewritten,
+ * because STUDY_PROBE_COURSES/USERS pin these ids. Transcript realism is the
+ * scarce asset here, which is why this truncates rather than re-seeding.
+ */
+async function truncateClone(db, courseId, { cutOrder, anchorDays }) {
+  const cid = new mongoose.Types.ObjectId(courseId);
+  const topics = await db.collection('coursetopics').find({ courseId: cid }).sort({ orderIndex: 1 }).toArray();
+  if (!topics.length) throw new Error('no topics found — wrong course id?');
+  const keep = topics.filter((t) => (t.orderIndex ?? 0) < cutOrder);
+  const drop = topics.filter((t) => (t.orderIndex ?? 0) >= cutOrder);
+  const dropIds = drop.map((t) => t._id);
+
+  const dropSessions = dropIds.length
+    ? await db.collection('sessions').countDocuments({ courseId: cid, courseTopicId: { $in: dropIds } }) : 0;
+  const stillPublished = drop.filter((t) => t.status === 'published').length;
+  const alreadyCut = stillPublished === 0 && dropSessions === 0;
+
+  let removed = { sessions: 0, milestoneAttempts: 0, unpublished: 0 };
+  if (alreadyCut) {
+    // Idempotent: nothing above the cut is published and nothing is attached
+    // to it, so a second run must not delete anything or re-shift twice.
+    removed.alreadyCut = true;
+  } else {
+    const dS = await db.collection('sessions').deleteMany({ courseId: cid, courseTopicId: { $in: dropIds } });
+    const dM = await db.collection('milestoneattempts').deleteMany({ courseId: cid, courseTopicId: { $in: dropIds } });
+    const uT = await db.collection('coursetopics').updateMany(
+      { _id: { $in: dropIds } },
+      { $set: { status: 'draft' }, $unset: { publishedAt: '' } }
+    );
+    removed = { sessions: dS.deletedCount, milestoneAttempts: dM.deletedCount, unpublished: uT.modifiedCount };
+  }
+
+  const anchorInfo = await reanchorClone(db, courseId, anchorDays);
+  const publishedNow = await db.collection('coursetopics').countDocuments({ courseId: cid, status: 'published' });
+  return { keep: keep.length, drop: drop.length, removed, anchorInfo, publishedNow, alreadyCut };
+}
+
+function newestManifest() {
+  const explicit = arg('manifest');
+  if (explicit) return { file: explicit, data: JSON.parse(fs.readFileSync(explicit, 'utf8')) };
+  const dir = __dirname;
+  const files = fs.readdirSync(dir).filter((f) => /^study-manifest-.*\.json$/.test(f))
+    .map((f) => ({ f, mtime: fs.statSync(path.join(dir, f)).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime);
+  if (!files.length) die('no manifest found in scripts/');
+  const file = path.join(dir, files[0].f);
+  return { file, data: JSON.parse(fs.readFileSync(file, 'utf8')) };
+}
+
+async function truncateCmd(db) {
+  const cutOrder = parseInt(arg('cut-order', '10'), 10);
+  const anchorDays = parseFloat(arg('anchor-days-ago', '2'));
+  const dryRun = hasFlag('dry-run');
+
+  let targets;
+  if (hasFlag('all')) {
+    const { file, data } = newestManifest();
+    console.log(`manifest: ${file}`);
+    targets = data.accounts;
+  } else {
+    const t = process.argv[3];
+    if (!t) die('usage: truncate <P01|courseId|--all> [--cut-order 10] [--anchor-days-ago 2] [--manifest PATH] [--dry-run]');
+    const acct = findTarget(t);
+    if (!acct) die(`no manifest entry found for "${t}"`);
+    targets = [acct];
+  }
+
+  console.log(`cut at orderIndex ${cutOrder} (keep topics 1-${cutOrder}) · anchor ${anchorDays}d · ${targets.length} clone(s)${dryRun ? ' · DRY RUN' : ''}\n`);
+
+  const results = [];
+  for (const acct of targets) {
+    process.stdout.write(`${acct.label} … `);
+    try {
+      if (dryRun) {
+        const cid = new mongoose.Types.ObjectId(acct.courseId);
+        const pub = await db.collection('coursetopics').countDocuments({ courseId: cid, status: 'published' });
+        console.log(`would cut (currently ${pub} published)`);
+        results.push({ label: acct.label, courseId: acct.courseId, dryRun: true });
+        continue;
+      }
+      const cut = await truncateClone(db, acct.courseId, { cutOrder, anchorDays });
+      const shape = await dataShapeChecks(acct.courseId);
+      const publishedOk = cut.publishedNow === cutOrder;
+      const checks = [
+        { name: `exactly ${cutOrder} topics published`, ok: publishedOk, detail: `${cut.publishedNow} published` },
+        ...shape.checks,
+      ];
+      const failed = checks.filter((c) => !c.ok);
+      console.log(`${cut.alreadyCut ? 'already cut' : `cut −${cut.removed.sessions} sessions/−${cut.removed.milestoneAttempts} attempts`} · ${failed.length ? 'NO-GO' : 'GO'}`);
+      results.push({ label: acct.label, courseId: acct.courseId, cut, shape, checks, failed });
+    } catch (e) {
+      console.log(`FAILED — ${e.message}`);
+      results.push({ label: acct.label, courseId: acct.courseId, error: e.message });
+    }
+  }
+
+  if (dryRun) return;
+
+  // ---- summary table ----
+  console.log(`\n${'='.repeat(104)}`);
+  console.log('LABEL  PUB  TIER MIX (C/H/W/H)  MAYA            PROBE 2 (Methods)          VERDICT');
+  console.log('='.repeat(104));
+  for (const r of results) {
+    if (r.error) { console.log(`${r.label.padEnd(6)} ${'—'.padEnd(4)} ${'—'.padEnd(19)} ${'—'.padEnd(15)} ${'—'.padEnd(26)} NO-GO (${r.error.slice(0, 30)})`); continue; }
+    const m = r.shape.mix;
+    const mix = `${m.critical || 0}/${m.high || 0}/${m.watch || 0}/${m.healthy || 0}`;
+    const maya = r.shape.maya ? `${r.shape.maya.riskLevel.slice(0, 4)} ${Math.round(r.shape.maya.riskScore)} avg${r.shape.maya.quizScore}` : 'missing';
+    const p2 = r.shape.methods ? `${r.shape.methods.firstAttemptPassRate}% rank ${r.shape.rank}/${r.shape.tableRows}` : 'ABSENT';
+    const verdict = r.failed.length ? `NO-GO: ${r.failed[0].name}` : 'GO';
+    console.log(`${r.label.padEnd(6)} ${String(r.cut.publishedNow).padEnd(4)} ${mix.padEnd(19)} ${maya.padEnd(15)} ${p2.padEnd(26)} ${verdict}`);
+  }
+  console.log('='.repeat(104));
+  const bad = results.filter((r) => r.error || (r.failed && r.failed.length));
+  if (bad.length === 0) {
+    console.log(`ALL ${results.length} CLONES AT THE TOPIC-${cutOrder} SHAPE — GO`);
+  } else {
+    console.log(`${bad.length} of ${results.length} clone(s) NOT at the topic-${cutOrder} shape — NO-GO for those accounts:`);
+    for (const r of bad) {
+      if (r.error) { console.log(`  ${r.label}: ${r.error}`); continue; }
+      for (const f of r.failed) console.log(`  ${r.label}: ${f.name} — ${f.detail}`);
+    }
+    process.exitCode = 1;
+  }
+}
+
 // ---------- prep-session (run ~15 min before each participant session) ----------
 /**
  * One command the moderator runs before handing a clone to a participant.
@@ -640,27 +824,11 @@ async function prepSession(db) {
   const checks = [];
   const add = (name, ok, detail = '') => { checks.push({ name, ok, detail }); console.log(`   ${ok ? '✓' : '✗'} ${name}${detail ? ` — ${detail}` : ''}`); };
 
-  // --- tier mix + probe 1 ---
-  const rows = await getAtRiskStudents(courseId, { excludeSynthetic: false });
-  const mix = {};
-  for (const r of rows) mix[r.riskLevel] = (mix[r.riskLevel] || 0) + 1;
-  const maya = rows.find((r) => r.name === MAYA.name);
-  add('tier mix 1 Critical / 1 High / 5 Watch / 14 Healthy',
-    mix.critical === 1 && mix.high === 1 && mix.watch === 5 && mix.healthy === 14,
-    `got ${mix.critical || 0}/${mix.high || 0}/${mix.watch || 0}/${mix.healthy || 0} over ${rows.length}`);
-  add('Maya Critical ~75 with 90.4% visible',
-    !!maya && maya.riskLevel === 'critical' && Math.abs(maya.riskScore - 75) <= 5 && maya.quizScore === 90.4,
-    maya ? `${maya.riskLevel} ${Math.round(maya.riskScore)}, avg ${maya.quizScore}` : 'Maya not found');
-
-  // --- probe 2 ground truth ---
-  const perf = await getCoursePerformanceSummary(courseId);
-  const diff = (perf.quizByTopic || []).filter((t) => t.firstAttemptPassRate != null)
-    .sort((a, b) => a.firstAttemptPassRate - b.firstAttemptPassRate);
-  const methods = diff.find((t) => /^methods/i.test(t.title));
-  const rank = methods ? diff.indexOf(methods) + 1 : null;
-  add('Methods present at ~63.2% in the difficulty table, wrong rank',
-    !!methods && Math.abs(methods.firstAttemptPassRate - 63.2) <= 3 && rank > 1,
-    methods ? `${methods.firstAttemptPassRate}% at rank ${rank}/${diff.length}; true weakest ${diff[0].title} ${diff[0].firstAttemptPassRate}%` : 'Methods ABSENT');
+  // --- data shape: tier mix, probe 1, probe 2 ground truth ---
+  // Shared with `truncate` so the two commands cannot disagree about what the
+  // study needs from a clone.
+  const shape = await dataShapeChecks(courseId);
+  for (const c of shape.checks) add(c.name, c.ok, c.detail);
 
   // --- assistant chat empty ---
   const chatCount = await db.collection('instructorchatsessions').countDocuments({
@@ -758,8 +926,9 @@ async function prepSession(db) {
     else if (cmd === 'provision') await provision(db, { dryRun });
     else if (cmd === 'verify') await verifyManifest(db);
     else if (cmd === 'rollback') await rollback(db, { dryRun });
+    else if (cmd === 'truncate') await truncateCmd(db);
     else if (cmd === 'prep-session') await prepSession(db);
-    else die('usage: provisionStudyEnvironment.js <seed-maya|rollback-maya|provision|verify|rollback|prep-session> [--dry-run] [--accounts P01-P14|--only LABEL] [--anchor-days-ago 2] [--manifest PATH]');
+    else die('usage: provisionStudyEnvironment.js <seed-maya|rollback-maya|provision|verify|rollback|truncate|prep-session> [--dry-run] [--accounts P01-P14|--only LABEL] [--anchor-days-ago 2] [--manifest PATH]');
   } finally {
     await mongoose.disconnect();
   }
