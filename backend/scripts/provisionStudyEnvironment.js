@@ -15,6 +15,15 @@
  *   verify         Re-run the acceptance checks for every clone in a manifest.
  *   rollback       Delete everything a manifest's provisioning created
  *                  (accounts + clones; shared synthetic students untouched).
+ *   prep-session   Run ~15 min before a participant session, one argument:
+ *                  the label (P01) or the clone's course id. Re-anchors the
+ *                  clone's dates, clears its Insights Assistant chat, then
+ *                  verifies and prints GO / NO-GO. DATA-ONLY and idempotent:
+ *                  it never re-clones and never changes an id, because
+ *                  STUDY_PROBE_COURSES/USERS pin this clone's ids and a new
+ *                  id would silently disable every probe. It also checks the
+ *                  ids are actually IN the live probe allowlist and fires a
+ *                  real probe, then deletes the test exchange.
  *
  * Flags:
  *   --dry-run            print planned actions, write nothing
@@ -22,6 +31,7 @@
  *   --only LABEL         provision a single label (e.g. --only TEST01)
  *   --anchor-days-ago N  latest clone activity lands N days before now (default 2)
  *   --manifest PATH      manifest file for verify/rollback
+ *   --service-url URL    Cloud Run base url for prep-session's probe test
  *
  * Usage (URI from Secret Manager — never paste into files):
  *   MONGODB_URI="$(gcloud secrets versions access latest \
@@ -30,7 +40,11 @@
  *
  * Acceptance checks (per clone, from the plan): tier mix exactly
  * 1 Critical / 1 High / 5 Watch; Maya ~75 Critical with avg 90.4 visible;
- * Budi Kim High at ~44; session replay chain resolving.
+ * one High at ~44; session replay chain resolving. Deliberately NOT keyed to a
+ * student's NAME: which synthetic student occupies the High tier depends on
+ * how many topics are published, so a truncated clone can move it (at the
+ * topic-10 cut it is Noah Yamamoto, not Budi Kim). The tier SHAPE is the
+ * acceptance criterion; the occupant is not.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -38,6 +52,8 @@ const path = require('path');
 const mongoose = require('mongoose');
 const { hashPassword } = require('../utils/password');
 const { computeRiskScore, getAtRiskStudents } = require('../services/milestoneAnalyticsService');
+const { getCoursePerformanceSummary } = require('../services/analyticsService');
+const { execFileSync } = require('child_process');
 
 const TEMPLATE_ACCESS_CODE = '3A96AA';
 const DAY = 24 * 60 * 60 * 1000;
@@ -351,7 +367,9 @@ async function verifyClone(db, courseId, label) {
   const tiers = { critical: [], high: [], watch: [] };
   for (const r of rows) if (tiers[r.riskLevel]) tiers[r.riskLevel].push(r);
   const maya = tiers.critical.find((r) => r.name === MAYA.name);
-  const budi = tiers.high.find((r) => r.name === 'Budi Kim');
+  // Name-agnostic on purpose — see the header note. Truncating the course
+  // changes which student sits in High without changing the tier shape.
+  const high = tiers.high[0];
 
   const checks = [
     ['exactly 1 Critical', tiers.critical.length === 1],
@@ -359,8 +377,8 @@ async function verifyClone(db, courseId, label) {
     [`Maya ≈75 (got ${maya?.riskScore})`, !!maya && Math.abs(maya.riskScore - 75) <= 5],
     [`Maya avg 90.4 visible (got ${maya?.quizScore})`, !!maya && maya.quizScore === 90.4],
     ['Maya flags: no_engagement+low_pass_rate+stuck_topic', !!maya && ['no_engagement', 'low_pass_rate', 'stuck_topic'].every((f) => maya.flags.includes(f))],
-    ['exactly 1 High (Budi Kim)', tiers.high.length === 1 && !!budi],
-    [`Budi ≈44 (got ${budi?.riskScore})`, !!budi && Math.abs(budi.riskScore - 44) <= 3],
+    ['exactly 1 High', tiers.high.length === 1 && !!high],
+    [`High at ~44 (got ${high?.riskScore}${high ? `, ${high.name}` : ''})`, !!high && Math.abs(high.riskScore - 44) <= 3],
     ['exactly 5 Watch', tiers.watch.length === 5],
   ];
   // Replay chain: a session must exist whose courseTopicId resolves to a
@@ -468,6 +486,267 @@ async function rollback(db, { dryRun }) {
   console.log(dryRun ? 'DRY RUN — nothing deleted.' : '✓ rollback complete (shared synthetic students untouched)');
 }
 
+// ---------- prep-session (run ~15 min before each participant session) ----------
+/**
+ * One command the moderator runs before handing a clone to a participant.
+ *
+ * Everything here is DATA-ONLY and idempotent: no re-clone, no new IDs, no env
+ * change. That matters because STUDY_PROBE_COURSES / STUDY_PROBE_USERS pin the
+ * clone's course and user IDs — re-cloning would silently disable all three
+ * probes, which is exactly the failure this command exists to catch.
+ */
+const SERVICE_DEFAULTS = {
+  service: 'studyassist-iitl-backend',
+  region: 'us-central1',
+  project: 'llm-ed-studyassist',
+  url: 'https://studyassist-iitl-backend-nkaulzxkdq-uc.a.run.app',
+};
+const PROBE_TRIGGER = 'what should I reteach next week?';
+const PROBE_REPLY_SNIPPET = 'Methods has the lowest first-attempt pass rate at 63%';
+const COLD_START_MS = 4000;
+
+/** Find the clone by participant label (P01) or by course id, across manifests. */
+function findTarget(target) {
+  const dir = path.join(__dirname);
+  const files = fs.readdirSync(dir)
+    .filter((f) => /^study-manifest-.*\.json$/.test(f))
+    .map((f) => ({ f, mtime: fs.statSync(path.join(dir, f)).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime);
+  for (const { f } of files) {
+    let m;
+    try { m = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { continue; }
+    for (const acc of m.accounts || []) {
+      if (String(acc.label) === String(target) || String(acc.courseId) === String(target)) {
+        return { ...acc, manifest: f };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Shift every timestamp uniformly so the latest activity lands anchorDays
+ * before now. Relative spacing is preserved, so risk scores, the R1
+ * new-enrollee grace and every per-topic metric come out unchanged.
+ */
+async function reanchorClone(db, courseId, anchorDays) {
+  const cid = new mongoose.Types.ObjectId(courseId);
+  const [sessions, msAll, enrolls, topics] = await Promise.all([
+    db.collection('sessions').find({ courseId: cid }).toArray(),
+    db.collection('milestoneattempts').find({ courseId: cid }).toArray(),
+    db.collection('enrollments').find({ courseId: cid }).toArray(),
+    db.collection('coursetopics').find({ courseId: cid }).toArray(),
+  ]);
+  let latest = 0;
+  for (const s of sessions) {
+    latest = Math.max(latest, new Date(s.updatedAt || 0).getTime());
+    for (const a of (s.quizAttempts || [])) latest = Math.max(latest, new Date(a.submittedAt || a.createdAt || 0).getTime());
+  }
+  for (const m of msAll) latest = Math.max(latest, new Date(m.createdAt || 0).getTime());
+  if (!latest) throw new Error('no activity found on this clone — wrong course id?');
+
+  const wasDays = (Date.now() - latest) / DAY;
+  const delta = (Date.now() - anchorDays * DAY) - latest;
+  // Re-running minutes later is a no-op shift; skip the writes entirely.
+  if (Math.abs(delta) < 60 * 1000) {
+    console.log(`  already anchored (latest activity ${wasDays.toFixed(2)}d old) — no shift needed`);
+    return { shiftedDays: 0, wasDays };
+  }
+  for (const s of sessions) {
+    await db.collection('sessions').updateOne({ _id: s._id }, { $set: {
+      createdAt: shiftDate(s.createdAt, delta),
+      updatedAt: shiftDate(s.updatedAt, delta),
+      quizAttempts: (s.quizAttempts || []).map((a) => ({
+        ...a, submittedAt: shiftDate(a.submittedAt, delta), createdAt: shiftDate(a.createdAt, delta),
+      })),
+      messages: (s.messages || []).map((mm) => ({ ...mm, timestamp: shiftDate(mm.timestamp, delta) })),
+    } });
+  }
+  for (const m of msAll) {
+    await db.collection('milestoneattempts').updateOne({ _id: m._id }, {
+      $set: { createdAt: shiftDate(m.createdAt, delta), updatedAt: shiftDate(m.updatedAt, delta) },
+    });
+  }
+  for (const e of enrolls) {
+    await db.collection('enrollments').updateOne({ _id: e._id }, { $set: {
+      joinedAt: shiftDate(e.joinedAt, delta),
+      createdAt: shiftDate(e.createdAt, delta),
+      updatedAt: shiftDate(e.updatedAt, delta),
+      ...(e.earliestActivity ? { earliestActivity: shiftDate(e.earliestActivity, delta) } : {}),
+      ...(e.enrollmentCreatedAt ? { enrollmentCreatedAt: shiftDate(e.enrollmentCreatedAt, delta) } : {}),
+    } });
+  }
+  for (const t of topics) {
+    await db.collection('coursetopics').updateOne({ _id: t._id }, { $set: {
+      ...(t.publishedAt ? { publishedAt: shiftDate(t.publishedAt, delta) } : {}),
+      createdAt: shiftDate(t.createdAt, delta), updatedAt: shiftDate(t.updatedAt, delta),
+    } });
+  }
+  console.log(`  shifted ${(delta / DAY).toFixed(2)}d — ${sessions.length} sessions, ${msAll.length} attempts, ${enrolls.length} enrollments, ${topics.length} topics`);
+  return { shiftedDays: delta / DAY, wasDays };
+}
+
+/** Both the course-scoped chat and the account's cross-course (courseId:null) one. */
+async function clearAssistantChat(db, courseId, userId) {
+  const scoped = await db.collection('instructorchatsessions')
+    .deleteMany({ courseId: new mongoose.Types.ObjectId(courseId) });
+  const crossCourse = await db.collection('instructorchatsessions')
+    .deleteMany({ instructorId: new mongoose.Types.ObjectId(userId), courseId: null });
+  console.log(`  removed ${scoped.deletedCount} course-scoped + ${crossCourse.deletedCount} cross-course chat session(s)`);
+  return scoped.deletedCount + crossCourse.deletedCount;
+}
+
+/** Read the LIVE service env, so a clone missing from the allowlist is caught. */
+function readDeployedProbeEnv() {
+  const out = execFileSync('gcloud', [
+    'run', 'services', 'describe', arg('service', SERVICE_DEFAULTS.service),
+    '--region', arg('region', SERVICE_DEFAULTS.region),
+    '--project', arg('project', SERVICE_DEFAULTS.project),
+    '--format=json',
+  ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  const spec = JSON.parse(out).spec.template.spec.containers[0];
+  const env = {};
+  for (const e of spec.env || []) env[e.name] = e.value;
+  const list = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return {
+    enabled: String(env.STUDY_PROBE || '').toLowerCase() === 'true',
+    courses: list(env.STUDY_PROBE_COURSES),
+    users: list(env.STUDY_PROBE_USERS),
+    revision: null,
+  };
+}
+
+async function prepSession(db) {
+  const target = process.argv[3];
+  if (!target) die('usage: prep-session <P01|courseId> [--anchor-days-ago 2] [--service-url URL]');
+  const acct = findTarget(target);
+  if (!acct) die(`no manifest entry found for "${target}" (looked in scripts/study-manifest-*.json)`);
+  const { courseId, userId, username, password, label } = acct;
+  const baseUrl = arg('service-url', SERVICE_DEFAULTS.url).replace(/\/$/, '');
+  const anchorDays = parseFloat(arg('anchor-days-ago', '2'));
+
+  console.log(`\nPREP SESSION — ${label} (${username})`);
+  console.log(`  course ${courseId}`);
+  console.log(`  user   ${userId}`);
+  console.log(`  manifest ${acct.manifest}\n`);
+
+  console.log('1. RE-ANCHOR');
+  const anchorInfo = await reanchorClone(db, courseId, anchorDays);
+
+  console.log('\n2. CLEAR ASSISTANT CHAT');
+  await clearAssistantChat(db, courseId, userId);
+
+  console.log('\n3. VERIFY');
+  const checks = [];
+  const add = (name, ok, detail = '') => { checks.push({ name, ok, detail }); console.log(`   ${ok ? '✓' : '✗'} ${name}${detail ? ` — ${detail}` : ''}`); };
+
+  // --- tier mix + probe 1 ---
+  const rows = await getAtRiskStudents(courseId, { excludeSynthetic: false });
+  const mix = {};
+  for (const r of rows) mix[r.riskLevel] = (mix[r.riskLevel] || 0) + 1;
+  const maya = rows.find((r) => r.name === MAYA.name);
+  add('tier mix 1 Critical / 1 High / 5 Watch / 14 Healthy',
+    mix.critical === 1 && mix.high === 1 && mix.watch === 5 && mix.healthy === 14,
+    `got ${mix.critical || 0}/${mix.high || 0}/${mix.watch || 0}/${mix.healthy || 0} over ${rows.length}`);
+  add('Maya Critical ~75 with 90.4% visible',
+    !!maya && maya.riskLevel === 'critical' && Math.abs(maya.riskScore - 75) <= 5 && maya.quizScore === 90.4,
+    maya ? `${maya.riskLevel} ${Math.round(maya.riskScore)}, avg ${maya.quizScore}` : 'Maya not found');
+
+  // --- probe 2 ground truth ---
+  const perf = await getCoursePerformanceSummary(courseId);
+  const diff = (perf.quizByTopic || []).filter((t) => t.firstAttemptPassRate != null)
+    .sort((a, b) => a.firstAttemptPassRate - b.firstAttemptPassRate);
+  const methods = diff.find((t) => /^methods/i.test(t.title));
+  const rank = methods ? diff.indexOf(methods) + 1 : null;
+  add('Methods present at ~63.2% in the difficulty table, wrong rank',
+    !!methods && Math.abs(methods.firstAttemptPassRate - 63.2) <= 3 && rank > 1,
+    methods ? `${methods.firstAttemptPassRate}% at rank ${rank}/${diff.length}; true weakest ${diff[0].title} ${diff[0].firstAttemptPassRate}%` : 'Methods ABSENT');
+
+  // --- assistant chat empty ---
+  const chatCount = await db.collection('instructorchatsessions').countDocuments({
+    $or: [{ courseId: new mongoose.Types.ObjectId(courseId) }, { instructorId: new mongoose.Types.ObjectId(userId) }],
+  });
+  add('assistant chat empty', chatCount === 0, `${chatCount} chat session(s)`);
+
+  // --- the check that catches an un-allowlisted clone ---
+  let probeEnv = null;
+  try { probeEnv = readDeployedProbeEnv(); } catch (e) { /* reported below */ }
+  if (!probeEnv) {
+    add('clone IDs present in the live STUDY_PROBE env', false, 'could not read the deployed service (gcloud)');
+  } else {
+    add('STUDY_PROBE enabled on the live service', probeEnv.enabled, `STUDY_PROBE=${probeEnv.enabled}`);
+    add('course id in live STUDY_PROBE_COURSES', probeEnv.courses.includes(String(courseId)),
+      `${probeEnv.courses.length} course(s) allowlisted`);
+    add('user id in live STUDY_PROBE_USERS', probeEnv.users.includes(String(userId)),
+      `${probeEnv.users.length} user(s) allowlisted`);
+  }
+
+  // --- probe actually fires (also the warm-up) ---
+  const api = async (method, p, body, token) => {
+    const res = await fetch(`${baseUrl}/v1${p}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const text = await res.text();
+    let json = null; try { json = JSON.parse(text); } catch {}
+    if (!res.ok) throw new Error(`${method} ${p} -> ${res.status}: ${(json && json.error) || text.slice(0, 120)}`);
+    return json && json.data !== undefined ? json.data : json;
+  };
+
+  let coldStartMs = null;
+  try {
+    const t0 = Date.now();
+    const login = await api('POST', '/auth/login', { username, password });
+    coldStartMs = Date.now() - t0;
+    const reply = await api('POST', '/instructor/chat', { message: PROBE_TRIGGER, courseId }, login.accessToken);
+    const text = String(reply.reply || reply.message || '');
+    const noTools = !reply.toolCalls || reply.toolCalls.length === 0;
+    // Summarise tool calls by NAME only. Dumping them verbatim buried the
+    // verdict under ~11k characters of tool output, which is the last thing a
+    // moderator needs fifteen minutes before a session.
+    const toolNames = (reply.toolCalls || []).map((t) => t && t.name).filter(Boolean);
+    add('probe 2 fires: canned Methods reply, zero tool calls',
+      text.includes(PROBE_REPLY_SNIPPET) && noTools,
+      text.includes(PROBE_REPLY_SNIPPET)
+        ? `canned reply, ${toolNames.length} tool call(s)`
+        : `NOT the canned reply — the real agent answered (${toolNames.length} tool call(s)${toolNames.length ? ': ' + toolNames.join(', ') : ''}). The probe is DISABLED for this course.`);
+  } catch (e) {
+    add('probe 2 fires: canned Methods reply, zero tool calls', false, e.message);
+  }
+
+  // The probe test just wrote an exchange; remove it so the chat is empty again.
+  console.log('\n4. CLEAN UP THE PROBE TEST');
+  await clearAssistantChat(db, courseId, userId);
+  const finalChat = await db.collection('instructorchatsessions').countDocuments({
+    $or: [{ courseId: new mongoose.Types.ObjectId(courseId) }, { instructorId: new mongoose.Types.ObjectId(userId) }],
+  });
+  add('assistant chat empty after the probe test', finalChat === 0, `${finalChat} chat session(s)`);
+
+  // --- warm-up / cold start ---
+  console.log('\n5. SERVICE WARM-UP');
+  if (coldStartMs == null) {
+    console.log('   could not measure (the API call failed above)');
+  } else if (coldStartMs > COLD_START_MS) {
+    console.log(`   COLD START DETECTED — first call took ${coldStartMs}ms.`);
+    console.log('   The verify calls have now warmed it, but load the dashboard once before the participant arrives.');
+  } else {
+    console.log(`   service was already warm (first call ${coldStartMs}ms)`);
+  }
+
+  const failed = checks.filter((c) => !c.ok);
+  console.log(`\n${'='.repeat(64)}`);
+  if (failed.length === 0) {
+    console.log(`GO — ${label} is ready to hand to the participant`);
+    console.log(`  course ${courseId} · access code ${acct.accessCode || 'n/a'} · login ${username}`);
+  } else {
+    console.log(`NO-GO — ${failed.length} check(s) failed:`);
+    for (const f of failed) console.log(`  ✗ ${f.name}${f.detail ? ` — ${f.detail}` : ''}`);
+  }
+  console.log('='.repeat(64));
+  if (failed.length) process.exitCode = 1;
+}
+
 // ---------- main ----------
 (async () => {
   const cmd = process.argv[2];
@@ -479,7 +758,8 @@ async function rollback(db, { dryRun }) {
     else if (cmd === 'provision') await provision(db, { dryRun });
     else if (cmd === 'verify') await verifyManifest(db);
     else if (cmd === 'rollback') await rollback(db, { dryRun });
-    else die('usage: provisionStudyEnvironment.js <seed-maya|rollback-maya|provision|verify|rollback> [--dry-run] [--accounts P01-P14|--only LABEL] [--anchor-days-ago 2] [--manifest PATH]');
+    else if (cmd === 'prep-session') await prepSession(db);
+    else die('usage: provisionStudyEnvironment.js <seed-maya|rollback-maya|provision|verify|rollback|prep-session> [--dry-run] [--accounts P01-P14|--only LABEL] [--anchor-days-ago 2] [--manifest PATH]');
   } finally {
     await mongoose.disconnect();
   }
