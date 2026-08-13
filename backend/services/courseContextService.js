@@ -135,8 +135,28 @@ function parseExplicitTopicCountFromMessage(msg) {
     // "topic should be N" style (without the word "count")
     /\btopic\s+should\s+be\s*(\d{1,2})\b/i,
     // "need N topics" style
-    /\b(?:need|want|require|prefer)\s*(\d{1,2})\s+(?:topics?|drafts?)\b/i
+    /\b(?:need|want|require|prefer)\s*(\d{1,2})\s+(?:topics?|drafts?)\b/i,
+    // GENERAL "<N> topics" anywhere in the request.
+    //
+    // The four patterns above only fire when the number sits IMMEDIATELY after
+    // one of a handful of verbs, so ordinary phrasings were silently dropped
+    // and the generator fell back to its default of 4 — which is exactly the
+    // "asked for 10, got 4" report. Measured misses included "make 10 topics",
+    // "give me 10 topics", "break the course into 10 topics", "10 topics
+    // please", and — worst, because it is the UI's own default message with a
+    // count appended — "Generate the initial topic plan from the syllabus.
+    // Please make it 10 topics."
+    //
+    // The narrowness was there to avoid reading a count out of NARRATIVE text
+    // ("you created 10 topics, why?"), so that guard moves to REPORTING_CONTEXT
+    // below rather than being enforced by verb allowlisting.
+    /(\d{1,2})\s+(?:topics?|drafts?)\b/i
   ];
+
+  // Phrases that mean the number DESCRIBES existing output rather than
+  // requesting new output. Checked against the text just before the match.
+  const REPORTING_CONTEXT =
+    /\b(?:created|generated|produced|made|built|drafted|returned|gave|got|have|has|had|there\s+(?:are|were)|currently|already|only|just|why|instead\s+of|rather\s+than|not)\s*$/i;
   // If the chat includes multiple numbers (e.g. assistant says "Created 10 topics"
   // then later "topic should be 6"), we should pick the *latest* explicit count.
   let best = null;
@@ -148,6 +168,13 @@ function parseExplicitTopicCountFromMessage(msg) {
     let m;
     while ((m = globalRe.exec(lower)) !== null) {
       const n = parseInt(m[1], 10);
+      // Skip counts that describe what already exists ("you created 10 topics").
+      const before = lower.slice(Math.max(0, m.index - 24), m.index);
+      if (REPORTING_CONTEXT.test(before)) continue;
+      // "why did you make 10 topics?" asks ABOUT the output; "please make 10
+      // topics" asks FOR it. Only the interrogative disqualifies, so the verb
+      // itself stays usable in a request.
+      if (/\b(?:why|how\s+come)\b/i.test(lower.slice(0, m.index))) continue;
       if (n >= 1 && n <= MAX_PLAN_TOPICS && m.index != null && m.index >= bestPos) {
         bestPos = m.index;
         best = n;

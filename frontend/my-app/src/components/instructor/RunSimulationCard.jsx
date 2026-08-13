@@ -74,13 +74,25 @@ function StudentLine({ courseId, student, onRetry, retrying, canRetry }) {
               probes: {Object.entries(student.probeOutcomes).map(([k, v]) => `${k}→${v.branch}`).join(', ')}
             </span>
           )}
-          {student.sessionId && (
+          {/*
+            Gated on userId, which is what the URL is actually built from. It
+            used to be gated on sessionId, so a student record with a session
+            but no userId — a re-run resets both, and they are written by two
+            separate persistStudent calls — would render a link to
+            /students/undefined. Guard the value you interpolate, not a
+            neighbouring one.
+          */}
+          {student.userId ? (
             <Link
               to={`/instructor/courses/${courseId}/students/${student.userId}`}
               className="text-brand hover:underline font-medium ml-auto"
             >
               Read transcript
             </Link>
+          ) : (
+            <span className="text-ink-300 ml-auto" title="This student has no account on the course yet">
+              transcript unavailable
+            </span>
           )}
         </div>
       )}
