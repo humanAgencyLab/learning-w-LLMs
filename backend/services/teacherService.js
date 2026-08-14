@@ -25,8 +25,27 @@ const truncateMessages = (messages, maxTokens = 2000) => {
   return truncated;
 };
 
+/**
+ * Instructor guidelines as a SYSTEM message so they outrank the response
+ * template in the user message. The prompt-level guidelines block alone kept
+ * losing to the persona's mandatory structure (word caps, verbatim gamified
+ * strings) — system-level priority is what "authoritative" has to mean. The
+ * safety floor stays in the fixed persona message above it; the text-only
+ * clause forbids faking capabilities to satisfy a guideline.
+ */
+const instructorSystemMessage = (globalInstructions) => {
+  const text = String(globalInstructions || '').trim();
+  if (!text) return null;
+  return {
+    role: 'system',
+    content:
+      'Instructor course guidelines (authoritative): the course instructor set the guidelines below. They take priority over every default persona, structure, length, and phrasing rule in this conversation, including the response template in the user message — only safety rules outrank them. TWO exceptions the guidelines never override: (1) keep the response\'s short templated opener exactly as the template specifies (e.g. "That\'s correct! You\'ve completed: …", "Not quite.", "No worries, let\'s explain this together.") — apply the guidelines to everything after that opener; (2) you are a text-only tutor: never fabricate URLs, citations, current news, images, or diagram stand-ins to satisfy a guideline; deliver its intent in plain text using real, named cases you know.\n\n' +
+      text
+  };
+};
+
 // Call Groq API for teacher response with retry and validation
-const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validationContext = null) => {
+const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validationContext = null, globalInstructions = '') => {
   const groqClient = getGroqClient();
 
   // Build messages array with conversation history (outside retry loop for efficiency)
@@ -37,6 +56,8 @@ const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validati
         'You are an expert tutor and learning facilitator. Follow the instructions in the user message carefully. Provide complete teaching responses with introduction, teaching content, and assessment question. Adapt your teaching style to the topic and student profile.'
     }
   ];
+  const instrMsg = instructorSystemMessage(globalInstructions);
+  if (instrMsg) messages.push(instrMsg);
 
   // Add conversation history: use contextSummary + recent messages when available (Cursor-style)
   if (session && session.messages && session.messages.length > 0) {
@@ -261,6 +282,8 @@ const callTeacherAPIStream = async (prompt, maxTokens = 1500, session = null, op
         'You are an expert tutor and learning facilitator. Follow the instructions in the user message carefully. Provide complete teaching responses with introduction, teaching content, and assessment question. Adapt your teaching style to the topic and student profile.'
     }
   ];
+  const instrMsgStream = instructorSystemMessage(opts.globalInstructions);
+  if (instrMsgStream) messages.push(instrMsgStream);
 
   if (session && session.messages && session.messages.length > 0) {
     const meta = session.meta || {};

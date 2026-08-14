@@ -19,10 +19,11 @@ const AgentState = Annotation.Root({
   requestType:        Annotation({ reducer: (_, v) => v, default: () => '' }),
   phase:              Annotation({ reducer: (_, v) => v, default: () => 'pre' }),
   // Course.globalInstructions for course-scoped sessions ('' otherwise).
-  // Consumed by the teaching node ONLY: quiz generation deliberately never
-  // sees instructor guidelines (documented study finding — do not "fix"),
-  // and assessment stays instruction-blind for this study window (see
-  // teachingNode comment).
+  // Consumed by the teaching node AND the quiz node (2026-08 pre-window fix:
+  // quizzes now reflect instructor guidelines; shipped before the study window
+  // opened so every participant sees one consistent stimulus). Assessment
+  // stays instruction-blind for the study window per PILOT_DECISIONS.md — see
+  // the teachingNode comment; do not pass this to assessmentNode.
   globalInstructions: Annotation({ reducer: (_, v) => v, default: () => '' }),
 
   intentResult:       Annotation({ reducer: (_, v) => v, default: () => null }),
@@ -214,7 +215,7 @@ async function quizNode(state) {
 
   const plain = typeof mod.toObject === 'function' ? mod.toObject() : { ...mod };
   const modForAgent = { ...plain, quizPattern: quizPattern || {} };
-  const result = await runQuizAgent({ module: modForAgent });
+  const result = await runQuizAgent({ module: modForAgent, globalInstructions: state.globalInstructions });
   return { quizResult: result };
 }
 

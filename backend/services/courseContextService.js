@@ -6,7 +6,14 @@ const MAX_CONTEXT_CHARS = parseInt(process.env.COURSE_CONTEXT_MAX_CHARS || '5600
 const MAX_PLAN_TOPICS = 20;
 
 /**
- * Max unit/week/module index seen in text (for topic-count hints).
+ * Max enumerated-segment index seen in text (for topic-count hints).
+ *
+ * This is the LAST-RESORT count source: it only decides the target when the
+ * syllabus has no Week/Module/Unit labels (those have dedicated inferrers and
+ * win in the hierarchy). Before 2026-08 it recognized the same five labels as
+ * the dedicated inferrers — so a syllabus that enumerated its content any
+ * other way ("Topic 7:", "Session 12", a numbered outline) inferred ZERO and
+ * the plan fell back to the course default of 4, silently dropping topics.
  * @param {string} text
  * @param {string[]} [hints]
  */
@@ -17,7 +24,13 @@ function inferSegmentCountFromText(text, hints = []) {
     /\bweeks?\s*(\d+)\b/gi,
     /\bmodules?\s*(\d+)\b/gi,
     /\bchapters?\s*(\d+)\b/gi,
-    /\blectures?\s*(\d+)\b/gi
+    /\blectures?\s*(\d+)\b/gi,
+    /\btopics?\s*(\d+)\s*[:.\-–]/gi,
+    /\bsessions?\s*(\d+)\b/gi,
+    /\blessons?\s*(\d+)\b/gi,
+    /\bparts?\s*(\d+)\s*[:.\-–]/gi,
+    /\bdays?\s*(\d+)\s*[:.\-–]/gi,
+    /\bclass(?:es)?\s*(\d+)\s*[:.\-–]/gi
   ];
   let maxIdx = 0;
   for (const re of patterns) {
@@ -28,6 +41,16 @@ function inferSegmentCountFromText(text, hints = []) {
       if (!Number.isNaN(n) && n > 0 && n <= 40) maxIdx = Math.max(maxIdx, n);
     }
   }
+
+  // Deliberately NO bare numbered-outline scan ("1. … 12. …"). Review of that
+  // idea against realistic syllabi showed it counting numbered learning
+  // outcomes, numbered admin sections (Grading, Attendance…), appended
+  // practice questions, and even a numbered instructor-guidelines list as
+  // "segments" — and a miscount here arms the validator's hard minTopicCount
+  // floor, turning a wrong guess into a blocked generation. Only labeled
+  // enumerations (above) are confident enough to count; everything else falls
+  // to the coverage-wins prompt guidance, which can only under-count, never
+  // block.
   return maxIdx > 0 ? Math.min(maxIdx, MAX_PLAN_TOPICS) : 0;
 }
 
@@ -157,6 +180,12 @@ function parseExplicitTopicCountFromMessage(msg) {
   // requesting new output. Checked against the text just before the match.
   const REPORTING_CONTEXT =
     /\b(?:created|generated|produced|made|built|drafted|returned|gave|got|have|has|had|there\s+(?:are|were)|currently|already|only|just|why|instead\s+of|rather\s+than|not)\s*$/i;
+  // Phrases that make the number a DELTA, not a final count: "add 2 topics"
+  // means two MORE, "remove 2 topics" means two FEWER. Reading these as the
+  // required final draft-set size told the modify agent to shrink an 8-draft
+  // course to 2 — mass removal from an additive request.
+  const DELTA_CONTEXT =
+    /\b(?:add(?:ing)?|remove|removing|delete|deleting|drop(?:ping)?|merge|merging|combine|combining|another|extra|more|fewer|less|additional)\s*$/i;
   // If the chat includes multiple numbers (e.g. assistant says "Created 10 topics"
   // then later "topic should be 6"), we should pick the *latest* explicit count.
   let best = null;
@@ -171,6 +200,9 @@ function parseExplicitTopicCountFromMessage(msg) {
       // Skip counts that describe what already exists ("you created 10 topics").
       const before = lower.slice(Math.max(0, m.index - 24), m.index);
       if (REPORTING_CONTEXT.test(before)) continue;
+      // Skip delta phrasings ("add 2 topics") — the number is a change, not
+      // the total the plan should end up with.
+      if (DELTA_CONTEXT.test(before)) continue;
       // "why did you make 10 topics?" asks ABOUT the output; "please make 10
       // topics" asks FOR it. Only the interrogative disqualifies, so the verb
       // itself stays usable in a request.

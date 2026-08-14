@@ -796,8 +796,13 @@ export default function InstructorStudentDetailPage() {
                 <div key={t.courseTopicId} className="flex items-center gap-3.5 px-2 py-3 border-t border-hairline-soft first:border-t-0">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-ink-900 truncate">{t.topicTitle}</p>
-                    <p className="text-[11px] text-ink-200 mt-0.5" title={`Modules ${t.passedModules}/${t.moduleCount} · Milestones ${t.completedMilestones}/${t.totalMilestones}`}>
-                      Updated {formatDateTime(t.updatedAt)} · Modules {t.passedModules}/{t.moduleCount} · Milestones {t.completedMilestones}/{t.totalMilestones}
+                    {/* "Quiz-passed" is load-bearing copy: a module only counts
+                        after its quiz is passed (by design — milestones alone
+                        never complete a module), so "Milestones 2/4 · Modules
+                        0/2" is arithmetically right and must not read as a
+                        contradiction. */}
+                    <p className="text-[11px] text-ink-200 mt-0.5" title={`Modules quiz-passed ${t.passedModules}/${t.moduleCount} (a module completes only when its quiz is passed) · Milestones ${t.completedMilestones}/${t.totalMilestones}`}>
+                      Updated {formatDateTime(t.updatedAt)} · Modules quiz-passed {t.passedModules}/{t.moduleCount} · Milestones {t.completedMilestones}/{t.totalMilestones}
                     </p>
                   </div>
                   <span className="w-24 h-1.5 bg-hairline-softer rounded-full overflow-hidden flex-shrink-0">

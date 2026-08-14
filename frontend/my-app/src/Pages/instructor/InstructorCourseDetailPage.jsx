@@ -119,7 +119,6 @@ export default function InstructorCourseDetailPage() {
   const [chatBusy, setChatBusy] = useState(false);
   // Holds the pending message while the "replace drafts?" confirmation is open
   // (null = no confirmation pending).
-  const [confirmModifyMsg, setConfirmModifyMsg] = useState(null);
   // ⋯ overflow menu in the header (Copy access code / Delete course — E-Cd-1).
   const [courseMenuOpen, setCourseMenuOpen] = useState(false);
   const showToast = useToastStore((s) => s.showToast);
@@ -217,13 +216,9 @@ export default function InstructorCourseDetailPage() {
   const onSendChat = () => {
     const message = chatInput.trim();
     if (!message || chatBusy) return;
-    // Modify replaces (deletes) all existing draft topics. Confirm first when
-    // there's at least one draft to lose. Generate never has drafts (it only
-    // runs when isModify is false), so it bypasses the confirmation.
-    if (isModify && hasDrafts) {
-      setConfirmModifyMsg(message);
-      return;
-    }
+    // Modify is a change set (add/edit/remove exactly what the message asks;
+    // untouched drafts are left alone), so the old "replace all drafts?"
+    // confirmation dialog is gone with the destructive behavior it guarded.
     doSendChat(message);
   };
 
@@ -318,42 +313,6 @@ export default function InstructorCourseDetailPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className={`p-6 mx-auto pb-12 ${isFunctional ? 'max-w-7xl' : 'max-w-4xl'}`}>
-      {/* Confirm before Modify wipes existing draft topics */}
-      {confirmModifyMsg !== null && (() => {
-        const draftTopics = topics.filter((t) => t.status === 'draft');
-        return (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true">
-            <div className="bg-white border border-gray-200 rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
-              <h3 className="text-lg font-semibold mb-2">Replace draft topics?</h3>
-              <p className="text-gray-600 mb-3">
-                Modify will replace the following {draftTopics.length} draft topic{draftTopics.length === 1 ? '' : 's'} with new versions. Approved and published topics are not affected. This cannot be undone.
-              </p>
-              <ul className="max-h-40 overflow-y-auto border border-gray-100 rounded-lg bg-gray-50 px-3 py-2 mb-5 text-sm text-gray-700 list-disc list-inside space-y-0.5">
-                {draftTopics.map((t, i) => (
-                  <li key={t._id || t.courseTopicId || i} className="truncate">{t.title || '(untitled draft)'}</li>
-                ))}
-              </ul>
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setConfirmModifyMsg(null)}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-50 rounded-lg"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { const m = confirmModifyMsg; setConfirmModifyMsg(null); doSendChat(m); }}
-                  className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium"
-                >
-                  Replace drafts
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
       {/* Navigation */}
       <Link to="/instructor/courses" className="flex items-center gap-1.5 text-brand text-sm font-semibold hover:underline w-fit">
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="m14 6-6 6 6 6" /></svg>
@@ -519,43 +478,6 @@ export default function InstructorCourseDetailPage() {
         <aside className={`space-y-5 ${isFunctional ? 'lg:sticky lg:top-6' : 'order-1'}`}>
           {studentProgressCard && <div className={isFunctional ? 'hidden lg:block' : ''}>{studentProgressCard}</div>}
 
-      {/* Global Instructions (E-Cd-2: taller textarea) */}
-      <section className="bg-surface border border-hairline rounded-2xl shadow-card p-5">
-        <h2 className="text-base font-bold text-ink-900">AI teaching instructions</h2>
-        <p className="text-xs text-ink-400 mt-1 mb-3">How the assistant teaches every topic in this course.</p>
-        <textarea
-          className="w-full min-h-[172px] resize-y border border-hairline-strong rounded-lg px-3 py-2.5 text-sm text-ink-900 leading-relaxed focus:ring-2 focus:ring-brand focus:border-brand outline-none font-sans transition-all"
-          value={globalInstructions}
-          onChange={(e) => setGlobalInstructions(e.target.value)}
-          placeholder="e.g. Use real-world examples, keep explanations concise, focus on practical application..."
-        />
-        <div className="flex justify-between items-center mt-3">
-          <span className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={saveInstructions}
-              className="bg-ink-900 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-brand transition-colors disabled:opacity-50"
-            >
-              Save
-            </button>
-            {instrSaved && <span className="text-xs text-approve font-medium">Saved</span>}
-          </span>
-          <span className="text-xs text-ink-200">Applies to all topics</span>
-        </div>
-        {/* Soft lock: the tutor re-reads instructions on every message, so an
-            edit mid-run changes the tutor mid-transcript. The run also stores an
-            instructionsSnapshot taken at launch. */}
-        {simulationActive && (
-          <p className="mt-3 text-xs text-risk-high bg-risk-highTint border border-hairline-soft rounded-lg px-3 py-2">
-            A simulation is running; edits will affect it mid-conversation.
-          </p>
-        )}
-      </section>
-
-      {/* Run simulation — directly under the instructions it tests */}
-      <RunSimulationCard courseId={courseId} topics={topics} busy={busy} onActiveChange={setSimulationActive} />
-
       {/* Sources */}
       <section className="bg-surface border border-hairline rounded-2xl shadow-card p-5">
         <h2 className="text-base font-bold text-ink-900">Course materials</h2>
@@ -632,7 +554,9 @@ export default function InstructorCourseDetailPage() {
       <section className="bg-surface border border-hairline rounded-2xl shadow-card p-5">
         <h2 className="text-base font-bold text-ink-900">Topic plan chat</h2>
         <p className="text-xs text-ink-400 mt-1 mb-3">
-          Describe how topics should be structured, then {isModify ? 'Modify' : 'Generate'}. Drafts are replaced; approved/published topics stay.
+          {isModify
+            ? 'Describe a change and Modify applies just that change to your drafts. Approved/published topics stay.'
+            : 'Describe how topics should be structured, then Generate. Approved/published topics stay.'}
         </p>
 
         {chatMessages.length > 0 && (
@@ -673,10 +597,47 @@ export default function InstructorCourseDetailPage() {
 
         <p className="text-xs text-ink-200 mt-2">
           {isModify
-            ? 'Modify replaces all draft topics based on your instructions. Approved/published topics are never changed.'
+            ? 'Modify adds, edits, or removes exactly what you ask. Untouched drafts and approved/published topics are never changed.'
             : 'Generate creates new draft topics from your materials and instructions.'}
         </p>
       </section>
+
+      {/* Global Instructions (E-Cd-2: taller textarea) */}
+      <section className="bg-surface border border-hairline rounded-2xl shadow-card p-5">
+        <h2 className="text-base font-bold text-ink-900">AI teaching instructions</h2>
+        <p className="text-xs text-ink-400 mt-1 mb-3">How the assistant teaches every topic in this course.</p>
+        <textarea
+          className="w-full min-h-[172px] resize-y border border-hairline-strong rounded-lg px-3 py-2.5 text-sm text-ink-900 leading-relaxed focus:ring-2 focus:ring-brand focus:border-brand outline-none font-sans transition-all"
+          value={globalInstructions}
+          onChange={(e) => setGlobalInstructions(e.target.value)}
+          placeholder="e.g. Use real-world examples, keep explanations concise, focus on practical application..."
+        />
+        <div className="flex justify-between items-center mt-3">
+          <span className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={saveInstructions}
+              className="bg-ink-900 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-brand transition-colors disabled:opacity-50"
+            >
+              Save
+            </button>
+            {instrSaved && <span className="text-xs text-approve font-medium">Saved</span>}
+          </span>
+          <span className="text-xs text-ink-200">Applies to all topics</span>
+        </div>
+        {/* Soft lock: the tutor re-reads instructions on every message, so an
+            edit mid-run changes the tutor mid-transcript. The run also stores an
+            instructionsSnapshot taken at launch. */}
+        {simulationActive && (
+          <p className="mt-3 text-xs text-risk-high bg-risk-highTint border border-hairline-soft rounded-lg px-3 py-2">
+            A simulation is running; edits will affect it mid-conversation.
+          </p>
+        )}
+      </section>
+
+      {/* Run simulation — directly under the instructions it tests */}
+      <RunSimulationCard courseId={courseId} topics={topics} busy={busy} onActiveChange={setSimulationActive} />
         </aside>
       </div>
       </div>

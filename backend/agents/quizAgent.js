@@ -1,6 +1,19 @@
 const { runAgent } = require('./framework/baseAgent');
 const { runWithValidation } = require('./framework/validator');
 const { validateQuiz } = require('./validators/quizValidator');
+const { checkQuizKeys } = require('./validators/quizKeyCheck');
+
+/**
+ * Instructor course guidelines slot (2026-08 instruction-fidelity fix; the
+ * generator previously never saw them). Structural rules — 4 options, exactly
+ * one correct, JSON shape — still bind; the guidelines shape style, cognitive
+ * level, and content emphasis.
+ */
+function buildInstructionsBlock(globalInstructions) {
+  const text = String(globalInstructions || '').trim();
+  if (!text) return '';
+  return `\n\nInstructor course guidelines (authoritative for question style, cognitive level, and content emphasis — the structural JSON rules above still apply):\n${text}`;
+}
 
 function buildQuizPatternBlock(quizPattern) {
   if (!quizPattern || typeof quizPattern !== 'object') return '';
@@ -39,14 +52,15 @@ Rules:
 - Generate exactly ${questionCount} questions
 - Each question must have exactly 4 options
 - correctIndex must be 0-3
-- NEVER use "All of the above", "None of the above", or compound options
+- NEVER use "All of the above", "All of these", "None of the above", "None of these", or any compound/aggregate options
+- EXACTLY ONE option may be correct: the keyed option must be right and the other three must be clearly, defensibly wrong for the question as written. If several candidate options would all be true (e.g. "Which of these is a type of X?" where many are), narrow the question or the options until only one survives.
 - Each option must be a standalone, specific answer
 - Questions must test understanding of the milestones provided
 - Include an explanation for every question
 - Vary difficulty appropriately${questionCount > 5 ? '\n- With more than 5 questions, still cover all milestones thoroughly.' : ''}`;
 }
 
-function buildUserPrompt(moduleTitle, milestones, difficulty, questionCount, prevErrors, quizPattern) {
+function buildUserPrompt(moduleTitle, milestones, difficulty, questionCount, prevErrors, quizPattern, globalInstructions) {
   const milestonesText = milestones
     .map((m, i) => `${i + 1}. ${m.text || m}`)
     .join('\n');
@@ -60,10 +74,10 @@ function buildUserPrompt(moduleTitle, milestones, difficulty, questionCount, pre
 MILESTONES TO TEST:
 ${milestonesText}
 
-Generate exactly ${questionCount} multiple-choice questions covering these milestones.${buildQuizPatternBlock(quizPattern)}${errHint}`;
+Generate exactly ${questionCount} multiple-choice questions covering these milestones.${buildQuizPatternBlock(quizPattern)}${buildInstructionsBlock(globalInstructions)}${errHint}`;
 }
 
-async function runQuizAgent({ module }) {
+async function runQuizAgent({ module, globalInstructions = '' }) {
   const milestones = module.milestones || [];
   const difficulty = module.difficulty || 'core';
   const quizPattern = module.quizPattern && typeof module.quizPattern === 'object' ? module.quizPattern : {};
@@ -74,11 +88,23 @@ async function runQuizAgent({ module }) {
       runAgent({
         taskName: 'quiz',
         systemPrompt: buildSystemPrompt(questionCount),
-        userPrompt: buildUserPrompt(module.title, milestones, difficulty, questionCount, prevErrors, quizPattern),
+        userPrompt: buildUserPrompt(module.title, milestones, difficulty, questionCount, prevErrors, quizPattern, globalInstructions),
         maxTokens: 2000,
         temperature: 0.7,
       }),
-    (out) => validateQuiz(out, questionCount),
+    // Structure first (cheap, deterministic), then the exactly-one-correct key
+    // audit (LLM). A key-audit failure re-enters the generation loop with the
+    // per-question errors as feedback. The audit FAILS OPEN if the checker
+    // itself errors — see quizKeyCheck.js.
+    async (out) => {
+      const structural = validateQuiz(out, questionCount);
+      if (!structural.valid) return structural;
+      const keys = await checkQuizKeys(out.questions);
+      if (!keys.checked) {
+        console.warn('[QuizAgent] key audit skipped (checker unavailable) — delivering structurally-valid quiz');
+      }
+      return { valid: keys.valid, errors: keys.errors };
+    },
     { agentName: 'QuizAgent' },
   );
 

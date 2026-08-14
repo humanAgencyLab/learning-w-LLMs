@@ -869,7 +869,7 @@ router.post('/v1/assessment/approve', requireAuth, addRequestId, async (req, res
         });
         
         // Call teacher API to generate teaching content
-        const teachingContentRaw = await callTeacherAPI(teacherPrompt, 1500, session);
+        const teachingContentRaw = await callTeacherAPI(teacherPrompt, 1500, session, null, courseGlobalInstructions);
         console.log('Teaching response raw', {
           sessionId,
           contentLength: teachingContentRaw?.length || 0
@@ -888,13 +888,16 @@ router.post('/v1/assessment/approve', requireAuth, addRequestId, async (req, res
           const structureFixDirectives = [
             '- Write three paragraphs separated by blank lines (DO NOT use step labels like "STEP 1:", "STEP 2:", "STEP 3:").',
             '- First paragraph: Context (1-3 sentences) - "Thank you for approving the study plan. Let\'s begin our learning journey for **topic**. We\'ll start with **moduleName** module, focusing on **milestoneName**. [One sentence explaining why this milestone matters]." (Use **text** for bold formatting of topic, module, and milestone names).',
-            '- Second paragraph: Teaching content (150-200 words) with focused explanation of the milestone topic.',
+            // Range matches teacher_prompt's adaptive teachingWordRange rather
+            // than re-imposing the retired hard cap — this retry directive is
+            // the LAST instruction in the prompt and would win the conflict.
+            '- Second paragraph: Teaching content (150-450 words, matching the word range given earlier in this prompt) with focused explanation of the milestone topic.',
             '- Third paragraph: Exactly ONE question related to the milestone topic ending with a question mark.',
             '- Do not stop early; produce the full response before finishing.'
           ];
-          
+
           const reinforcementPrompt = `${teacherPrompt}\n\nCRITICAL STRUCTURE FIX – follow ALL items exactly:\n${structureFixDirectives.join('\n')}`;
-          const retryContent = await callTeacherAPI(reinforcementPrompt, 1500, session);
+          const retryContent = await callTeacherAPI(reinforcementPrompt, 1500, session, null, courseGlobalInstructions);
           const retryValidation = validateFirstTeaching(retryContent, firstMilestone.text);
           
           if (!retryValidation.isValid) {

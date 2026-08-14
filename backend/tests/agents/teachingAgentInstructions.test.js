@@ -66,9 +66,17 @@ describe('teaching turn — instructor global guidelines injection', () => {
     }
   });
 
-  it('quiz generation remains instruction-blind (documented study finding)', () => {
+  it('quiz generation receives instructor guidelines (2026-08 pre-window fix)', () => {
+    // Reversed from the original instruction-blind pin: the researcher shipped
+    // instruction-aware quiz generation BEFORE the study window opened, so all
+    // participants see one consistent stimulus. Assessment stays blind (below).
     const quizSource = require('fs').readFileSync(require.resolve('../../agents/quizAgent'), 'utf8');
-    expect(quizSource).not.toContain('globalInstructions');
+    expect(quizSource).toContain('globalInstructions');
+  });
+
+  it('graph quizNode forwards instructions from state (not a fresh DB read)', () => {
+    const graphSource = require('fs').readFileSync(require.resolve('../../agents/graph/studyGraph'), 'utf8');
+    expect(graphSource).toMatch(/runQuizAgent\(\{\s*module:\s*modForAgent,\s*globalInstructions:\s*state\.globalInstructions\s*\}\)/);
   });
 
   it('assessment agent remains instruction-blind for the study window (PILOT_DECISIONS.md Section 3)', () => {

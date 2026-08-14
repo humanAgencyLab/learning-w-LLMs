@@ -1,5 +1,9 @@
 const MIN_WORDS = 80;
-const MAX_WORDS = 500;
+// Whole-response ceiling. The teaching paragraph alone may run to ~450 words
+// when instructor guidelines call for rich content (see teacher_prompt's
+// adaptive teachingWordRange); the context paragraph and assessment question
+// need headroom above that.
+const MAX_WORDS = 650;
 
 function validateTeaching(output) {
   const errors = [];

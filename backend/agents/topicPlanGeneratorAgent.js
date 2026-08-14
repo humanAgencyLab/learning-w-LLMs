@@ -77,6 +77,7 @@ remember | understand | apply | analyze | evaluate | create
  * @param {string} [opts.topicCountRationale] - human note for the model (e.g. why N topics)
  * @param {boolean} [opts.perUnitRequested] - strict one-topic-per-unit mode (legacy)
  * @param {string} [opts.topicBasis] - 'week'|'module'|'unit'|'segment'|'explicit'
+ * @param {number} [opts.inferredSegments] - segments the resolver detected in the syllabus (0 = none)
  */
 async function runTopicPlanGeneratorAgent({
   contextText,
@@ -89,7 +90,8 @@ async function runTopicPlanGeneratorAgent({
   instructorIntent = '',
   topicCountRationale = '',
   perUnitRequested = false,
-  topicBasis = 'segment'
+  topicBasis = 'segment',
+  inferredSegments = 0
 }) {
   const count = topicCount ?? planStrategy?.topicCount ?? 4;
   const strategyType = planStrategy?.type || 'module_based';
@@ -140,9 +142,21 @@ async function runTopicPlanGeneratorAgent({
     granularityRule = `You MUST output exactly ${count} distinct topics — one per major numbered syllabus module. Do NOT merge multiple modules into one topic. Each topic's syllabusAnchors must name that module.\n`;
   } else if (topicBasis === 'unit' || perUnitRequested) {
     granularityRule = `You MUST output exactly ${count} distinct topics — one per major numbered syllabus unit. Do NOT merge multiple units into one topic. Each topic's syllabusAnchors must name that unit.\n`;
+  } else if (topicBasis === 'segment' && inferredSegments > 0) {
+    // The count came from the syllabus's own enumeration, not from the
+    // instructor — so full coverage outranks hitting the number. "Output
+    // exactly N" used to beat "cover the full syllabus" here, and plans
+    // silently dropped enumerated topics.
+    granularityRule = `The syllabus enumerates ${inferredSegments} major segments. Output ONE topic per enumerated segment — at least ${count} distinct topics, more (up to 20) if full coverage needs them. NEVER omit an enumerated syllabus segment to hit a count. Each topic's syllabusAnchors must name its segment.\n`;
   } else {
     granularityRule = `Output exactly ${count} distinct topics (or fewer only if the materials are too thin to justify ${count}; if fewer, say why in syllabusCoverageOverview). No duplicate titles.\n`;
   }
+
+  // An instructor-requested count is honored exactly; an inferred count yields
+  // to coverage.
+  const coverageTrailer = topicBasis === 'explicit'
+    ? 'The union of all topics must cover the full syllabus implied by the materials above within the requested topic count.'
+    : 'The union of all topics must cover the full syllabus implied by the materials above. If the target count conflicts with covering every major syllabus area, COVERAGE WINS — include the extra topics (up to 20) and note why in syllabusCoverageOverview.';
 
   const userPrompt = `Planning strategy: ${strategyType}
 Target topic count: ${count}
@@ -151,7 +165,7 @@ ${rationaleBlock}${intentBlock}${sourcesBlock}${requiredFilenameHeader}${truncat
 Course material and instructions:
 ${contextText}
 
-${granularityRule}The union of all topics must cover the full syllabus implied by the materials above.`;
+${granularityRule}${coverageTrailer}`;
 
   const maxTokens = Math.min(10000, 3800 + count * 450);
 

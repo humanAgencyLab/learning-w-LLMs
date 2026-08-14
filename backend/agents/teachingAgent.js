@@ -81,7 +81,7 @@ async function runTeachingAgent({
   // message, and on validation failure the route's legacy fallback regenerates.
   if (typeof streamCallback === 'function') {
     try {
-      const content = await callTeacherAPIStream(prompt, 1500, session, { onChunk: streamCallback });
+      const content = await callTeacherAPIStream(prompt, 1500, session, { onChunk: streamCallback, globalInstructions: globalInstructions || '' });
       const check = validateTeaching({ content });
       return {
         type: 'teaching',
@@ -103,7 +103,7 @@ async function runTeachingAgent({
       const errHint = prevErrors.length
         ? `\n\nIMPORTANT: Your previous response was rejected for structural reasons: ${prevErrors.join('; ')}. Regenerate the full response and fix them.`
         : '';
-      const content = await callTeacherAPI(prompt + errHint, 1500, session);
+      const content = await callTeacherAPI(prompt + errHint, 1500, session, null, globalInstructions || '');
       return { content };
     },
     validateTeaching,

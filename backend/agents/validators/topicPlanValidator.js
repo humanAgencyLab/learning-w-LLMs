@@ -314,6 +314,7 @@ function validateSourceCoverage(syllabusSourceNames, overview, topics) {
  * @param {object} [options]
  * @param {string[]} [options.syllabusSourceNames] - primary syllabus filenames; each must appear in overview/anchors when non-empty
  * @param {string[]} [options.sourceNames] - deprecated alias for syllabusSourceNames
+ * @param {number} [options.minTopicCount] - enumerated-segment floor: a plan with fewer topics than the syllabus enumerates is an incomplete plan, not a valid one. Callers set this ONLY when the count was inferred from the syllabus (never for an instructor-requested count or a course max cap).
  * @returns {{ valid: boolean, topics?: any[], syllabusCoverageOverview?: string, errors: string[], warnings?: string[], code?: string }}
  */
 function validateTopicPlanPayload(data, options = {}) {
@@ -352,6 +353,24 @@ function validateTopicPlanPayload(data, options = {}) {
       internalErrors: ['All topics were removed as duplicate or empty titles']
     };
   }
+  // Enumerated-segment floor. The filename-substring check below can pass on
+  // a plan that silently dropped syllabus segments (it only proves the FILE
+  // was referenced, not that every segment got a topic). When the resolver
+  // counted segments in the syllabus itself, fewer topics than segments means
+  // at least one syllabus area is missing — fail so the retry loop feeds the
+  // deficit back to the generator.
+  const minCount = Number(options.minTopicCount);
+  if (Number.isInteger(minCount) && minCount > 0 && topics.length < minCount) {
+    return {
+      valid: false,
+      errors: [
+        `Syllabus coverage guardrail: the syllabus enumerates ${minCount} major segments but this plan has only ${topics.length} topic${topics.length === 1 ? '' : 's'} — at least one syllabus area is missing. Regenerate with one topic per enumerated segment (weeks/modules/units/numbered topics).`
+      ],
+      code: 'SYLLABUS_COVERAGE_COUNT',
+      internalErrors: [`minTopicCount=${minCount}, got ${topics.length} after dedupe`]
+    };
+  }
+
   const syllabusNames =
     options.syllabusSourceNames != null ? options.syllabusSourceNames : options.sourceNames || [];
   const cov = validateSourceCoverage(syllabusNames, syllabusCoverageOverview, topics);
@@ -410,6 +429,142 @@ function validateTopicPlanPayload(data, options = {}) {
 }
 
 /**
+ * Validate a change set from the plan-modify agent (ops contract).
+ *
+ * Every add/update topic goes through the same repair-then-strict-parse
+ * treatment as full plans; every target must exactly match a CURRENT draft
+ * title (normalized), so a hallucinated or locked-topic target fails loudly
+ * and re-enters the retry loop instead of silently applying to nothing.
+ *
+ * @param {unknown} data - parsed JSON from LLM
+ * @param {object} [options]
+ * @param {string[]} [options.draftTitles] - titles of the course's CURRENT draft topics (the only legal targets)
+ * @param {string[]} [options.syllabusSourceNames] - primary syllabus filenames; each must appear in the overview/ops when non-empty
+ * @returns {{ valid: boolean, operations?: any[], syllabusCoverageOverview?: string, errors: string[], warnings?: string[], code?: string, internalErrors?: string[] }}
+ */
+function validateTopicPlanOpsPayload(data, options = {}) {
+  const warnings = [];
+  if (!data || typeof data !== 'object' || !Array.isArray(data.operations)) {
+    return {
+      valid: false,
+      errors: ['The AI did not return a usable change set. ' + UNREADABLE_PLAN_MESSAGE],
+      code: 'TOPIC_PLAN_INVALID',
+      internalErrors: ['payload missing an operations array']
+    };
+  }
+  if (data.operations.length === 0) {
+    return {
+      valid: false,
+      errors: ['The AI returned an empty change set — it did not apply your request. Try rephrasing the modification.'],
+      code: 'TOPIC_PLAN_INVALID',
+      internalErrors: ['operations array was empty']
+    };
+  }
+  if (data.operations.length > LIMITS.topics * 2) {
+    return {
+      valid: false,
+      errors: [`The AI returned ${data.operations.length} operations — far more than the request can need. ${UNREADABLE_PLAN_MESSAGE}`],
+      code: 'TOPIC_PLAN_INVALID',
+      internalErrors: [`operations array length ${data.operations.length}`]
+    };
+  }
+
+  const overview = typeof data.syllabusCoverageOverview === 'string'
+    ? truncateAtWordBoundary(data.syllabusCoverageOverview, LIMITS.overviewMax)
+    : '';
+  if (overview.length < 60) {
+    return {
+      valid: false,
+      errors: ['The plan\'s syllabus coverage overview was missing or too short. ' + UNREADABLE_PLAN_MESSAGE],
+      code: 'TOPIC_PLAN_INVALID',
+      internalErrors: ['syllabusCoverageOverview under 60 chars']
+    };
+  }
+
+  const draftKeySet = new Set((options.draftTitles || []).map(normalizeTopicTitleKey));
+  const internalErrors = [];
+  const operations = [];
+  const seenTargets = new Set();
+
+  for (let i = 0; i < data.operations.length; i++) {
+    const raw = data.operations[i];
+    const op = raw && typeof raw === 'object' ? String(raw.op || '').toLowerCase() : '';
+    if (!['add', 'update', 'remove'].includes(op)) {
+      internalErrors.push(`operation ${i + 1}: unknown op "${String(raw?.op).slice(0, 30)}"`);
+      continue;
+    }
+
+    if (op === 'update' || op === 'remove') {
+      const target = typeof raw.target === 'string' ? raw.target.trim() : '';
+      const key = normalizeTopicTitleKey(target);
+      if (!key || !draftKeySet.has(key)) {
+        internalErrors.push(
+          `operation ${i + 1} (${op}): target "${target.slice(0, 80)}" does not match any CURRENT draft title — copy a title exactly from the CURRENT DRAFTS list; locked topics can never be targets`
+        );
+        continue;
+      }
+      if (seenTargets.has(key)) {
+        internalErrors.push(`operation ${i + 1} (${op}): target "${target.slice(0, 80)}" appears in more than one operation`);
+        continue;
+      }
+      seenTargets.add(key);
+      if (op === 'remove') {
+        operations.push({ op: 'remove', targetKey: key, target });
+        continue;
+      }
+    }
+
+    // add / update carry a full topic — same repair + strict parse as plans.
+    const label = raw.topic && typeof raw.topic.title === 'string' && raw.topic.title.trim()
+      ? `topic "${truncateAtWordBoundary(raw.topic.title, 60)}"`
+      : `operation ${i + 1}`;
+    const repaired = raw.topic && typeof raw.topic === 'object' ? repairTopic(raw.topic, label, warnings) : null;
+    if (!repaired) {
+      internalErrors.push(`operation ${i + 1} (${op}): topic was missing or unusable after repair`);
+      continue;
+    }
+    const parsed = TopicPlanTopicSchema.safeParse(repaired);
+    if (!parsed.success) {
+      internalErrors.push(
+        `operation ${i + 1} (${op}): ${parsed.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).slice(0, 3).join('; ')}`
+      );
+      continue;
+    }
+    if (op === 'add') {
+      operations.push({ op: 'add', topic: parsed.data });
+    } else {
+      operations.push({ op: 'update', targetKey: normalizeTopicTitleKey(raw.target), target: String(raw.target).trim(), topic: parsed.data });
+    }
+  }
+
+  if (internalErrors.length > 0) {
+    return {
+      valid: false,
+      errors: [
+        `The AI's change set had ${internalErrors.length} unusable operation(s). ${UNREADABLE_PLAN_MESSAGE}`
+      ],
+      code: 'TOPIC_PLAN_INVALID',
+      internalErrors
+    };
+  }
+
+  const syllabusNames = options.syllabusSourceNames || [];
+  const opTopics = operations.filter((o) => o.topic).map((o) => o.topic);
+  const cov = validateSourceCoverage(syllabusNames, overview, opTopics);
+  if (!cov.ok) {
+    return {
+      valid: false,
+      errors: [
+        `Syllabus coverage guardrail: each primary syllabus file must be explicitly tied in syllabusCoverageOverview. Missing or unreferenced syllabus source(s): ${cov.missing.join('; ')}.`
+      ],
+      code: 'SYLLABUS_COVERAGE_SOURCES'
+    };
+  }
+
+  return { valid: true, operations, syllabusCoverageOverview: overview, errors: [], warnings };
+}
+
+/**
  * Validate a single-topic modification from TopicDraftModifyAgent.
  * @param {unknown} data - parsed JSON from LLM
  * @returns {{ valid: boolean, topic?: any, errors: string[] }}
@@ -450,6 +605,7 @@ function validateSingleTopicPayload(data) {
 
 module.exports = {
   validateTopicPlanPayload,
+  validateTopicPlanOpsPayload,
   validateSingleTopicPayload,
   repairTopicPlanPayload,
   truncateAtWordBoundary,

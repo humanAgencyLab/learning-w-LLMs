@@ -23,7 +23,7 @@ const {
 const { runTopicPlanGeneratorAgent } = require('../agents/topicPlanGeneratorAgent');
 const { runCourseTopicPlanModifyAgent } = require('../agents/courseTopicPlanModifyAgent');
 const { runTopicDraftModifyAgent } = require('../agents/topicDraftModifyAgent');
-const { validateTopicPlanPayload, validateSingleTopicPayload, normalizeTopicTitleKey } = require('../agents/validators/topicPlanValidator');
+const { validateTopicPlanPayload, validateTopicPlanOpsPayload, validateSingleTopicPayload, normalizeTopicTitleKey } = require('../agents/validators/topicPlanValidator');
 const { runIngestion } = require('../services/bookIngestionService');
 const SimulationRun = require('../models/SimulationRun');
 const {
@@ -797,6 +797,14 @@ router.post('/courses/:courseId/generate-topics', requireCourseOwner, async (req
       resolved = { ...resolved, target: n, rationale: `one topic per chapter of the ingested book (${bookChaptersForCount.length} chapters)`, perUnitRequested: true, inferredSegments: bookChaptersForCount.length };
     }
 
+    // Enumerated-segment floor for the validator: only when the count came
+    // from the syllabus itself — an instructor-requested count or a course
+    // max cap is authoritative and never re-litigated by the guardrail.
+    const minTopicCount =
+      topicCountOverride == null && resolved.topicBasis !== 'explicit' && !resolved.cappedByMax && resolved.inferredSegments > 0
+        ? Math.min(resolved.inferredSegments, 20)
+        : undefined;
+
     let raw = await runTopicPlanGeneratorAgent({
       contextText,
       planStrategy: req.course.planStrategy,
@@ -808,10 +816,11 @@ router.post('/courses/:courseId/generate-topics', requireCourseOwner, async (req
       instructorIntent: instruct,
       topicCountRationale: resolved.rationale,
       perUnitRequested: resolved.perUnitRequested,
-      topicBasis: resolved.topicBasis
+      topicBasis: resolved.topicBasis,
+      inferredSegments: resolved.inferredSegments
     });
 
-    let validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames, bookChapters: bookChapterIndicesFor(req.course) });
+    let validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames, bookChapters: bookChapterIndicesFor(req.course), minTopicCount });
 
     // Auto-retry once on ANY validation failure (coverage guardrail or
     // structure the repair pass couldn't save), with feedback in the prompt.
@@ -833,10 +842,11 @@ router.post('/courses/:courseId/generate-topics', requireCourseOwner, async (req
         instructorIntent: `${instruct}${retryNudge}`,
         topicCountRationale: resolved.rationale,
         perUnitRequested: resolved.perUnitRequested,
-        topicBasis: resolved.topicBasis
+        topicBasis: resolved.topicBasis,
+        inferredSegments: resolved.inferredSegments
       });
 
-      validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames, bookChapters: bookChapterIndicesFor(req.course) });
+      validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames, bookChapters: bookChapterIndicesFor(req.course), minTopicCount });
     }
 
     if (!validated.valid) {
@@ -1068,6 +1078,187 @@ router.get('/courses/:courseId/topic-plan/chat', requireCourseOwner, async (req,
 });
 
 /**
+ * Modify = change set: run the ops agent, validate every operation against the
+ * course's CURRENT drafts, apply with draft-guarded writes. Untouched drafts
+ * are never rewritten; approved/published topics are unreachable by predicate.
+ */
+async function applyTopicPlanChangeSet(req, res, {
+  course, allTopics, contextText, truncated, syllabusNames, referenceNames, outlineHints, instructForResolve, resolved
+}) {
+  const draftDocs = allTopics.filter((t) => t.status === 'draft');
+  const draftTitles = draftDocs.map((t) => t.title);
+  const draftByKey = new Map(draftDocs.map((t) => [normalizeTopicTitleKey(t.title), t]));
+
+  const agentArgs = {
+    contextText,
+    planStrategy: course.planStrategy,
+    syllabusSourceNames: syllabusNames,
+    referenceSourceNames: referenceNames,
+    truncated,
+    outlineHints,
+    currentTopics: allTopics,
+    chatHistory: (course.instructorChat || []).slice(-10),
+    modificationRequest: instructForResolve,
+    targetDraftTopicCount: resolved.strictDraftCount ? resolved.target : undefined,
+    perUnitRequested: resolved.perUnitRequested,
+    topicCountRationale: resolved.rationale,
+    topicBasis: resolved.topicBasis
+  };
+
+  let raw = await runCourseTopicPlanModifyAgent(agentArgs);
+  let validated = validateTopicPlanOpsPayload(raw, { draftTitles, syllabusSourceNames: syllabusNames });
+
+  // Auto-retry once with the validation feedback (same policy as generate).
+  if (!validated.valid) {
+    logger.warn(
+      { courseId: course._id.toString(), code: validated.code, internalErrors: validated.internalErrors || validated.errors },
+      'topic plan change set failed validation; retrying once with feedback'
+    );
+    const detail = (validated.internalErrors || validated.errors || []).slice(0, 6).join('; ');
+    raw = await runCourseTopicPlanModifyAgent({
+      ...agentArgs,
+      modificationRequest: `${instructForResolve}\n\nIMPORTANT RETRY: Your previous change set failed validation: ${detail}. Re-output the FULL corrected JSON change set ({"syllabusCoverageOverview": ..., "operations": [...]}). "target" values must copy titles EXACTLY from the CURRENT DRAFTS list; locked topics can never be targets; each add/update topic needs 1-8 modules, 1-10 syllabusAnchors, and 2-8 milestones per module.`
+    });
+    validated = validateTopicPlanOpsPayload(raw, { draftTitles, syllabusSourceNames: syllabusNames });
+  }
+
+  if (!validated.valid) {
+    logger.warn(
+      { courseId: course._id.toString(), code: validated.code, internalErrors: validated.internalErrors || validated.errors },
+      'topic plan change set failed validation after retry'
+    );
+    return res.status(422).json({
+      success: false,
+      error: validated.errors?.[0] || 'The AI change set failed validation',
+      code: validated.code || 'TOPIC_PLAN_INVALID',
+      details: validated.errors
+    });
+  }
+
+  Course.updateOne({ _id: course._id }, { $set: { planContextTruncated: truncated } }).catch(() => {});
+
+  const warnings = [...(validated.warnings || [])];
+  // Title uniqueness across the whole course, minus titles the change set
+  // frees up (an update may rename; a remove vacates its title).
+  const takenKeys = new Set(allTopics.map((t) => normalizeTopicTitleKey(t.title)));
+  for (const op of validated.operations) if (op.targetKey) takenKeys.delete(op.targetKey);
+
+  const maxOrderDoc = await CourseTopic.findOne({ courseId: course._id }).sort({ orderIndex: -1 }).select('orderIndex').lean();
+  let nextOrder = maxOrderDoc ? maxOrderDoc.orderIndex + 1 : 0;
+
+  // Removes and updates first, adds last: an update re-claims its (possibly
+  // unchanged) title into takenKeys before any add is checked, so a change set
+  // containing both "update draft X" and "add X" skips the duplicate add
+  // instead of creating two drafts with the same title.
+  const OP_ORDER = { remove: 0, update: 1, add: 2 };
+  const orderedOps = [...validated.operations].sort((a, b) => OP_ORDER[a.op] - OP_ORDER[b.op]);
+
+  const applied = { added: [], updated: [], removed: [] };
+  for (const op of orderedOps) {
+    if (op.op === 'remove') {
+      const doc = draftByKey.get(op.targetKey);
+      // status predicate: even if this topic was approved since we read it,
+      // the delete can only ever hit a draft.
+      const r = await CourseTopic.deleteOne({ _id: doc._id, status: 'draft' });
+      if (r.deletedCount === 1) applied.removed.push(doc.title);
+      else warnings.push(`Could not remove "${doc.title}" — it is no longer a draft.`);
+      continue;
+    }
+
+    const t = op.topic;
+    const key = normalizeTopicTitleKey(t.title);
+
+    if (op.op === 'add') {
+      if (takenKeys.has(key)) {
+        warnings.push(`Skipped adding "${t.title}" — a topic with that title already exists.`);
+        continue;
+      }
+      takenKeys.add(key);
+      const topicDoc = await CourseTopic.create({
+        courseId: course._id,
+        title: t.title,
+        objective: t.objective || '',
+        orderIndex: nextOrder,
+        status: 'draft',
+        modules: normalizeModules(t.modules),
+        syllabusAnchors: Array.isArray(t.syllabusAnchors) ? t.syllabusAnchors.slice(0, 12) : [],
+        updatedBy: req.userId,
+        changeNotes: `AI-modified (added): ${instructForResolve.slice(0, 100)}`
+      });
+      nextOrder += 1;
+      applied.added.push(topicDoc);
+      continue;
+    }
+
+    // update
+    const doc = draftByKey.get(op.targetKey);
+    if (key !== op.targetKey && takenKeys.has(key)) {
+      warnings.push(`Skipped renaming "${doc.title}" to "${t.title}" — that title already exists.`);
+      continue;
+    }
+    const r = await CourseTopic.updateOne(
+      { _id: doc._id, status: 'draft' },
+      {
+        $set: {
+          title: t.title,
+          objective: t.objective || '',
+          modules: normalizeModules(t.modules),
+          syllabusAnchors: Array.isArray(t.syllabusAnchors) ? t.syllabusAnchors.slice(0, 12) : doc.syllabusAnchors,
+          updatedBy: req.userId,
+          changeNotes: `AI-modified: ${instructForResolve.slice(0, 100)}`
+        }
+      }
+    );
+    if (r.matchedCount === 1) {
+      takenKeys.add(key);
+      applied.updated.push(t.title);
+    } else {
+      warnings.push(`Could not update "${doc.title}" — it is no longer a draft.`);
+    }
+  }
+
+  if (applied.added.length === 0 && applied.updated.length === 0 && applied.removed.length === 0) {
+    return res.status(422).json({
+      success: false,
+      error: 'No operations could be applied — nothing was changed. See warnings for why each was skipped.',
+      code: 'NO_TOPICS_CREATED',
+      details: { warnings }
+    });
+  }
+
+  const parts = [];
+  if (applied.added.length) parts.push(`added ${applied.added.length}`);
+  if (applied.updated.length) parts.push(`updated ${applied.updated.length}`);
+  if (applied.removed.length) parts.push(`removed ${applied.removed.length}`);
+  const untouched = draftDocs.length - applied.updated.length - applied.removed.length;
+  const summary = `Applied your change (${parts.join(', ')} draft topic${(applied.added.length + applied.updated.length + applied.removed.length) === 1 ? '' : 's'}).${untouched > 0 ? ` ${untouched} other draft${untouched === 1 ? '' : 's'} left untouched.` : ''} Approved/published topics were not changed.`;
+  const assistantMessage = validated.syllabusCoverageOverview
+    ? `${summary}\n\n${validated.syllabusCoverageOverview}`
+    : summary;
+
+  course.instructorChat = course.instructorChat || [];
+  course.instructorChat.push(
+    { role: 'instructor', content: instructForResolve, metadata: { kind: 'modify' } },
+    { role: 'assistant', content: assistantMessage, metadata: { kind: 'modify', topicCount: applied.added.length + applied.updated.length } }
+  );
+  if (validated.syllabusCoverageOverview) {
+    course.latestCoverageOverview = validated.syllabusCoverageOverview;
+  }
+  await course.save();
+
+  const topics = await CourseTopic.find({ courseId: course._id }).sort({ orderIndex: 1 });
+  return res.status(201).json({
+    success: true,
+    data: {
+      topics,
+      assistantMessage,
+      ...(validated.syllabusCoverageOverview ? { coverageOverview: validated.syllabusCoverageOverview } : {}),
+      ...(warnings.length ? { warnings } : {})
+    }
+  });
+}
+
+/**
  * Shared logic: build context, run an agent, validate, persist drafts + chat.
  * Returns { topics, coverageOverview, warnings } or throws a response.
  */
@@ -1125,42 +1316,56 @@ async function runTopicPlanPipeline(req, res, { instructorMessage, kind }) {
     resolved = { ...resolved, target: n, rationale: `one topic per chapter of the ingested book (${pipelineBookChapters.length} chapters)`, perUnitRequested: true, inferredSegments: pipelineBookChapters.length };
   }
 
+  // Enumerated-segment floor (generate only — modify emits a change set, and
+  // coverage there is the union of drafts + locked topics, not the op count).
+  const minTopicCount =
+    kind === 'generate' && bodyTopicCount == null && resolved.topicBasis !== 'explicit' && !resolved.cappedByMax && resolved.inferredSegments > 0
+      ? Math.min(resolved.inferredSegments, 20)
+      : undefined;
+
   const allTopics = await CourseTopic.find({ courseId: course._id }).sort({ orderIndex: 1 }).lean();
 
-  let raw;
-  if (kind === 'generate') {
-    raw = await runTopicPlanGeneratorAgent({
+  /**
+   * MODIFY: apply a change set instead of regenerating every draft.
+   *
+   * The old contract deleted ALL drafts and re-created whatever the model
+   * output — "add one topic" clobbered every existing draft, and the only
+   * protection was approving topics first. Now the agent emits add/update/
+   * remove operations against named drafts; unchanged drafts are never
+   * touched. Every write below carries a status:'draft' predicate, so
+   * approved/published topics stay unreachable (the same invariant the
+   * per-topic ai-modify endpoint enforces with its NOT_DRAFT 409).
+   */
+  if (kind === 'modify') {
+    return applyTopicPlanChangeSet(req, res, {
+      course,
+      allTopics,
       contextText,
-      planStrategy: course.planStrategy,
-      topicCount: resolved.target,
-      syllabusSourceNames: syllabusNames,
-      referenceSourceNames: referenceNames,
       truncated,
+      syllabusNames,
+      referenceNames,
       outlineHints,
-      instructorIntent: instructForResolve,
-      topicCountRationale: resolved.rationale,
-      perUnitRequested: resolved.perUnitRequested,
-      topicBasis: resolved.topicBasis
-    });
-  } else {
-    raw = await runCourseTopicPlanModifyAgent({
-      contextText,
-      planStrategy: course.planStrategy,
-      syllabusSourceNames: syllabusNames,
-      referenceSourceNames: referenceNames,
-      truncated,
-      outlineHints,
-      currentTopics: allTopics,
-      chatHistory: (course.instructorChat || []).slice(-10),
-      modificationRequest: instructForResolve,
-      targetDraftTopicCount: resolved.strictDraftCount ? resolved.target : undefined,
-      perUnitRequested: resolved.perUnitRequested,
-      topicCountRationale: resolved.rationale,
-      topicBasis: resolved.topicBasis
+      instructForResolve,
+      resolved
     });
   }
 
-  const validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames, bookChapters: bookChapterIndicesFor(req.course) });
+  let raw = await runTopicPlanGeneratorAgent({
+    contextText,
+    planStrategy: course.planStrategy,
+    topicCount: resolved.target,
+    syllabusSourceNames: syllabusNames,
+    referenceSourceNames: referenceNames,
+    truncated,
+    outlineHints,
+    instructorIntent: instructForResolve,
+    topicCountRationale: resolved.rationale,
+    perUnitRequested: resolved.perUnitRequested,
+    topicBasis: resolved.topicBasis,
+    inferredSegments: resolved.inferredSegments
+  });
+
+  const validated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames, bookChapters: bookChapterIndicesFor(req.course), minTopicCount });
   let finalValidated = validated;
 
   // Auto-retry once on ANY validation failure, with feedback in the prompt.
@@ -1171,39 +1376,22 @@ async function runTopicPlanPipeline(req, res, { instructorMessage, kind }) {
     );
     const retryNudge = topicPlanRetryNudge(finalValidated, syllabusNames);
 
-    if (kind === 'generate') {
-      raw = await runTopicPlanGeneratorAgent({
-        contextText,
-        planStrategy: course.planStrategy,
-        topicCount: resolved.target,
-        syllabusSourceNames: syllabusNames,
-        referenceSourceNames: referenceNames,
-        truncated,
-        outlineHints,
-        instructorIntent: `${instructForResolve}${retryNudge}`,
-        topicCountRationale: resolved.rationale,
-        perUnitRequested: resolved.perUnitRequested,
-        topicBasis: resolved.topicBasis
-      });
-    } else {
-      raw = await runCourseTopicPlanModifyAgent({
-        contextText,
-        planStrategy: course.planStrategy,
-        syllabusSourceNames: syllabusNames,
-        referenceSourceNames: referenceNames,
-        truncated,
-        outlineHints,
-        currentTopics: allTopics,
-        chatHistory: (course.instructorChat || []).slice(-10),
-        modificationRequest: `${instructForResolve}${retryNudge}`,
-        targetDraftTopicCount: resolved.strictDraftCount ? resolved.target : undefined,
-        perUnitRequested: resolved.perUnitRequested,
-        topicCountRationale: resolved.rationale,
-        topicBasis: resolved.topicBasis
-      });
-    }
+    raw = await runTopicPlanGeneratorAgent({
+      contextText,
+      planStrategy: course.planStrategy,
+      topicCount: resolved.target,
+      syllabusSourceNames: syllabusNames,
+      referenceSourceNames: referenceNames,
+      truncated,
+      outlineHints,
+      instructorIntent: `${instructForResolve}${retryNudge}`,
+      topicCountRationale: resolved.rationale,
+      perUnitRequested: resolved.perUnitRequested,
+      topicBasis: resolved.topicBasis,
+      inferredSegments: resolved.inferredSegments
+    });
 
-    finalValidated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames, bookChapters: bookChapterIndicesFor(req.course) });
+    finalValidated = validateTopicPlanPayload(raw, { syllabusSourceNames: syllabusNames, bookChapters: bookChapterIndicesFor(req.course), minTopicCount });
   }
 
   if (!finalValidated.valid) {

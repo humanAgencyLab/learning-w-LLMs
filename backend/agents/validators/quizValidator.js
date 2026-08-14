@@ -15,7 +15,22 @@ function validateQuiz(output, expectedCount = 5) {
     errors.push(`Expected exactly ${exp} questions, got ${questions.length}`);
   }
 
-  const forbiddenPatterns = ['all of the above', 'none of the above', 'both a and b', 'both a and c', 'both b and c'];
+  // Compound/aggregate options defeat single-select grading: if "All of these"
+  // is the key, every individually-true option grades as wrong (and vice
+  // versa). "All of these" itself shipped in a live quiz — the original list
+  // only matched "...of the above".
+  //
+  // Anchored REGEXES, not substrings: a first draft used bare substrings like
+  // 'a and b', which rejected ordinary option text ("Schema and constraints"
+  // contains 'a and c' across the word boundary, "Data and bandwidth" contains
+  // 'a and b'). Letter-pair patterns must reference standalone option LETTERS
+  // or span the whole option.
+  const forbiddenRes = [
+    /\b(?:all|none|each|any)\s+of\s+(?:the\s+above|these)\b/i,
+    /\ball\s+the\s+above\b/i,
+    /\bboth\s+[a-d]\s+and\s+[a-d]\b/i,
+    /^\s*(?:options?\s+)?[a-d]\s*(?:and|&|\+|,)\s*[a-d]\s*$/i, // the whole option is "A and B" / "Options A, C"
+  ];
 
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
@@ -26,7 +41,7 @@ function validateQuiz(output, expectedCount = 5) {
       errors.push(`question ${i}: must have exactly 4 options, got ${q.options?.length || 0}`);
     } else {
       for (const opt of q.options) {
-        if (forbiddenPatterns.some(p => opt.toLowerCase().includes(p))) {
+        if (forbiddenRes.some(re => re.test(String(opt)))) {
           errors.push(`question ${i}: contains forbidden option "${opt}"`);
         }
       }

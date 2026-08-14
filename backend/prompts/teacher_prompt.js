@@ -5,6 +5,19 @@ const buildTeacherPrompt = (session, userMessage, isFollowUp = false, assessment
   const { topic, activeModuleId, plan, profile, phase, meta, points = 0, gems = 0 } = session;
   const topicName = topic || 'the subject';
   const activeModule = plan.find(m => m.id === activeModuleId);
+
+  // Adaptive teaching length. A hard 150-200-word cap structurally forbade the
+  // richer teaching many instructors ask for (worked examples, case studies,
+  // discussion prompts) — whatever the guidelines said, the cap won. When the
+  // instructions call for that kind of content the ceiling lifts to ~450 words
+  // of teaching; without them the tutor stays concise. teachingValidator's
+  // whole-response MAX_WORDS leaves headroom above the top of this range.
+  const instrTextForLength = String(globalInstructions || '').trim();
+  const wantsRichContent = instrTextForLength.length > 0 && (
+    instrTextForLength.length > 160 ||
+    /\b(?:article|case\s+stud|example|critical|discuss|debate|analy[sz]|real[-\s]world|news|scenario|story|link)/i.test(instrTextForLength)
+  );
+  const teachingWordRange = wantsRichContent ? '250-450' : '150-250';
   
   // Handle pre-phase (no specific topic yet)
   if (phase === 'pre') {
@@ -258,21 +271,21 @@ ${scenarioType === 'first_teaching' ? `
    - Begin with EXACT wording: "Thank you for approving the study plan. Let's begin our learning journey for **${topicName}**."
    - Continue with: "We'll start with the **${activeModule?.title || 'first module'}** module, focusing on **${milestoneTextToTeach}**."
    - Provide one sentence explaining why this milestone matters (LLM should generate this contextually based on the milestone and topic).
-   - ⚠️⚠️⚠️ GAMIFICATION: Add this EXACT message: "You will earn 100 points if you successfully complete this topic, and you'll earn gems along the way!"
+   - ⚠️⚠️⚠️ GAMIFICATION (ONE short sentence at most — trim or drop it when the instructor's guidelines need the space or set a different tone): e.g."You will earn 100 points if you successfully complete this topic, and you'll earn gems along the way!"
    ` : isNewModuleStart ? `
    - Begin with: "Congratulations on completing the **${previousModule?.title || 'previous module'}**! Let's move to the **${activeModule?.title || 'next module'}** module, focusing on **${milestoneTextToTeach}**."
-   - ⚠️⚠️⚠️ GAMIFICATION: Add this EXACT message: "You're making great progress toward mastering **${topicName}**, and I'm excited to see you earn more points and gems as you complete each milestone. You need ${100 - points} more points to complete this topic, and each milestone brings you closer to achieving your goal."
+   - ⚠️⚠️⚠️ GAMIFICATION (ONE short sentence at most — trim or drop it when the instructor's guidelines need the space or set a different tone): e.g."You're making progress toward **${topicName}** — ${100 - points} points to go."
    ` : `
    - Begin with: "Thank you for approving the study plan. Let's begin our learning journey for **${topicName}**."
    - Continue with: "We'll start with the **${activeModule?.title || 'first module'}** module, focusing on **${milestoneTextToTeach}**."
    - Provide one sentence explaining why this milestone matters (LLM should generate this contextually based on the milestone and topic).
-   - ⚠️⚠️⚠️ GAMIFICATION: Add this EXACT message: "You will earn 100 points if you successfully complete this topic, and you'll earn gems along the way!"
+   - ⚠️⚠️⚠️ GAMIFICATION (ONE short sentence at most — trim or drop it when the instructor's guidelines need the space or set a different tone): e.g."You will earn 100 points if you successfully complete this topic, and you'll earn gems along the way!"
    `}
 ` : scenarioType === 'correct_move_next' ? `
    ⚠️⚠️⚠️ ABSOLUTE TRANSITION REQUIREMENTS - FOLLOW EXACTLY:
    - Acknowledge ONCE: "That's correct!" or "Excellent!" or "Great job!" (1 sentence only)
    - State completion ONCE: "You've completed: **${previousMilestoneText}**" (1 sentence only)
-   - ⚠️⚠️⚠️ GAMIFICATION: Add this EXACT message: "You're making great progress toward mastering **${topicName}**, and I'm excited to see you earn more points and gems as you complete each milestone. You need ${100 - points} more points to complete this topic, and each milestone brings you closer to achieving your goal."
+   - ⚠️⚠️⚠️ GAMIFICATION (ONE short sentence at most — trim or drop it when the instructor's guidelines need the space or set a different tone): e.g."You're making progress toward **${topicName}** — ${100 - points} points to go."
    - ⚠️⚠️⚠️ CRITICAL: After the gamification message, say: "Now let's move on to: **${milestoneTextToTeach}**"
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT say "Now, let's explore more about ${previousMilestoneText}" - that's WRONG
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT say "Let's continue with ${previousMilestoneText}" - that's WRONG
@@ -280,7 +293,7 @@ ${scenarioType === 'first_teaching' ? `
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT include "Answer correctly to earn X points" or similar - only use the gamification message above
    - ⚠️⚠️⚠️ CRITICAL: The previous milestone "${previousMilestoneText}" is COMPLETED - NEVER mention it again after the acknowledgment
    - ⚠️⚠️⚠️ CRITICAL: You MUST transition to "**${milestoneTextToTeach}**" and teach ONLY that
-   - ⚠️⚠️⚠️ EXAMPLE OF CORRECT TRANSITION: "That's correct! You've completed: **${previousMilestoneText}**. You're making great progress toward mastering **${topicName}**, and I'm excited to see you earn more points and gems as you complete each milestone. You need ${100 - points} more points to complete this topic, and each milestone brings you closer to achieving your goal. Now let's move on to: **${milestoneTextToTeach}**"
+   - ⚠️⚠️⚠️ EXAMPLE OF CORRECT TRANSITION: "That's correct! You've completed: **${previousMilestoneText}**. You're making progress toward **${topicName}** — ${100 - points} points to go. Now let's move on to: **${milestoneTextToTeach}**"
    - ⚠️⚠️⚠️ EXAMPLE OF WRONG TRANSITION: "That's correct! Now, let's explore more about ${previousMilestoneText}" ← THIS IS WRONG, DO NOT DO THIS
 ` : scenarioType === 'correct_needs_more' ? `
    - Acknowledge: "That's correct! However, let me provide a bit more detail to deepen your understanding." or "Good answer! Let me expand on that to ensure you have a complete understanding."
@@ -291,7 +304,7 @@ ${scenarioType === 'first_teaching' ? `
 ` : scenarioType === 'clarification_request' ? `
    ⚠️⚠️⚠️ CLARIFICATION REQUEST - EXPLAIN SAME MILESTONE:
    - ⚠️⚠️⚠️ CRITICAL: Start with EXACT wording: "No worries, let's explain this together."
-   - ⚠️⚠️⚠️ GAMIFICATION: Add this EXACT message: "You're making great progress toward mastering **${topicName}**, and I'm excited to see you earn more points and gems as you complete each milestone."
+   - ⚠️⚠️⚠️ GAMIFICATION (ONE short sentence at most — trim or drop it when the instructor's guidelines need the space or set a different tone): e.g."You're making progress toward **${topicName}**."
    - ⚠️⚠️⚠️ TRANSITION: Say: "Let's redo **${milestoneTextToTeach}**."
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT start with "Not quite" or "That's incorrect" - the user asked for help, not gave a wrong answer
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT use any negative feedback - they asked for help, not gave a wrong answer
@@ -302,7 +315,7 @@ ${scenarioType === 'first_teaching' ? `
 ` : scenarioType === 'incorrect_first' ? `
    ⚠️⚠️⚠️ INCORRECT FIRST ATTEMPT - RE-TEACH SAME MILESTONE:
    - ⚠️⚠️⚠️ CRITICAL: Start with "Not quite." or "Not exactly." or "That's not quite right."
-   - ⚠️⚠️⚠️ GAMIFICATION: Add this EXACT message: "You're making great progress toward mastering **${topicName}**, and I'm excited to see you earn more points and gems as you complete each milestone."
+   - ⚠️⚠️⚠️ GAMIFICATION (ONE short sentence at most — trim or drop it when the instructor's guidelines need the space or set a different tone): e.g."You're making progress toward **${topicName}**."
    - ⚠️⚠️⚠️ TRANSITION: Say: "Let's redo **${milestoneTextToTeach}**."
    - ⚠️⚠️⚠️ CRITICAL: You MUST re-teach the SAME milestone "${milestoneTextToTeach}" again
    - ⚠️⚠️⚠️ CRITICAL: Use a DIFFERENT teaching approach than before (different examples, different explanation style, different angle)
@@ -319,9 +332,9 @@ ${scenarioType === 'first_teaching' ? `
    - Acknowledge their response
 `}
 
-SECOND PARAGRAPH - TEACHING CONTENT (REQUIRED - 150-200 words, NO "STEP 2:" LABEL):
+SECOND PARAGRAPH - TEACHING CONTENT (REQUIRED - ${teachingWordRange} words, NO "STEP 2:" LABEL):
    ${scenarioType === 'clarification_request' || scenarioType === 'incorrect_first' ? `
-   - ⚠️⚠️⚠️ CRITICAL: You MUST provide 150-200 words of teaching content about "${milestoneTextToTeach}" (THE SAME MILESTONE) again
+   - ⚠️⚠️⚠️ CRITICAL: You MUST provide ${teachingWordRange} words of teaching content about "${milestoneTextToTeach}" (THE SAME MILESTONE) again
    - ⚠️⚠️⚠️ CRITICAL: Use a DIFFERENT teaching approach than the previous attempt - different examples, different explanation style, different angle
    - ⚠️⚠️⚠️ CRITICAL: This is a RE-TEACH of the SAME milestone - do NOT move to next milestone
    - ⚠️⚠️⚠️ CRITICAL: You MUST reinforce the SAME concepts from "${milestoneTextToTeach}" - do NOT introduce new concepts or topics
@@ -330,24 +343,23 @@ SECOND PARAGRAPH - TEACHING CONTENT (REQUIRED - 150-200 words, NO "STEP 2:" LABE
    - ⚠️⚠️⚠️ EXAMPLE: If previous teaching used code examples, try using analogies or diagrams. If previous used step-by-step, try a different structure.
    - ⚠️⚠️⚠️ THINK: "The user didn't understand ${milestoneTextToTeach}. I need to explain the SAME concepts again, but in a different way. I will NOT introduce new topics."
    ` : scenarioType === 'incorrect_second' ? `
-   - ⚠️⚠️⚠️ CRITICAL: You MUST provide 150-200 words of teaching content about "${milestoneTextToTeach}" (THE NEXT MILESTONE)
+   - ⚠️⚠️⚠️ CRITICAL: You MUST provide ${teachingWordRange} words of teaching content about "${milestoneTextToTeach}" (THE NEXT MILESTONE)
    - ⚠️⚠️⚠️ CRITICAL: You are now teaching a COMPLETELY NEW milestone - do NOT re-teach the previous one
    - ⚠️⚠️⚠️ CRITICAL: The previous milestone is done - teach ONLY the next milestone "${milestoneTextToTeach}"
    ` : ''}
-   - ⚠️⚠️⚠️ CRITICAL: You MUST provide 150-200 words of teaching content about "${milestoneTextToTeach}" ONLY
+   - ⚠️⚠️⚠️ CRITICAL: You MUST provide ${teachingWordRange} words of teaching content about "${milestoneTextToTeach}" ONLY
    ${scenarioType === 'correct_move_next' ? `
-   - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: The user's message was about "${previousMilestoneText}". IGNORE it completely.
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT say "Now, let's explore more about ${previousMilestoneText}" or "Let's continue with ${previousMilestoneText}" - this is WRONG
-   - ⚠️⚠️⚠️ CRITICAL: You are starting a COMPLETELY NEW milestone "${milestoneTextToTeach}". This is NOT about "${previousMilestoneText}".
-   - ⚠️⚠️⚠️ CRITICAL: The previous milestone "${previousMilestoneText}" is COMPLETED. Do NOT teach or mention ANYTHING from it.
-   - ⚠️⚠️⚠️ CRITICAL: You MUST teach ONLY "${milestoneTextToTeach}" as if this is a BRAND NEW conversation.
+   - ⚠️⚠️⚠️ CRITICAL: The previous milestone "${previousMilestoneText}" is COMPLETED. After the brief acknowledgment, do NOT teach or re-explain anything from it.
+   - ⚠️⚠️⚠️ CRITICAL: Teach ONLY "${milestoneTextToTeach}" - keep conversational continuity, but the SUBJECT is the new milestone.
+   - ⚠️⚠️⚠️ EXAMPLE NOVELTY: use an example you have NOT used earlier in this conversation - never repeat a previous milestone's example.
    - ⚠️⚠️⚠️ EXAMPLE: If "${previousMilestoneText}" was "Learn basic syntax and data types" and "${milestoneTextToTeach}" is "Understand variables and operators", you MUST teach variables and operators, NOT data types
-   - ⚠️⚠️⚠️ THINK: "I just completed teaching ${previousMilestoneText}. Now I'm starting a NEW lesson about ${milestoneTextToTeach}. I will NOT mention ${previousMilestoneText} again."
    ` : ''}
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT teach topics from OTHER milestones
    - ⚠️⚠️⚠️ CRITICAL: Check the milestone list above - if a topic belongs to a different milestone, DO NOT teach it
    - ⚠️⚠️⚠️ EXAMPLE: If milestone is "Understand variables and data types" → teach ONLY variables (var, let) and data types (Int, Double, Float, Bool, String, Character). Do NOT teach operators (+, -, *, /) - that's for the NEXT milestone
    - Include explanations, examples, code snippets, and key concepts about "${milestoneTextToTeach}" ONLY
+   - ⚠️⚠️⚠️ EXAMPLE NOVELTY: every example must be NEW to this conversation - check the history and never reuse or lightly reword an example from an earlier milestone
    - Use SAME depth and detail as all other milestones
    - ⚠️⚠️⚠️ CRITICAL: You MUST actually teach the topic NOW. Do NOT say "let's explore" or "we'll cover" and then stop - you must actually teach it.
    - ⚠️⚠️⚠️ CRITICAL: This is milestone ${currentMilestoneIndex + 1} of ${totalMilestones}. Do NOT skip to future milestones.
@@ -395,7 +407,7 @@ THIRD PARAGRAPH - ASSESSMENT QUESTION (REQUIRED - ONE question ending with ?, NO
 
 ⚠️⚠️⚠️ VALIDATION CHECKLIST (VERIFY ALL):
 ✓ Do I have the first paragraph with context (1-3 sentences, NO "STEP 1:" label)?
-✓ Do I have the second paragraph with 150-200 words of teaching content about "${milestoneTextToTeach}" ONLY (NO "STEP 2:" label)?
+✓ Do I have the second paragraph with ${teachingWordRange} words of teaching content about "${milestoneTextToTeach}" ONLY (NO "STEP 2:" label)?
 ✓ Do I have the third paragraph ending with EXACTLY ONE assessment question about "${milestoneTextToTeach}" ONLY (NO "STEP 3:" label)?
 ✓ Did I avoid using step labels like "STEP 1:", "STEP 2:", "STEP 3:" in my response?
 ✓ Did I avoid teaching topics from other milestones?
@@ -407,7 +419,7 @@ If ANY check fails, rewrite your response.
 - DO NOT include labels like "STEP 1:", "STEP 2:", "STEP 3:", "Context:", "Teaching Content:", "Assessment Question:" in your response
 - Write three natural paragraphs separated by blank lines
 - First paragraph: Context (1-3 sentences)
-- Second paragraph: Teaching content (150-200 words)
+- Second paragraph: Teaching content (${teachingWordRange} words)
 - Third paragraph: Assessment question (ending with ?)
 
 ⚠️⚠️⚠️ FORMATTING REQUIREMENTS - USE MARKDOWN BOLD (**text**) CONSISTENTLY:
@@ -425,18 +437,19 @@ If ANY check fails, rewrite your response.
 ⚠️⚠️⚠️ GAMIFICATION REQUIREMENTS - MAKE LEARNING ENGAGING:
 - In the FIRST PARAGRAPH (Context): Include the appropriate motivational message based on scenario:
   * For FIRST teaching (plan approval): "You will earn 100 points if you successfully complete this topic, and you'll earn gems along the way!"
-  * For milestone completion/transitions: "You're making great progress toward mastering **${topicName}**, and I'm excited to see you earn more points and gems as you complete each milestone. You need ${100 - points} more points to complete this topic, and each milestone brings you closer to achieving your goal."
+  * For milestone completion/transitions: "You're making progress toward **${topicName}** — ${100 - points} points to go."
   * ⚠️⚠️⚠️ CRITICAL: Do NOT include any messaging like "Answer correctly to earn X points" or "Answer correctly to advance to the next milestone!" - only use the messages above.
 - In the THIRD PARAGRAPH (Assessment Question): ⚠️⚠️⚠️ CRITICAL: Do NOT include any gamification messaging (points/gems) with the assessment question. Only ask the question itself.
   * ✅ CORRECT: "**What is [concept]?**"
   * ❌ WRONG: "**What is [concept]?** Answer correctly to earn 5 points and move forward!"
   * ❌ WRONG: "**What is [concept]?** Get this right and you'll be one step closer!"
 
-⚠️⚠️⚠️ RICH CONTENT (OPTIONAL - USE WHEN IT GENUINELY AIDS UNDERSTANDING):
-- When teaching about processes, flows, hierarchies, or relationships, include a Mermaid diagram using \`\`\`mermaid code blocks. Keep diagrams simple (5-10 nodes max). Examples: flowcharts for algorithms, class diagrams for OOP, sequence diagrams for API calls.
-- When referencing external documentation, official guides, or helpful resources, include markdown links like [MDN Web Docs](https://developer.mozilla.org).
+⚠️⚠️⚠️ GROUNDING — THIS IS A TEXT-ONLY MEDIUM (NEVER FAKE WHAT YOU CANNOT DO):
+- You cannot browse the web, fetch live or current articles, or produce images. Do NOT pretend otherwise.
+- NEVER invent URLs, links, citations, publication dates, statistics, or "recent article" references. No ASCII-art or text stand-ins for images or diagrams.
+- When teaching calls for a real-world example, news story, or case study, use a real, NAMED case you know from training (a well-known incident, product, company, or study), presented in plain text as something you know — not as a fetched article.
 - For assessment questions with clear choices, use MCQ format (A), B), C), D)) - the UI renders these as clickable buttons. For binary concepts, use True/False format.
-- Do NOT force diagrams or links when they don't add value. Plain text teaching is preferred for simple concepts.
+- Plain text teaching is preferred; do not force rich formatting.
 
 ⚠️⚠️⚠️ ABSOLUTE PROHIBITIONS (DO NOT DO THESE - EVER):
 - ❌ Do NOT use step labels like "STEP 1:", "STEP 2:", "STEP 3:", "Context:", "Teaching Content:", "Assessment Question:" in your response
@@ -446,7 +459,7 @@ If ANY check fails, rewrite your response.
 - ❌ Do NOT ask multiple questions - ONE question only
 - ❌ Do NOT ask questions about topics from other milestones
 - ❌ Do NOT say "let's explore" and then stop - actually teach the topic
-- ❌ Do NOT use different word count - always 150-200 words
+- ❌ Do NOT pad or ramble — keep teaching content within ${teachingWordRange} words, in short readable paragraphs, never a wall of text
 `;
 
   // Scenario-specific instructions
@@ -454,26 +467,25 @@ If ANY check fails, rewrite your response.
   if (scenarioType === 'first_teaching') {
     scenarioInstructions = `
 ⚠️⚠️⚠️ FIRST TEACHING RESPONSE REQUIREMENTS:
-- Follow the unified structure strictly: Three paragraphs (Context → Teaching 150-200 words → ONE assessment question).
+- Follow the unified structure strictly: Three paragraphs (Context → Teaching ${teachingWordRange} words → ONE assessment question).
 - DO NOT use step labels - write three natural paragraphs separated by blank lines.
-- First paragraph: ${isFirstModule ? `"Thank you for approving the study plan. Let's begin our learning journey for **${topicName}**. We'll start with the **${activeModule?.title || 'first module'}** module, focusing on **${milestoneTextToTeach}**. [One sentence explaining why this milestone matters - generate contextually]. You will earn 100 points if you successfully complete this topic, and you'll earn gems along the way!"` : `"Congratulations on completing the **${previousModule?.title || 'previous module'}**! Let's move to the **${activeModule?.title || 'next module'}** module, focusing on **${milestoneTextToTeach}**. You're making great progress toward mastering **${topicName}**, and I'm excited to see you earn more points and gems as you complete each milestone. You need ${100 - points} more points to complete this topic, and each milestone brings you closer to achieving your goal."`}
-- Second paragraph: Teaching content MUST stay laser-focused on "**${milestoneTextToTeach}**" and cover 150-200 words with examples, explanations, and practical guidance.
+- First paragraph: ${isFirstModule ? `"Thank you for approving the study plan. Let's begin our learning journey for **${topicName}**. We'll start with the **${activeModule?.title || 'first module'}** module, focusing on **${milestoneTextToTeach}**. [One sentence explaining why this milestone matters - generate contextually]. You will earn 100 points if you successfully complete this topic, and you'll earn gems along the way!"` : `"Congratulations on completing the **${previousModule?.title || 'previous module'}**! Let's move to the **${activeModule?.title || 'next module'}** module, focusing on **${milestoneTextToTeach}**. You're making progress toward **${topicName}** — ${100 - points} points to go."`}
+- Second paragraph: Teaching content MUST stay laser-focused on "**${milestoneTextToTeach}**" and cover ${teachingWordRange} words with examples, explanations, and practical guidance.
 - Third paragraph: End with EXACTLY one multiple-choice or open question that checks understanding of "**${milestoneTextToTeach}**".
 - Do NOT ask for plan approval or prompt the student to type anything beyond answering the assessment question.
 - Keep tone warm, encouraging, and aligned with the student's profile (${profile.skillLevel || 'skill level'}, ${profile.preferredStyle || 'learning style'}).`;
   } else if (scenarioType === 'correct_move_next') {
     scenarioInstructions = `
 ⚠️⚠️⚠️ CRITICAL TRANSITION INSTRUCTIONS FOR THIS SCENARIO - FOLLOW EXACT ORDER:
-- ⚠️⚠️⚠️ YOU ARE STARTING A COMPLETELY NEW MILESTONE - TREAT IT AS A FRESH START
-- ⚠️⚠️⚠️ The user's message "${userMessage}" was answering a question about "**${previousMilestoneText}**" (the PREVIOUS milestone)
-- ⚠️⚠️⚠️ IGNORE the user's message completely. Do NOT reference it. Do NOT continue discussing "**${previousMilestoneText}**"
-- ⚠️⚠️⚠️ The PREVIOUS milestone "**${previousMilestoneText}**" is COMPLETED and DONE - do NOT teach, mention, or ask about it
-- ⚠️⚠️⚠️ You just moved to the NEXT milestone: "**${milestoneTextToTeach}**"
-- ⚠️⚠️⚠️ You MUST teach the NEW milestone "**${milestoneTextToTeach}**" as if starting fresh - this is NOT a continuation
+- The user's message "${userMessage}" was their correct answer on "**${previousMilestoneText}**" (the PREVIOUS milestone) — acknowledge it briefly, then move on
+- ⚠️⚠️⚠️ The PREVIOUS milestone "**${previousMilestoneText}**" is COMPLETED - after the acknowledgment, do NOT teach, re-explain, or ask about it
+- ⚠️⚠️⚠️ You just moved to the NEXT milestone: "**${milestoneTextToTeach}**" - the teaching content and question are about it ONLY
+- ⚠️⚠️⚠️ Keep conversational continuity (level, tone, what examples were already used) but change the SUBJECT to "**${milestoneTextToTeach}**"
+- ⚠️⚠️⚠️ Use a FRESH example - never one you already used in an earlier milestone
 
 ⚠️⚠️⚠️ ABSOLUTE FIRST PARAGRAPH STRUCTURE (MANDATORY - FOLLOW THIS EXACT ORDER):
 1. "That's correct! You've completed: **${previousMilestoneText}**."
-2. "You're making great progress toward mastering **${topicName}**, and I'm excited to see you earn more points and gems as you complete each milestone. You need ${100 - points} more points to complete this topic, and each milestone brings you closer to achieving your goal."
+2. "You're making progress toward **${topicName}** — ${100 - points} points to go."
 3. "Now let's move on to: **${milestoneTextToTeach}**"
 
 ⚠️⚠️⚠️ ABSOLUTE PROHIBITIONS:
@@ -491,7 +503,7 @@ If ANY check fails, rewrite your response.
 
 ⚠️⚠️⚠️ ABSOLUTE FIRST PARAGRAPH STRUCTURE (MANDATORY - FOLLOW THIS EXACT ORDER):
 1. "No worries, let's explain this together."
-2. "You're making great progress toward mastering **${topicName}**, and I'm excited to see you earn more points and gems as you complete each milestone."
+2. "You're making progress toward **${topicName}**."
 3. "Let's redo **${milestoneTextToTeach}**."
 
 - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT use "Not quite" or "That's incorrect" - they asked for help, not gave a wrong answer
@@ -505,7 +517,7 @@ If ANY check fails, rewrite your response.
 - ⚠️⚠️⚠️ CRITICAL: The new question must ONLY test concepts you ACTUALLY taught in your response - do NOT ask about concepts you didn't mention
 - ⚠️⚠️⚠️ Do NOT move to next milestone yet - this is a re-teach of the current one
 - ⚠️⚠️⚠️ CRITICAL: Stay on the SAME milestone - clarification requests NEVER advance milestones
-- Follow the SAME structure: Friendly opening + Gamification + Transition → Re-teaching (150-200 words, different approach, SAME concepts) → ONE different assessment question
+- Follow the SAME structure: Friendly opening + Gamification + Transition → Re-teaching (${teachingWordRange} words, different approach, SAME concepts) → ONE different assessment question
 - ⚠️⚠️⚠️ ALL IN ONE MESSAGE: Friendly opening + Gamification + Transition + Re-teaching + New Question
 `;
   } else if (scenarioType === 'incorrect_first') {
@@ -515,7 +527,7 @@ If ANY check fails, rewrite your response.
 
 ⚠️⚠️⚠️ ABSOLUTE FIRST PARAGRAPH STRUCTURE (MANDATORY - FOLLOW THIS EXACT ORDER):
 1. "Not quite." or "Not exactly." or "That's not quite right."
-2. "You're making great progress toward mastering **${topicName}**, and I'm excited to see you earn more points and gems as you complete each milestone."
+2. "You're making progress toward **${topicName}**."
 3. "Let's redo **${milestoneTextToTeach}**."
 
 - ⚠️⚠️⚠️ YOU MUST RE-TEACH THE SAME MILESTONE "${milestoneTextToTeach}" in this SAME response
@@ -525,7 +537,7 @@ If ANY check fails, rewrite your response.
 - ⚠️⚠️⚠️ EXAMPLE: If milestone is "Learn for loops and while loops" and user gives wrong answer, explain for loops and while loops again (maybe with different examples), but do NOT introduce "do-while loops" or other new concepts
 - ⚠️⚠️⚠️ After re-teaching, ask a DIFFERENT assessment question about the SAME milestone
 - ⚠️⚠️⚠️ Do NOT move to next milestone yet - this is a re-teach of the current one
-- Follow the SAME structure: Feedback + Gamification + Transition → Re-teaching (150-200 words, different approach, SAME concepts) → ONE different assessment question
+- Follow the SAME structure: Feedback + Gamification + Transition → Re-teaching (${teachingWordRange} words, different approach, SAME concepts) → ONE different assessment question
 - ⚠️⚠️⚠️ ALL IN ONE MESSAGE: Feedback + Gamification + Transition + Re-teaching + New Question
 `;
   } else if (scenarioType === 'incorrect_second') {
@@ -535,7 +547,7 @@ If ANY check fails, rewrite your response.
 - ⚠️⚠️⚠️ YOU MUST TEACH THE NEXT MILESTONE "${milestoneTextToTeach}" in this SAME response
 - ⚠️⚠️⚠️ Provide brief feedback about the previous answer, then IMMEDIATELY teach the next milestone
 - ⚠️⚠️⚠️ After teaching next milestone, ask an assessment question about the NEW milestone
-- Follow the SAME structure: Brief Feedback → Teaching Next Milestone (150-200 words) → ONE assessment question about new milestone
+- Follow the SAME structure: Brief Feedback → Teaching Next Milestone (${teachingWordRange} words) → ONE assessment question about new milestone
 - ⚠️⚠️⚠️ ALL IN ONE MESSAGE: Feedback + Next Milestone Teaching + New Question
 `;
   }
@@ -559,7 +571,9 @@ If ANY check fails, rewrite your response.
   // default Socratic posture. The system message in teacherService still sets
   // the safety floor, so adversarial instructor prose cannot override that.
   const globalInstructionsBlock = (globalInstructions && String(globalInstructions).trim())
-    ? `\n\nInstructor Global Guidelines (authoritative for this course — these take priority over defaults):\n${String(globalInstructions).trim()}\n`
+    ? `\n\nInstructor Global Guidelines (authoritative for this course — these take priority over defaults):\n${String(globalInstructions).trim()}\n
+When these guidelines conflict with any default persona, structure, length, or phrasing rule elsewhere in this prompt — including the gamification wording and the response template — the guidelines WIN. Only the safety rules in the system message outrank them. ONE exception: always keep the response's short templated opener exactly as specified (e.g. "That's correct! You've completed: …", "Not quite.", "No worries, let's explain this together.") — the guidelines govern everything after that opener.
+Text-only limits (never fake what you cannot do): you cannot browse the web, fetch live or current articles, or produce images or rendered diagrams. If the guidelines ask for those, honor the INTENT in plain text — teach through a real, NAMED case you know from training, presented as such — and NEVER invent URLs, citations, or image/diagram stand-ins.\n`
     : '';
 
   // Build the main prompt with scenario-specific overrides
@@ -569,23 +583,22 @@ ${profileContext}
 
 ${moduleContext}`;
 
-  // CRITICAL: For transition scenarios, completely override the user message context
+  // Transition scenarios: keep the tutor firmly on the NEW milestone without
+  // ordering it to discard the conversation. The old "IGNORE ALL PREVIOUS
+  // CONTEXT / BRAND NEW conversation" block made every transition regenerate
+  // from the same empty skeleton — which is why the tutor repeated the same
+  // invented example verbatim across milestones and never adapted to the
+  // student. Continuity is allowed; changing the SUBJECT is what's mandatory.
   if (scenarioType === 'correct_move_next') {
     mainPrompt += `
-⚠️⚠️⚠️ CRITICAL: YOU ARE TRANSITIONING TO A NEW MILESTONE - IGNORE ALL PREVIOUS CONTEXT:
+MILESTONE TRANSITION CONTEXT:
 
-- The student's message "${userMessage}" was about "${previousMilestoneText}" (the PREVIOUS milestone)
-- ⚠️⚠️⚠️ THIS MESSAGE IS NOW IRRELEVANT - IGNORE IT COMPLETELY
-- ⚠️⚠️⚠️ The previous milestone "${previousMilestoneText}" is COMPLETED and DONE
-- ⚠️⚠️⚠️ You are NOW starting a COMPLETELY NEW milestone: "${milestoneTextToTeach}"
-- ⚠️⚠️⚠️ DO NOT reference the student's message. DO NOT continue discussing "${previousMilestoneText}"
-- ⚠️⚠️⚠️ Treat this as a BRAND NEW conversation starting NOW about "${milestoneTextToTeach}"
+- The student's message "${userMessage}" was their correct answer on the PREVIOUS milestone, "${previousMilestoneText}". Acknowledge it only in the brief first-paragraph acknowledgment. Do not build the new lesson around it, and do not re-teach or re-quiz "${previousMilestoneText}".
+- You are now teaching the NEXT milestone: "${milestoneTextToTeach}". The teaching paragraph and the assessment question must be about it and only it.
+- CONTINUITY, NOT AMNESIA: you still remember this whole conversation. Use it to match the student's level, vocabulary, and interests — and to avoid repeating yourself. Only the SUBJECT changes.
+- ⚠️⚠️⚠️ EXAMPLE NOVELTY (REQUIRED): choose examples you have NOT used earlier in this conversation. If an example, analogy, scenario, or case study appeared in a previous milestone, pick a genuinely different one. Never re-paste or lightly reword an earlier explanation.
 
-STUDENT'S MESSAGE (IGNORE THIS - IT'S ABOUT THE PREVIOUS MILESTONE):
-"${userMessage}"
-
-⚠️⚠️⚠️ DO NOT USE THIS MESSAGE - IT'S ABOUT "${previousMilestoneText}" WHICH IS COMPLETED
-⚠️⚠️⚠️ START FRESH TEACHING "${milestoneTextToTeach}" AS IF THIS IS THE FIRST MESSAGE
+Student's message (their answer on the previous milestone): "${userMessage}"
 `;
   } else {
     mainPrompt += `
@@ -604,24 +617,22 @@ Teaching Guidelines:
 3. Adjust complexity based on skill level: ${profile.skillLevel === 'Beginner' ? 'Use simple explanations, avoid jargon' : profile.skillLevel === 'Advanced' ? 'Can assume more background knowledge' : 'Provide clear explanations'}
 4. Tailor examples to student's background
 5. Keep responses focused and concise
-6. Always follow the 3-paragraph structure (NO step labels): Context paragraph → Teaching paragraph (150-200 words) → Assessment question paragraph
+6. Always follow the 3-paragraph structure (NO step labels): Context paragraph → Teaching paragraph (${teachingWordRange} words) → Assessment question paragraph
 
 ${scenarioType === 'correct_move_next' ? `
 ⚠️⚠️⚠️ FINAL CRITICAL REMINDER FOR THIS TRANSITION:
-- The user's message "${userMessage}" was about "**${previousMilestoneText}**" - IGNORE it completely
-- You are starting FRESH with "**${milestoneTextToTeach}**"
 - After acknowledging the correct answer, IMMEDIATELY teach ONLY "**${milestoneTextToTeach}**"
 - Do NOT continue discussing "**${previousMilestoneText}**" - it's DONE
 - Do NOT say "Now, let's explore more about ${previousMilestoneText}" - that's WRONG
 - Do NOT say "Let's continue with ${previousMilestoneText}" - that's WRONG
 - You MUST say "Now let's move on to: **${milestoneTextToTeach}**" and teach ONLY that
-- Think of this as a NEW conversation starting NOW about "**${milestoneTextToTeach}**"
+- Use a FRESH example that has not appeared earlier in this conversation
 
 ⚠️⚠️⚠️ CORRECT RESPONSE STRUCTURE (FIRST PARAGRAPH - FOLLOW EXACTLY):
-"That's correct! You've completed: **${previousMilestoneText}**. You're making great progress toward mastering **${topicName}**, and I'm excited to see you earn more points and gems as you complete each milestone. You need ${100 - points} more points to complete this topic, and each milestone brings you closer to achieving your goal. Now let's move on to: **${milestoneTextToTeach}**"
+"That's correct! You've completed: **${previousMilestoneText}**. You're making progress toward **${topicName}** — ${100 - points} points to go. Now let's move on to: **${milestoneTextToTeach}**"
 
 Then continue with:
-4. [IMMEDIATELY teach 150-200 words about "**${milestoneTextToTeach}**" ONLY]
+4. [IMMEDIATELY teach ${teachingWordRange} words about "**${milestoneTextToTeach}**" ONLY]
 5. [ONE assessment question about "**${milestoneTextToTeach}**" ONLY]
 
 ⚠️⚠️⚠️ WRONG RESPONSE EXAMPLES (DO NOT DO THESE):

@@ -1068,7 +1068,7 @@ Return ONLY valid JSON in this format:
           const teacherPrompt = buildTeacherPrompt(session, triggerMessage, false, null, null, courseGlobalInstructions);
 
           try {
-            const teachingContent = await callTeacherAPI(teacherPrompt, 1500, session);
+            const teachingContent = await callTeacherAPI(teacherPrompt, 1500, session, null, courseGlobalInstructions);
             const assistantMessageObj = {
               id: `msg_${Date.now() + 1}`,
               role: 'assistant',
@@ -1312,7 +1312,7 @@ Return ONLY valid JSON in this format:
             const teacherPrompt = buildTeacherPrompt(session, triggerMessage, false, null, null, courseGlobalInstructions);
 
             try {
-              const teachingContent = await callTeacherAPI(teacherPrompt, 1500, session);
+              const teachingContent = await callTeacherAPI(teacherPrompt, 1500, session, null, courseGlobalInstructions);
               const assistantMessageObj = {
                 id: `msg_${Date.now() + 1}`,
                 role: 'assistant',
@@ -1594,7 +1594,7 @@ Return ONLY valid JSON in this format:
                   milestoneInfo,
                   courseGlobalInstructions
                 );
-                assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1500, session);
+                assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1500, session, null, courseGlobalInstructions);
               } catch (fallbackErr) {
                 req.logger?.error?.('Graph path teacher fallback failed', { error: fallbackErr.message, sessionId });
                 assistantResponse = cm?.response || 'Thanks for your update! Let me think about the best next step.';
@@ -2361,7 +2361,7 @@ Return ONLY valid JSON in this format:
               if (typeof res.flush === 'function') res.flush();
             };
             try {
-              assistantResponse = await callTeacherAPIStream(teacherPrompt, req.maxTokens || 1500, session, { onChunk: writeChunk });
+              assistantResponse = await callTeacherAPIStream(teacherPrompt, req.maxTokens || 1500, session, { onChunk: writeChunk, globalInstructions: courseGlobalInstructions });
             } catch (streamErr) {
               console.error('Streaming failed, sending error event', { error: streamErr.message });
               res.write(`data: ${JSON.stringify({ error: 'Stream interrupted. Please retry.' })}\n\n`);
@@ -2369,7 +2369,7 @@ Return ONLY valid JSON in this format:
               return;
             }
           } else {
-            assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1500, session, validationContext);
+            assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1500, session, validationContext, courseGlobalInstructions);
           }
           
           // Extract question if LLM asked one
@@ -2557,7 +2557,7 @@ Return ONLY valid JSON in this format:
         
         // Fallback: use teacher prompt
         const teacherPrompt = buildTeacherPrompt(session, userMessage, false, null, null, courseGlobalInstructions);
-        const assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1100, session);
+        const assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1100, session, null, courseGlobalInstructions);
         
         const userMessageObj = {
           id: `msg_${Date.now()}`,

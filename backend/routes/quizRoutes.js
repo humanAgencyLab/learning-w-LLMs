@@ -5,6 +5,7 @@ const { z } = require('zod');
 const { v4: uuidv4 } = require('uuid');
 const Session = require('../models/Session');
 const CourseTopic = require('../models/CourseTopic');
+const Course = require('../models/Course');
 const { 
   quizStartRequestSchema, 
   quizSubmitRequestSchema,
@@ -63,8 +64,30 @@ function buildQuizPatternAppend(qp) {
   return `\n\n### Instructor quiz pattern\n${parts.join('\n')}`;
 }
 
+/**
+ * Course-scoped sessions: the instructor's AI teaching instructions, for the
+ * quiz generators. Neither generator saw these before the 2026-08 pre-window
+ * fix — quizzes were pure recall whatever the instructor asked for.
+ */
+async function loadQuizGlobalInstructions(session, log) {
+  if (!session || !session.courseId) return '';
+  try {
+    const course = await Course.findById(session.courseId).select('globalInstructions').lean();
+    if (course && typeof course.globalInstructions === 'string') return course.globalInstructions;
+  } catch (err) {
+    (log || console).warn?.('Failed to load course.globalInstructions for quiz', { err: err.message });
+  }
+  return '';
+}
+
+function buildQuizInstructionsBlock(globalInstructions) {
+  const text = String(globalInstructions || '').trim();
+  if (!text) return '';
+  return `\n\n### Instructor course guidelines (authoritative for question style, cognitive level, and content emphasis — all structural rules above still apply)\n${text}`;
+}
+
 // Quiz generation prompt builder
-const buildQuizPrompt = (moduleTitle, difficulty = 'core', questionCount = 5, milestones = [], teachingMessages = null, quizPattern = null) => {
+const buildQuizPrompt = (moduleTitle, difficulty = 'core', questionCount = 5, milestones = [], teachingMessages = null, quizPattern = null, globalInstructions = '') => {
   const milestonesText = milestones.length > 0 
     ? `\n\n⚠️⚠️⚠️ MODULE MILESTONES - THESE ARE THE ONLY TOPICS YOU CAN ASK ABOUT:\n${milestones.map((m, i) => `${i + 1}. ${m.text || m}`).join('\n')}\n\n⚠️⚠️⚠️ ABSOLUTE REQUIREMENT: Every single question MUST test understanding of concepts EXPLICITLY covered in the milestones listed above.`
     : '';
@@ -93,7 +116,7 @@ CRITICAL REQUIREMENTS:
 - Difficulty-appropriate questions (basic for intro, more challenging for core/apply)
 - No trick questions; wording must be unambiguous
 - Focus on practical understanding, not memorization
-- ⚠️ FORBIDDEN: NEVER use "All of the above", "None of the above", "Both A and B", or any similar compound options
+- ⚠️ FORBIDDEN: NEVER use "All of the above", "All of these", "None of the above", "None of these", "Both A and B", or any similar compound/aggregate options
 - ⚠️ Each option must be a standalone, specific answer choice
 - ⚠️ If you think multiple options could be correct, choose the MOST SPECIFIC or BEST answer and make the others clearly incorrect
 - ⚠️⚠️⚠️ CRITICAL: For each question, you MUST provide an "explanation" field with a brief explanation (2-3 sentences) explaining why the correct answer is correct. This field is REQUIRED for every question.
@@ -128,7 +151,7 @@ Generate exactly ${questionCount} multiple-choice questions. Each option must be
 
 ⚠️⚠️⚠️ CORRECTION RULE: If ANY question fails the checklist above, you MUST DELETE that question and create a new one that directly tests a milestone concept. Do NOT include questions that pass validation.
 
-⚠️⚠️⚠️ ABSOLUTE REQUIREMENT: Every question MUST include an "explanation" field that explains why the correct answer is correct. Do NOT omit this field for any question.${buildQuizPatternAppend(quizPattern)}`;
+⚠️⚠️⚠️ ABSOLUTE REQUIREMENT: Every question MUST include an "explanation" field that explains why the correct answer is correct. Do NOT omit this field for any question.${buildQuizPatternAppend(quizPattern)}${buildQuizInstructionsBlock(globalInstructions)}`;
 };
 
 // Generate revision quiz for a topic (not tied to a module)
@@ -143,7 +166,7 @@ CRITICAL REQUIREMENTS:
 - Concise, clear question stems
 - Focus on practical understanding and key concepts
 - No trick questions; wording must be unambiguous
-- ⚠️ FORBIDDEN: NEVER use "All of the above", "None of the above", "Both A and B", or any similar compound options
+- ⚠️ FORBIDDEN: NEVER use "All of the above", "All of these", "None of the above", "None of these", "Both A and B", or any similar compound/aggregate options
 - ⚠️ Each option must be a standalone, specific answer choice
 - ⚠️⚠️⚠️ CRITICAL: For each question, you MUST provide an "explanation" field with a brief explanation (2-3 sentences) explaining why the correct answer is correct. This field is REQUIRED for every question.
 
@@ -183,7 +206,7 @@ Generate exactly ${questionCount} multiple-choice questions for "${topic}". Each
     
     // Helper to check for forbidden options
     const hasForbiddenOptions = (questions) => {
-      const forbiddenPatterns = ['all of the above', 'none of the above', 'both a and b', 'both a and c', 'both b and c'];
+      const forbiddenPatterns = ['all of the above', 'none of the above', 'all of these', 'none of these', 'each of the above', 'both a and b', 'both a and c', 'both b and c'];
       return questions.some(q => 
         q.options.some(opt => 
           forbiddenPatterns.some(pattern => opt.toLowerCase().includes(pattern))
@@ -224,7 +247,7 @@ Generate ${questionCount} revision questions for "${topic}". Each option must be
           messages: [
             {
               role: 'system',
-              content: 'Return only valid JSON. No prose, no explanations, no markdown. NEVER use "All of the above" or "None of the above" options.'
+              content: 'Return only valid JSON. No prose, no explanations, no markdown. NEVER use "All of the above", "All of these", "None of the above", or "None of these" options. Exactly ONE option may be correct; the other three must be clearly wrong.'
             },
             {
               role: 'user',
@@ -259,10 +282,10 @@ Generate ${questionCount} revision questions for "${topic}". Each option must be
 };
 
 // Generate quiz using LLM
-const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones = [], teachingMessages = null, quizPattern = null) => {
+const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones = [], teachingMessages = null, quizPattern = null, globalInstructions = '', extraHint = '') => {
   try {
     const groqClient = getGroqClient();
-    const prompt = buildQuizPrompt(moduleTitle, difficulty, questionCount, milestones, teachingMessages, quizPattern);
+    const prompt = buildQuizPrompt(moduleTitle, difficulty, questionCount, milestones, teachingMessages, quizPattern, globalInstructions) + (extraHint || '');
     
     const response = await groqClient.chat.completions.create({
       model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
@@ -298,7 +321,7 @@ const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones =
     
     // Helper to check for forbidden options
     const hasForbiddenOptions = (questions) => {
-      const forbiddenPatterns = ['all of the above', 'none of the above', 'both a and b', 'both a and c', 'both b and c'];
+      const forbiddenPatterns = ['all of the above', 'none of the above', 'all of these', 'none of these', 'each of the above', 'both a and b', 'both a and c', 'both b and c'];
       return questions.some(q => 
         q.options.some(opt => 
           forbiddenPatterns.some(pattern => opt.toLowerCase().includes(pattern))
@@ -353,7 +376,7 @@ const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones =
       let retryContent;
       // Retry with stricter instructions
       try {
-        const retryPrompt = `${buildQuizPrompt(moduleTitle, difficulty, questionCount, milestones, null)}
+        const retryPrompt = `${buildQuizPrompt(moduleTitle, difficulty, questionCount, milestones, null, quizPattern, globalInstructions)}${extraHint || ''}
 
 ⚠️⚠️⚠️ RETRY: Your previous attempt failed. Return ONLY valid JSON. Focus EXCLUSIVELY on milestone topics.`;
 
@@ -362,7 +385,7 @@ const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones =
           messages: [
             {
               role: 'system',
-              content: 'Return only valid JSON. No prose, no explanations, no markdown. NEVER use "All of the above" or "None of the above" options.'
+              content: 'Return only valid JSON. No prose, no explanations, no markdown. NEVER use "All of the above", "All of these", "None of the above", or "None of these" options. Exactly ONE option may be correct; the other three must be clearly wrong.'
             },
             {
               role: 'user',
@@ -535,10 +558,14 @@ router.post('/v1/quiz/start', requireAuth, addRequestId, async (req, res) => {
       });
     }
     
+    // Instructor guidelines for BOTH generator paths (graph + legacy). Loaded
+    // once here; '' for non-course sessions.
+    const quizGlobalInstructions = await loadQuizGlobalInstructions(session, req.logger);
+
     // ── LangGraph orchestrated quiz generation ──
     if (useMultiAgent()) {
       try {
-        const graphResult = await runStudyGraph({ session, userMessage: 'start quiz', requestType: 'quiz_start' });
+        const graphResult = await runStudyGraph({ session, userMessage: 'start quiz', requestType: 'quiz_start', globalInstructions: quizGlobalInstructions });
         const quizResult = graphResult.success ? graphResult.state?.quizResult : null;
         if (quizResult?.valid && quizResult.payload) {
           const previousAttempts = session.quizAttempts.filter(a => a.moduleId === moduleId);
@@ -604,7 +631,36 @@ router.post('/v1/quiz/start', requireAuth, addRequestId, async (req, res) => {
       .join('\n\n');
     
     // Only include teaching context if available (helps LLM understand what was actually taught)
-    const quizData = await generateQuiz(module.title, difficulty, questionCount, milestones, moduleTeachingMessages || null, quizPattern);
+    let quizData = await generateQuiz(module.title, difficulty, questionCount, milestones, moduleTeachingMessages || null, quizPattern, quizGlobalInstructions);
+
+    // Exactly-one-correct key audit (legacy path — the graph path audits
+    // inside runQuizAgent's validation loop). One regenerate with the audit's
+    // per-question feedback; if the second draw still fails, deliver it with a
+    // loud log rather than blocking the student — the audit is a quality gate,
+    // not an availability dependency, and grading itself is unchanged.
+    {
+      const { checkQuizKeys } = require('../agents/validators/quizKeyCheck');
+      const audit = await checkQuizKeys(quizData.questions);
+      if (audit.checked && !audit.valid) {
+        req.logger.warn('Quiz key audit failed; regenerating once with feedback', { sessionId, moduleId, errors: audit.errors });
+        // The regenerate is itself fail-open: we are already holding a
+        // structurally valid, deliverable quiz, so a Groq error here must
+        // never turn into a 5xx for the student — deliver what we have.
+        try {
+          const hint = `\n\n⚠️⚠️⚠️ RETRY FEEDBACK — your previous questions failed an exactly-one-correct audit:\n${audit.errors.join('\n')}\nRewrite so each question has exactly ONE defensibly correct option.`;
+          const regenerated = await generateQuiz(module.title, difficulty, questionCount, milestones, moduleTeachingMessages || null, quizPattern, quizGlobalInstructions, hint);
+          const reaudit = await checkQuizKeys(regenerated.questions);
+          if (reaudit.checked && !reaudit.valid) {
+            req.logger.warn('Quiz key audit still failing after regenerate; delivering best effort', { sessionId, moduleId, errors: reaudit.errors });
+          }
+          if (!reaudit.checked || reaudit.valid || audit.errors.length > reaudit.errors.length) {
+            quizData = regenerated;
+          }
+        } catch (regenErr) {
+          req.logger.warn('Quiz key-audit regenerate failed; delivering the original quiz', { sessionId, moduleId, error: regenErr.message });
+        }
+      }
+    }
     
     // Log if explanations are present
     const questionsWithExplanations = quizData.questions.filter(q => q.explanation && q.explanation.trim()).length;

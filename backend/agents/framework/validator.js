@@ -15,7 +15,10 @@ async function runWithValidation(generate, validate, opts = {}) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const output = await generate(lastErrors);
-      const result = validate(output);
+      // Await so validators may be async (e.g. the quiz key check runs an LLM
+      // pass). Synchronous validators are unaffected — await on a plain value
+      // is a no-op.
+      const result = await validate(output);
       if (result.valid) {
         return { output, valid: true, errors: [] };
       }
