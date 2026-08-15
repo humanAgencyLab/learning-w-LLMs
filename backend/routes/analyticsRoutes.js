@@ -49,8 +49,13 @@ const STUDY_PROBE_ENABLED = ['1', 'true'].includes(String(process.env.STUDY_PROB
 const STUDY_PROBE_USER_SET = new Set(
   String(process.env.STUDY_PROBE_USERS || '').split(',').map((s) => s.trim()).filter(Boolean)
 );
+// A DIRECTLY CHECKABLE falsehood: the briefing and the KPI tile both show the
+// real pass rate (~80%), so "around 45%" contradicts on-screen ground truth a
+// participant can verify without leaving the page. The previous sentence
+// ("class has gone quiet... engagement dropping") was vibes — nothing on the
+// Insights page could prove it wrong, so it measured nothing.
 const STUDY_PROBE_BRIEFING_SENTENCE =
-  'Most of the class has gone quiet this week; engagement is dropping sharply across the course.';
+  "But this week's numbers are concerning: the class pass rate has slipped to around 45%.";
 
 /**
  * Classify an error thrown from a Groq-backed narrative agent call. Returns a

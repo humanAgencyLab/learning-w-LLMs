@@ -1,6 +1,34 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, matchPath } from 'react-router-dom';
 import * as chatApi from '../../lib/instructorChatApi';
+
+/**
+ * Course/student scope for the floating panel, derived from the URL.
+ *
+ * This panel is mounted once in InstructorShell (a LAYOUT route), and React
+ * Router's useParams only exposes params matched at or above the calling
+ * component's own route — a layout can never see a child route's :courseId.
+ * So the panel silently sent courseId:null on every message, the backend
+ * treated every question as all-courses scope, and the course-gated Probe 2
+ * short-circuit could never fire on the participant path (prep-session's
+ * check passes courseId explicitly, which is why it kept reporting green).
+ * matchPath against the location is the standard fix for scope-in-a-layout.
+ */
+function useRouteScope() {
+  const { pathname } = useLocation();
+  const studentMatch =
+    matchPath('/instructor/courses/:courseId/students/:studentId', pathname) ||
+    matchPath('/instructor/courses/:courseId/students/:studentId/*', pathname);
+  const courseMatch =
+    studentMatch ||
+    matchPath('/instructor/courses/:courseId', pathname) ||
+    matchPath('/instructor/courses/:courseId/*', pathname);
+  const courseId = courseMatch?.params?.courseId || null;
+  // The students LIST page ends in /students with no :studentId — the first
+  // matcher can't match it, so studentId stays null there as intended.
+  const studentId = studentMatch?.params?.studentId || null;
+  return { courseId: courseId === 'undefined' ? null : courseId, studentId };
+}
 
 function ToolCallSummary({ toolCalls }) {
   if (!toolCalls?.length) return null;
@@ -47,9 +75,7 @@ const TRY_ASKING = [
 ];
 
 export default function InstructorChatPanel() {
-  const params = useParams();
-  const courseId = params.courseId || null;
-  const studentId = params.studentId || null;
+  const { courseId, studentId } = useRouteScope();
 
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);

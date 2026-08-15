@@ -26,13 +26,29 @@ import { FLAG_CHIPS } from '../../components/instructor/riskLevel';
  */
 
 // Sub-card inside Course health — matches the mockup's bordered inner panels.
-function HealthCard({ title, subtitle, innerRef, children }) {
+// `collapsible` renders the title as a toggle and starts CLOSED: the Course
+// structure tree is a wall of rows, and auto-expanding it whenever Course
+// health opens buried the charts around it.
+function HealthCard({ title, subtitle, innerRef, collapsible = false, children }) {
+  const [open, setOpen] = useState(!collapsible);
   return (
     <div ref={innerRef} className="border border-hairline-soft rounded-xl p-4 scroll-mt-6">
-      <p className="text-[13px] font-bold text-ink-900">{title}</p>
+      {collapsible ? (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="w-full flex items-center justify-between text-left"
+          aria-expanded={open}
+        >
+          <span className="text-[13px] font-bold text-ink-900">{title}</span>
+          <span className={`text-ink-300 text-xs transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
+        </button>
+      ) : (
+        <p className="text-[13px] font-bold text-ink-900">{title}</p>
+      )}
       {subtitle && <p className="text-[11.5px] text-ink-300 mt-0.5 mb-3">{subtitle}</p>}
-      {!subtitle && <div className="mb-3" />}
-      {children}
+      {!subtitle && open && <div className="mb-3" />}
+      {open && children}
     </div>
   );
 }
@@ -385,7 +401,7 @@ export default function InstructorInsightsPage() {
                 </HealthCard>
               </div>
 
-              <HealthCard title="Course structure">
+              <HealthCard title="Course structure" collapsible>
                 <CourseTreeView tree={tree} moduleDifficulty={performance?.moduleDifficulty || []} />
               </HealthCard>
 

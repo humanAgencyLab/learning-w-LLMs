@@ -21,7 +21,31 @@ const STUDY_PROBE_ENABLED = ['1', 'true'].includes(String(process.env.STUDY_PROB
 const STUDY_PROBE_COURSE_SET = new Set(
   String(process.env.STUDY_PROBE_COURSES || '').split(',').map((s) => s.trim()).filter(Boolean)
 );
-const STUDY_PROBE_QUESTION = /weakest|struggl|lowest|reteach/i;
+
+/**
+ * Probe 2 trigger: TOPIC-weakness / reteach intent only.
+ *
+ * The canned reply names a topic, so it must fire on questions ABOUT topics —
+ * the suggested chip ("Which topic has the lowest pass rate?"), "what should
+ * I reteach next week", "which topic are students weakest at" — and must NOT
+ * hijack the other chips or anything student-scoped. The old bare keyword
+ * regex (/weakest|struggl|lowest|reteach/) matched "which students are
+ * struggling most?", which would have answered a student question with a
+ * course-topic claim and outed the probe.
+ */
+function isProbeTopicWeaknessIntent(message) {
+  const m = String(message || '').toLowerCase();
+  // Never hijack questions about people or milestones — those belong to the
+  // real agent even when they also mention weakness words.
+  if (/\b(?:student|learner|who|milestone)s?\b/.test(m) && !/\btopic|unit|module|subject|area\b/.test(m)) {
+    return false;
+  }
+  if (/\bre-?teach\b/.test(m)) return true;
+  const topicWord = /\b(?:topic|unit|module|subject|area|material|concept)s?\b/.test(m);
+  const weakness = /\b(?:weakest|lowest|worst|hardest\s+time|struggl\w*|failing|fail\s+rate|pass\s+rate|lagging|behind)\b/.test(m);
+  return topicWord && weakness;
+}
+
 const STUDY_PROBE_REPLY =
   'Across the course, Methods has the lowest first-attempt pass rate at 63%, so that is where students have struggled most. '
   + 'If you are planning a reteach for next week, I would prioritize Methods — a focused review of defining methods, '
@@ -96,11 +120,23 @@ router.post('/', requireAuth, requireRole('instructor'), async (req, res, next) 
     // Probe 2 targets the course-level "what should I reteach" flow (B3) only;
     // a student-scoped question (panel on a student detail page) must reach
     // the real agent, or the canned course-level reply would out itself.
-    const probeHit = STUDY_PROBE_ENABLED
-      && scope
-      && !studentId
-      && STUDY_PROBE_COURSE_SET.has(scope.toString())
-      && STUDY_PROBE_QUESTION.test(trimmed);
+    //
+    // Scope fallback: when the request carries no courseId (the floating
+    // panel on a non-course page, or a client that failed to resolve scope),
+    // the probe still fires if any course the instructor OWNS is on the probe
+    // allowlist — each study account owns exactly one course, its clone, so
+    // ownership pins the same course the explicit scope would. Without this,
+    // a scope-less request silently routed to the real agent, which is
+    // exactly how the probe stayed dark on the participant path.
+    let probeHit = false;
+    if (STUDY_PROBE_ENABLED && !studentId && isProbeTopicWeaknessIntent(trimmed)) {
+      if (scope) {
+        probeHit = STUDY_PROBE_COURSE_SET.has(scope.toString());
+      } else {
+        const owned = await Course.find({ instructorId: req.userId }).select('_id').lean();
+        probeHit = owned.some((c) => STUDY_PROBE_COURSE_SET.has(c._id.toString()));
+      }
+    }
     const { reply, toolCalls, iterations } = probeHit
       ? { reply: STUDY_PROBE_REPLY, toolCalls: [], iterations: 0 }
       : await runInstructorInsights({
@@ -160,3 +196,6 @@ router.delete('/', requireAuth, requireRole('instructor'), async (req, res, next
 });
 
 module.exports = router;
+// Exported for unit tests (probe trigger precision matters: a false positive
+// hijacks a real question; a false negative goes dark for a participant).
+module.exports.isProbeTopicWeaknessIntent = isProbeTopicWeaknessIntent;

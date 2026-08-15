@@ -685,7 +685,14 @@ const SERVICE_DEFAULTS = {
   project: 'llm-ed-studyassist',
   url: 'https://studyassist-iitl-backend-nkaulzxkdq-uc.a.run.app',
 };
-const PROBE_TRIGGER = 'what should I reteach next week?';
+// Probe 2 is checked with the EXACT suggested-chip text the panel offers
+// participants, plus a typed variant — the check must exercise the phrasing a
+// session will actually produce, not a phrasing only this script uses.
+const PROBE_TRIGGER = 'Which topic has the lowest pass rate?';
+const PROBE_TRIGGER_TYPED = 'what should I reteach next week?';
+// Negative control: this chip must reach the REAL agent (tool calls > 0). A
+// probe that hijacks it would out itself in the first minute of a session.
+const PROBE_NEGATIVE_TRIGGER = "What's the hardest milestone?";
 const PROBE_REPLY_SNIPPET = 'Methods has the lowest first-attempt pass rate at 63%';
 const COLD_START_MS = 4000;
 
@@ -863,24 +870,59 @@ async function prepSession(db) {
   };
 
   let coldStartMs = null;
+  let accessToken = null;
   try {
     const t0 = Date.now();
     const login = await api('POST', '/auth/login', { username, password });
     coldStartMs = Date.now() - t0;
-    const reply = await api('POST', '/instructor/chat', { message: PROBE_TRIGGER, courseId }, login.accessToken);
-    const text = String(reply.reply || reply.message || '');
-    const noTools = !reply.toolCalls || reply.toolCalls.length === 0;
-    // Summarise tool calls by NAME only. Dumping them verbatim buried the
-    // verdict under ~11k characters of tool output, which is the last thing a
-    // moderator needs fifteen minutes before a session.
-    const toolNames = (reply.toolCalls || []).map((t) => t && t.name).filter(Boolean);
-    add('probe 2 fires: canned Methods reply, zero tool calls',
-      text.includes(PROBE_REPLY_SNIPPET) && noTools,
-      text.includes(PROBE_REPLY_SNIPPET)
-        ? `canned reply, ${toolNames.length} tool call(s)`
-        : `NOT the canned reply — the real agent answered (${toolNames.length} tool call(s)${toolNames.length ? ': ' + toolNames.join(', ') : ''}). The probe is DISABLED for this course.`);
+    accessToken = login.accessToken;
   } catch (e) {
-    add('probe 2 fires: canned Methods reply, zero tool calls', false, e.message);
+    add('probe 2 fires: canned Methods reply, zero tool calls', false, `login failed: ${e.message}`);
+  }
+
+  // Summarise tool calls by NAME only. Dumping them verbatim buried the
+  // verdict under ~11k characters of tool output, which is the last thing a
+  // moderator needs fifteen minutes before a session.
+  const askAssistant = async (message) => {
+    const reply = await api('POST', '/instructor/chat', { message, courseId }, accessToken);
+    return {
+      text: String(reply.reply || reply.message || ''),
+      toolNames: (reply.toolCalls || []).map((t) => t && t.name).filter(Boolean),
+    };
+  };
+
+  if (accessToken) {
+    // Both phrasings a participant will actually use: the suggested chip and
+    // the natural typed question.
+    for (const [label, message] of [
+      ['probe 2 fires on the suggested chip: canned Methods reply, zero tool calls', PROBE_TRIGGER],
+      ['probe 2 fires on the typed variant: canned Methods reply, zero tool calls', PROBE_TRIGGER_TYPED],
+    ]) {
+      try {
+        const { text, toolNames } = await askAssistant(message);
+        const canned = text.includes(PROBE_REPLY_SNIPPET);
+        add(label, canned && toolNames.length === 0,
+          canned
+            ? `canned reply, ${toolNames.length} tool call(s)`
+            : `NOT the canned reply — the real agent answered (${toolNames.length} tool call(s)${toolNames.length ? ': ' + toolNames.join(', ') : ''}). The probe is DISABLED for this phrasing.`);
+      } catch (e) {
+        add(label, false, e.message);
+      }
+    }
+
+    // Negative control: an unrelated chip must still reach the real agent. A
+    // probe that hijacks it outs itself in the first minute of a session.
+    try {
+      const { text, toolNames } = await askAssistant(PROBE_NEGATIVE_TRIGGER);
+      const hijacked = text.includes(PROBE_REPLY_SNIPPET);
+      add('probe 2 does NOT hijack the hardest-milestone chip (real agent, tool calls)',
+        !hijacked && toolNames.length > 0,
+        hijacked
+          ? 'HIJACKED — the canned reply answered an unrelated chip'
+          : `real agent, ${toolNames.length} tool call(s)${toolNames.length ? ': ' + toolNames.join(', ') : ''}`);
+    } catch (e) {
+      add('probe 2 does NOT hijack the hardest-milestone chip (real agent, tool calls)', false, e.message);
+    }
   }
 
   // The probe test just wrote an exchange; remove it so the chat is empty again.
