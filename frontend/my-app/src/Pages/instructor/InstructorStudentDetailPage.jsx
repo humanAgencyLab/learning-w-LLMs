@@ -745,7 +745,11 @@ export default function InstructorStudentDetailPage() {
               </span>
             )}
           </div>
-          {/* Class context override (Risk v2 Step 7) — preserved verbatim */}
+          {/* Class context override (Risk v2 Step 7) — HIDDEN for the study
+              deployment (unused in the protocol; the "Not set" dropdown only
+              confused pilots). Flip `false` to re-enable; the state and
+              saveClassContext handler stay wired. */}
+          {false && (
           <div className="mt-3 flex items-center gap-2 flex-wrap">
             <label className="text-xs text-ink-400">Class context:</label>
             <select
@@ -761,6 +765,7 @@ export default function InstructorStudentDetailPage() {
             </select>
             {contextToast && <span className="text-xs text-approve">{contextToast}</span>}
           </div>
+          )}
         </div>
         {riskV2 && (
           <div className="text-right flex-shrink-0">
@@ -780,9 +785,14 @@ export default function InstructorStudentDetailPage() {
         </div>
       )}
 
-      {/* Two-column body: topics left, sticky notes/trend rail right. The
-          session replay (SessionViewer) renders full-width BELOW the grid. */}
+      {/* Two-column body: topics + session replay stacked left, sticky
+          notes/trend rail right. The replay (SessionViewer) lives INSIDE the
+          left column, directly under Topics — it used to render full-width
+          below the whole grid, so whenever the right rail was taller than the
+          Topics card the grid row stretched and left a large dead gap under
+          Topics before the transcript began. */}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-5 items-start">
+        <div className="space-y-5">
         <div className="bg-surface border border-hairline rounded-2xl shadow-card overflow-hidden animate-riseIn">
           <div className="px-5 py-4 border-b border-hairline-soft">
             <p className="text-base font-bold text-ink-900">Topics</p>
@@ -831,6 +841,12 @@ export default function InstructorStudentDetailPage() {
           </div>
         </div>
 
+        {/* Session replay (chat + quiz attempts) — directly beneath Topics */}
+        <div className="scroll-mt-6" ref={sessionViewerRef}>
+          <SessionViewer courseId={courseId} sessionId={selectedSessionId} />
+        </div>
+        </div>
+
         {/* Sticky rail: notes + risk trend (real shipped trend card kept —
             live /risk-trend endpoint exists, so no "coming soon" placeholder). */}
         <aside className="lg:sticky lg:top-6 space-y-4 animate-riseIn">
@@ -847,11 +863,6 @@ export default function InstructorStudentDetailPage() {
               refusal-only student is visible at all. */}
           <RefusalLogPanel courseId={courseId} studentId={studentId} />
         </aside>
-      </div>
-
-      {/* Session replay (chat + quiz attempts) — full width below the body */}
-      <div className="mt-5 scroll-mt-6" ref={sessionViewerRef}>
-        <SessionViewer courseId={courseId} sessionId={selectedSessionId} />
       </div>
     </div>
   );

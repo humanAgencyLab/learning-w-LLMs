@@ -33,6 +33,14 @@ export function SourceIngestControls({ courseId, source, busy, onChanged }) {
   if (!BOOK_EXT.test(source.originalName || '')) return null;
 
   const status = source.ingestStatus && source.ingestStatus !== 'none' ? source.ingestStatus : null;
+
+  // Study deployment: the "Ingest as book" entry point is hidden. The study
+  // uploads only syllabi, never books, and the blue link on every file row
+  // confused pilots. A never-ingested source therefore shows no ingest UI at
+  // all; sources that were ALREADY ingested (status chip, report, failed-retry)
+  // keep their controls so existing state stays visible. Remove this early
+  // return to restore the feature.
+  if (!status) return null;
   const meta = status ? STATUS_META[status] : null;
   const report = source.ingestReport;
 
