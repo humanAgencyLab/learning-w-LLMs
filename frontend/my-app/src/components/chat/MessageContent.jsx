@@ -1,8 +1,7 @@
-import React, { useState, memo, lazy, Suspense } from 'react';
+import React, { memo, lazy, Suspense } from 'react';
 import CodeBlock from './CodeBlock';
 import ProgressIndicator from './ProgressIndicator';
 import { parseMarkdown, extractBoldText } from '../../utils/markdownParser';
-import { detectQuestionType, parseMCQQuestion } from '../../utils/questionParser';
 
 const MermaidDiagram = lazy(() => import('./MermaidDiagram'));
 
@@ -57,9 +56,9 @@ const renderLinksAndCode = (text) => {
 
 const renderInlineCode = renderLinksAndCode;
 
-const MessageContent = memo(function MessageContent({ content, isLastMessage = false, points, gems, progressPct, milestoneInfo, onAnswer }) {
-  const [selectedOption, setSelectedOption] = useState(null);
-
+const MessageContent = memo(function MessageContent({ content, isLastMessage = false, points, gems, progressPct, milestoneInfo }) {
+  // Answer-choice widgets (True/False, MCQ) and their selection state were
+  // removed — milestone questions are open-ended and answered via chat.
   const blocks = parseMarkdown(content);
   
   const allParagraphs = [];
@@ -132,114 +131,45 @@ const MessageContent = memo(function MessageContent({ content, isLastMessage = f
             )}
             
             {isAssessmentQuestion ? (() => {
-              const questionContent = paragraphLines.join('\n');
-              const questionType = detectQuestionType(questionContent);
-              const isMCQ = questionType === 'multiple-choice';
-              const isTrueFalse = questionType === 'true-false';
-              const mcqData = isMCQ ? parseMCQQuestion(questionContent) : null;
-              
+              // Milestone assessment questions are OPEN-ENDED: the student
+              // answers with their next chat message, so no answer-choice
+              // control is rendered (the True/False and MCQ widgets were
+              // removed — they appeared inconsistently on open-ended questions
+              // and there is no separate answer channel). The chat input IS the
+              // answer box.
               return (
                 // Assessment question styling - light blue/grey background with thick left blue bar
                 // Disabling prose for this section to prevent style overrides
-                <div 
-                  className="not-prose mt-2 p-5 rounded-lg" 
-                  style={{ 
-                    backgroundColor: '#F0F4FC', 
+                <div
+                  className="not-prose mt-2 p-5 rounded-lg"
+                  style={{
+                    backgroundColor: '#F0F4FC',
                     borderLeft: '6px solid #4e81ee',
                     boxSizing: 'border-box'
                   }}
                 >
-                  {/* Question text */}
+                  {/* Question text (open-ended — answered via the chat input) */}
                   <div className="mb-3">
-                    {isMCQ && mcqData ? (
-                      <div className="text-base">
-                        <strong className="font-bold text-[#030712] text-lg">
-                          {extractBoldText(mcqData.question).map((part, idx) => 
-                            part.type === 'bold' ? <strong key={idx}>{part.content}</strong> : <span key={idx}>{part.content}</span>
+                    {paragraphLines.map((line, lineIndex) => {
+                      const parts = extractBoldText(line);
+                      return (
+                        <div key={lineIndex} className="text-base" style={{ color: '#030712' }}>
+                          {parts.map((part, partIndex) =>
+                            part.type === 'bold' ? (
+                              <strong key={partIndex} className="font-bold text-lg" style={{ color: '#030712' }}>
+                                {part.content}
+                              </strong>
+                            ) : (
+                              <span key={partIndex} style={{ color: '#030712' }}>{renderInlineCode(part.content)}</span>
+                            )
                           )}
-                        </strong>
-                      </div>
-                    ) : (
-                      paragraphLines.map((line, lineIndex) => {
-                        const parts = extractBoldText(line);
-                        return (
-                          <div key={lineIndex} className="text-base" style={{ color: '#030712' }}>
-                            {parts.map((part, partIndex) => 
-                              part.type === 'bold' ? (
-                                <strong key={partIndex} className="font-bold text-lg" style={{ color: '#030712' }}>
-                                  {part.content}
-                                </strong>
-                              ) : (
-                                <span key={partIndex} style={{ color: '#030712' }}>{renderInlineCode(part.content)}</span>
-                              )
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
+                        </div>
+                      );
+                    })}
                   </div>
                   
-                  {/* MCQ Options (clickable) */}
-                  {isMCQ && mcqData && mcqData.options.length > 0 && (
-                    <div className="mt-3 space-y-2">
-                      {mcqData.options.map((option, idx) => {
-                        const isSelected = selectedOption === option.letter;
-                        return (
-                          <button
-                            key={idx}
-                            disabled={!!selectedOption}
-                            onClick={() => {
-                              setSelectedOption(option.letter);
-                              if (onAnswer) onAnswer(`${option.letter}) ${option.text}`);
-                            }}
-                            className={`w-full flex items-start gap-2 p-2 rounded-lg border transition-colors text-left ${
-                              isSelected
-                                ? 'border-[#4e81ee] bg-blue-50 ring-2 ring-[#4e81ee]/30'
-                                : selectedOption
-                                  ? 'border-blue-100 bg-white opacity-60 cursor-default'
-                                  : 'border-blue-100 bg-white hover:border-blue-300 hover:bg-blue-50 cursor-pointer'
-                            }`}
-                          >
-                            <span className="font-semibold text-[#4e81ee] min-w-[24px]">{option.letter}.</span>
-                            <span className="text-[#030712]">{option.text}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  
-                  {/* True/False (clickable) */}
-                  {isTrueFalse && (
-                    <div className="mt-3 p-3 bg-white rounded-lg border border-blue-200">
-                      <div className="flex gap-3">
-                        {['True', 'False'].map(val => {
-                          const isSelected = selectedOption === val;
-                          const colors = val === 'True'
-                            ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                            : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100';
-                          return (
-                            <button
-                              key={val}
-                              disabled={!!selectedOption}
-                              onClick={() => {
-                                setSelectedOption(val);
-                                if (onAnswer) onAnswer(val);
-                              }}
-                              className={`px-4 py-2 border rounded-lg font-medium transition-colors ${
-                                isSelected
-                                  ? `${colors} ring-2 ring-offset-1 ring-blue-400`
-                                  : selectedOption
-                                    ? `${colors} opacity-50 cursor-default`
-                                    : `${colors} cursor-pointer`
-                              }`}
-                            >
-                              {val}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                  {/* No answer-choice control: milestone questions are
+                      open-ended and answered via the chat input. */}
                 </div>
               );
             })() : isFirstParagraph ? (

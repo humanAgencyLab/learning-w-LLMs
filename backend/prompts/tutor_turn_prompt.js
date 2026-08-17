@@ -63,6 +63,13 @@ function buildTurnPrompt({
   points,
   gems,
   alreadyShownSummaries,
+  // Structured teaching turns emit {intro, body, question} as JSON so the UI
+  // renders three visually distinct blocks. bodyWordTarget/bodyWordCap size
+  // the explanation (up to 400 for a full teach; honor a stricter instructor
+  // cap). clarify/continue stay as one prose message (structured=false).
+  structured = false,
+  bodyWordTarget,
+  bodyWordCap,
 }) {
   const guidance = FLOW_GUIDANCE[flowAction] || FLOW_GUIDANCE.continue;
 
@@ -106,18 +113,37 @@ ${guardBlock}${hybridBlock}${shownBlock}${capRule}${gamRule}
 
 The student just said:
 "${studentMessage}"
+${structured ? `
+Return ONLY valid JSON with EXACTLY these three fields — no prose outside the JSON:
+{
+  "intro": "ONE short framing sentence that names this milestone/concept and agrees with the verdict and flow above. One sentence. No stacked openers. Not the body.",
+  "body": "The explanation. ${flowAction === 'complete_module'
+      ? 'A short 2-4 sentence summary of what the module covered — NOT a re-lecture.'
+      : flowAction === 'correct_retry'
+        ? `Short and targeted — a few sentences addressing the SPECIFIC error, ${bodyWordCap || 160} words max. Not a full re-teach.`
+        : `A DEVELOPED explanation that actually teaches the concept — aim for ${bodyWordTarget || 250}-${bodyWordCap || 400} words across 2-3 short paragraphs (use \\n\\n between paragraphs). Do NOT answer in one or two sentences; use the budget. Ceiling: ${bodyWordCap || 400} words.`}",
+  "question": "${flowAction === 'complete_module'
+      ? 'The quiz call-to-action: tell them to click **Start Quiz** or type \\"start quiz\\". This is NOT a milestone question.'
+      : 'ONE open-ended assessment question the student answers in their OWN WORDS in the chat. It MUST be open-ended — NEVER a True/False question, NEVER multiple choice, NEVER offer A) B) C) D) options or Yes/No buttons. Just the question.'}"
+}
 
+Hard rules:
+- intro, body, question are SEPARATE fields — do not concatenate them or repeat one inside another.
+- Do NOT repeat any sentence or paragraph across the three fields, and do NOT repeat anything from ALREADY EXPLAINED above.
+- Obey the instructor's length/style rules and the body size above.
+- No AI-cliché filler ("Let's dive into", "I'm here to guide you", reflexive "Great question!"). No "STEP 1/2/3" labels. Valid JSON only.`
+: `
 COMPOSE EXACTLY ONE coherent message with this structure and nothing more:
 - ONE opener that agrees with the verdict and the flow above. Never stack two openers. Never repeat a sentence within the message.
 - ONE body scoped to the flow above.
-- ONE next step matching the flow above.
+- ONE next step matching the flow above. Any assessment question must be OPEN-ENDED (answered in the student's own words) — never True/False, never multiple choice.
 
 Hard rules:
 - Do NOT paste the same sentence or paragraph twice.
 - Do NOT emit a full milestone lecture more than the flow calls for.
 - No AI-cliché filler ("Let's dive into", "I'm here to guide you", "Great question!" as a reflex). Write like a real tutor.
 - Obey the instructor's length and style rules above.
-- Write natural prose/markdown. No "STEP 1/2/3" labels, no meta-commentary about these instructions.`;
+- Write natural prose/markdown. No "STEP 1/2/3" labels, no meta-commentary about these instructions.`}`;
 }
 
 module.exports = { buildTurnPrompt, FLOW_GUIDANCE };

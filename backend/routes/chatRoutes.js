@@ -1661,25 +1661,12 @@ Return ONLY valid JSON in this format:
             const moduleCompleteEmbeddedQ = embeddedQ;
 
             let assistantResponse = '';
-            if (moduleJustCompleted && !moduleCompleteEmbeddedQ) {
-              // Deterministic — no re-lecture, one honest opener + quiz prompt.
-              const openerLine = forceCompletedThisTurn
-                ? `That wraps up **${activeModule?.title || 'this module'}** — you worked through every milestone, including the tricky last one you can revisit anytime.`
-                : `Nice work — you’ve completed every milestone in **${activeModule?.title || 'this module'}**.`;
-              assistantResponse =
-                `${openerLine}\n\n` +
-                `You’re at **${session.points || 0}/100 points**${(session.gems || 0) > 0 ? ` with **💎 ${session.gems}** gems` : ''} so far. ` +
-                `When you’re ready, click **Start Quiz** or type **“start quiz”** to launch a quick mastery check.`;
-              if (session.meta) {
-                session.meta.outstandingCheck = null;
-                session.meta.milestoneBeingTaught = false;
-                session.meta.countSinceLastCheck = 0;
-              }
-            } else if (moduleJustCompleted) {
-              // A hybrid answer whose follow-up landed on the module-completing
-              // turn: the composer answers the follow-up (1-2 sentences) AND
-              // gives the summary + quiz prompt in one message — the follow-up
-              // must not be dropped just because the module finished here.
+            let composedParts = null;
+            if (moduleJustCompleted) {
+              // Module completion always runs the composer now (structured
+              // complete_module → intro/body/question parts, where question is
+              // the quiz CTA), so it renders as three blocks like every other
+              // teaching turn and any hybrid follow-up is still answered.
               if (session.meta) {
                 session.meta.outstandingCheck = null;
                 session.meta.milestoneBeingTaught = false;
@@ -1697,8 +1684,13 @@ Return ONLY valid JSON in this format:
                 globalInstructions: courseGlobalInstructions,
                 streamCallback: graphStreamCallback,
               });
-              assistantResponse = composed.message
-                || `Nice work — you’ve completed every milestone in **${activeModule?.title || 'this module'}**. When you’re ready, type **“start quiz”**.`;
+              composedParts = composed.parts;
+              // Deterministic fallback keeps the reliable quiz handoff if the
+              // composer returns nothing.
+              const banner = forceCompletedThisTurn
+                ? `That wraps up **${activeModule?.title || 'this module'}** — you worked through every milestone, including the tricky last one you can revisit anytime.\n\nWhen you’re ready, click **Start Quiz** or type **“start quiz”**.`
+                : `Nice work — you’ve completed every milestone in **${activeModule?.title || 'this module'}**.\n\nWhen you’re ready, click **Start Quiz** or type **“start quiz”**.`;
+              assistantResponse = composed.message || banner;
             } else {
               const composed = await composeTutorTurn({
                 session,
@@ -1718,6 +1710,7 @@ Return ONLY valid JSON in this format:
                 globalInstructions: courseGlobalInstructions,
                 streamCallback: graphStreamCallback,
               });
+              composedParts = composed.parts;
               assistantResponse = composed.message
                 || (advancedToNextMilestone ? 'Nice work — let’s keep going.' : (cm?.response || 'Let’s keep going — tell me where you’d like to focus.'));
             }
@@ -1777,7 +1770,7 @@ Return ONLY valid JSON in this format:
             const milestoneIndexAtSend = session.meta?.currentMilestoneIndex ?? 0;
             session.messages.push(
               { id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: cm?.intent || 'learning', phaseAtSend: session.phase, graphPath: true, messageType: turnMessageType, milestoneIndexAtSend } },
-              { id: `msg_${Date.now() + 1}`, role: 'assistant', content: assistantResponse, timestamp: new Date(), metadata: { intent: cm?.action || 'teach', phaseAtSend: session.phase, graphPath: true, hadCheckInReply: !!extractedQ, messageType: turnMessageType, verdict: turnVerdict, flowAction, manipulationFlagged: !!cm?.manipulationFlagged, milestoneIndexAtSend } },
+              { id: `msg_${Date.now() + 1}`, role: 'assistant', content: assistantResponse, timestamp: new Date(), metadata: { intent: cm?.action || 'teach', phaseAtSend: session.phase, graphPath: true, hadCheckInReply: !!extractedQ, messageType: turnMessageType, verdict: turnVerdict, flowAction, ...(composedParts ? { parts: composedParts } : {}), manipulationFlagged: !!cm?.manipulationFlagged, milestoneIndexAtSend } },
             );
             await session.save();
 
@@ -1790,6 +1783,7 @@ Return ONLY valid JSON in this format:
               verdict: turnVerdict,
               messageType: turnMessageType,
               flowAction,
+              ...(composedParts ? { parts: composedParts } : {}),
               phase: session.phase,
               milestoneCompleted: assessment?.understood && assessment?.recommendation !== 'clarify_again',
               moduleCompleted: moduleJustCompleted,

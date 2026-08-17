@@ -117,6 +117,53 @@ describe('computeAdaptation — student signals from data already on the session
   });
 });
 
+describe('structured teaching output (A) — {intro, body, question}', () => {
+  const { _parseParts, _bodyCapFor, _firstSentence, STRUCTURED_FLOWS } = require('../agents/turnComposerAgent');
+
+  it('only the four teaching flows are structured; clarify/continue stay prose', () => {
+    expect(STRUCTURED_FLOWS).toEqual(['first_teach', 'correct_retry', 'advance_milestone', 'complete_module']);
+    expect(STRUCTURED_FLOWS).not.toContain('clarify');
+    expect(STRUCTURED_FLOWS).not.toContain('continue');
+  });
+
+  it('a structured prompt asks for JSON parts, a developed body, and open-ended questions', () => {
+    const p = buildTurnPrompt({ topicName: 'Java', moduleTitle: 'Types', milestoneText: 'int vs float', flowAction: 'first_teach', verdict: 'start', structured: true, bodyWordTarget: 250, bodyWordCap: 400, adaptation: { level: 'onTrack' } });
+    expect(p).toMatch(/Return ONLY valid JSON/);
+    expect(p).toMatch(/"intro"[\s\S]*"body"[\s\S]*"question"/);
+    expect(p).toMatch(/250-400 words/);
+    expect(p).toMatch(/NEVER a True\/False question, NEVER multiple choice/);
+  });
+
+  it('complete_module structured question is the quiz CTA, not a milestone question', () => {
+    const p = buildTurnPrompt({ topicName: 'x', flowAction: 'complete_module', verdict: 'correct', structured: true, adaptation: {} });
+    expect(p).toMatch(/quiz call-to-action/);
+    expect(p).toMatch(/summary of what the module covered/);
+  });
+
+  it('the non-structured prose path still forbids True/False and MCQ questions', () => {
+    const p = buildTurnPrompt({ topicName: 'x', flowAction: 'clarify', verdict: 'clarify', structured: false, adaptation: {} });
+    expect(p).toMatch(/OPEN-ENDED[\s\S]*never True\/False, never multiple choice/i);
+  });
+
+  it('body cap: 400 for a full teach, honors a stricter instructor cap, 160 for retry', () => {
+    expect(_bodyCapFor('first_teach', null)).toBe(400);
+    expect(_bodyCapFor('advance_milestone', null)).toBe(400);
+    expect(_bodyCapFor('first_teach', 150)).toBe(150);
+    expect(_bodyCapFor('correct_retry', null)).toBe(160);
+    expect(_bodyCapFor('complete_module', null)).toBe(120);
+  });
+
+  it('parseParts tolerates fenced and prose-wrapped JSON, rejects junk', () => {
+    expect(_parseParts('```json\n{"intro":"I","body":"B","question":"Q?"}\n```')).toEqual({ intro: 'I', body: 'B', question: 'Q?' });
+    expect(_parseParts('Sure!\n{"intro":"I","body":"B","question":"Q?"}')).toEqual({ intro: 'I', body: 'B', question: 'Q?' });
+    expect(_parseParts('no json here at all')).toBeNull();
+  });
+
+  it('firstSentence keeps the intro to one sentence (no stacked openers)', () => {
+    expect(_firstSentence('Nice work! Now something else. And more.')).toBe('Nice work!');
+  });
+});
+
 describe('buildTurnPrompt — one-message shape and guardrails', () => {
   const common = { topicName: 'Java', moduleTitle: 'Methods', milestoneText: 'Define a method', verdict: 'clarify', points: 10, gems: 0, adaptation: { level: 'onTrack' } };
 
@@ -174,9 +221,9 @@ describe('route + gate contracts (source)', () => {
     expect(route).toMatch(/deferTeaching: true/);
   });
 
-  it('flowAction is persisted and returned', () => {
-    expect(route).toMatch(/flowAction,\s*manipulationFlagged/);
-    expect(route).toMatch(/flowAction,\s*\n\s*phase: session\.phase/);
+  it('flowAction and structured parts are persisted and returned', () => {
+    expect(route).toMatch(/flowAction, \.\.\.\(composedParts \? \{ parts: composedParts \} : \{\}\), manipulationFlagged/);
+    expect(route).toMatch(/flowAction,\s*\n\s*\.\.\.\(composedParts \? \{ parts: composedParts \} : \{\}\),\s*\n\s*phase: session\.phase/);
   });
 
   it('force-complete uses an honest opener, never "Amazing work"', () => {
@@ -184,12 +231,15 @@ describe('route + gate contracts (source)', () => {
     expect(route).toMatch(/revisit anytime|revisit this later/);
   });
 
-  it('a hybrid follow-up on the module-completing turn is composed, not dropped', () => {
-    // When a correct final answer also carries a question, the module-complete
-    // branch routes through the composer (which answers the follow-up) instead
-    // of the deterministic quiz banner.
-    expect(route).toMatch(/moduleJustCompleted && !moduleCompleteEmbeddedQ/);
-    expect(route).toMatch(/flowAction: 'complete_module',[\s\S]*embeddedQuestion: moduleCompleteEmbeddedQ/);
+  it('module completion runs the composer (structured) and never drops a hybrid follow-up', () => {
+    // Module completion now ALWAYS composes (structured complete_module →
+    // intro/body/question), with the deterministic banner only as a fallback.
+    expect(route).toMatch(/if \(moduleJustCompleted\) \{[\s\S]*flowAction: 'complete_module',[\s\S]*embeddedQuestion: moduleCompleteEmbeddedQ/);
+    expect(route).toMatch(/composed\.message \|\| banner/);
+  });
+
+  it('structured parts thread from the composer into metadata and response', () => {
+    expect(route).toMatch(/composedParts = composed\.parts/);
   });
 
   it('gate refusal wording is subject-neutral and repeat-aware; the DECISION is unchanged', () => {

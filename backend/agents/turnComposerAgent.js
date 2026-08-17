@@ -17,6 +17,18 @@ const FLOW_ACTIONS = [
 ];
 
 /**
+ * Flows that emit STRUCTURED {intro, body, question} for three-block UI
+ * rendering. clarify/continue stay as one short prose message (the spec keeps
+ * them targeted and does not restructure them).
+ */
+const STRUCTURED_FLOWS = ['first_teach', 'correct_retry', 'advance_milestone', 'complete_module'];
+
+/** Full-teach body ceiling; a stricter instructor cap wins. */
+const TEACH_BODY_CAP = 400;
+const TEACH_BODY_TARGET = 250;
+const RETRY_BODY_CAP = 160;
+
+/**
  * Label over existing decisions — NOT new flow logic. Every input is a value
  * the route already computed.
  */
@@ -199,13 +211,49 @@ function alreadyShownSummaries(session) {
   return summaries.slice(-4);
 }
 
+/** Parse the model's JSON {intro, body, question}, tolerant of fences/prose. */
+function parseParts(raw) {
+  const text = String(raw || '');
+  let obj = null;
+  const fenced = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+  const braced = fenced ? fenced[1] : (text.match(/\{[\s\S]*\}/) || [])[0];
+  if (braced) { try { obj = JSON.parse(braced); } catch { obj = null; } }
+  if (!obj || typeof obj !== 'object') return null;
+  const clean = (v) => (typeof v === 'string' ? v.trim() : '');
+  const intro = clean(obj.intro);
+  const body = clean(obj.body);
+  const question = clean(obj.question);
+  if (!body && !question) return null;
+  return { intro, body, question };
+}
+
+/** Keep an intro to a single sentence (no stacked openers). */
+function firstSentence(s) {
+  const t = String(s || '').trim();
+  if (!t) return '';
+  const m = t.match(/^.*?[.!?](\s|$)/);
+  return (m ? m[0] : t).trim();
+}
+
+/** Body word cap for a structured flow (instructor cap wins when stricter). */
+function bodyCapFor(flowAction, instructorCap) {
+  if (flowAction === 'complete_module') return Math.min(instructorCap || 120, 120);
+  if (flowAction === 'correct_retry') return Math.min(instructorCap || RETRY_BODY_CAP, RETRY_BODY_CAP);
+  // first_teach / advance_milestone: up to 400, or the stricter instructor cap.
+  return instructorCap ? Math.min(instructorCap, TEACH_BODY_CAP) : TEACH_BODY_CAP;
+}
+
 /**
  * Compose one tutor message for a teaching-ish flow
  * (first_teach | continue | clarify | correct_retry | advance_milestone |
  *  complete_module). refuse/start_quiz are composed deterministically by the
  * route and never reach here.
  *
- * @returns {Promise<{ message: string, flowAction: string }>}
+ * Structured flows (STRUCTURED_FLOWS) return {intro, body, question} parts for
+ * three-block UI rendering AND a concatenated `message` for everything that
+ * consumes message text. clarify/continue return message only (parts null).
+ *
+ * @returns {Promise<{ message: string, parts: object|null, flowAction: string }>}
  */
 async function composeTutorTurn({
   session,
@@ -222,14 +270,14 @@ async function composeTutorTurn({
   const activeModule = session?.plan?.find((m) => m.id === session.activeModuleId);
   const idx = session?.meta?.currentMilestoneIndex ?? 0;
   const milestoneText = activeModule?.milestones?.[idx]?.text || '';
-  // On an advance, the "current" index already points at the NEW milestone;
-  // teach it as the current one and cite the just-finished one only in transition.
   const nextMilestoneText = flowAction === 'advance_milestone'
     ? (activeModule?.milestones?.[idx]?.text || '')
     : (activeModule?.milestones?.[idx + 1]?.text || '');
 
   const wordCap = extractWordCap(globalInstructions);
   const adaptation = computeAdaptation({ session, assessment, retryCount, userMessage });
+  const structured = STRUCTURED_FLOWS.includes(flowAction);
+  const bodyCap = structured ? bodyCapFor(flowAction, wordCap) : null;
 
   const prompt = buildTurnPrompt({
     topicName: session?.topic || 'the subject',
@@ -247,34 +295,63 @@ async function composeTutorTurn({
     points: session?.points || 0,
     gems: session?.gems || 0,
     alreadyShownSummaries: alreadyShownSummaries(session),
+    structured,
+    bodyWordTarget: structured ? Math.min(TEACH_BODY_TARGET, bodyCap) : undefined,
+    bodyWordCap: bodyCap || undefined,
   });
 
   let raw;
   try {
-    if (typeof streamCallback === 'function') {
-      raw = await callTeacherAPIStream(prompt, 1200, session, { onChunk: streamCallback, globalInstructions: globalInstructions || '' });
+    // Structured turns generate JSON, so they cannot stream readable text —
+    // the done-frame carries the full composed message (the client already
+    // replaces streamed text with it). Prose flows may still stream.
+    if (!structured && typeof streamCallback === 'function') {
+      raw = await callTeacherAPIStream(prompt, 1400, session, { onChunk: streamCallback, globalInstructions: globalInstructions || '' });
     } else {
-      raw = await callTeacherAPI(prompt, 1200, session, null, globalInstructions || '');
+      raw = await callTeacherAPI(prompt, 1400, session, null, globalInstructions || '');
     }
   } catch (err) {
-    // Fail-soft: a short honest line beats a 500. Grading already happened.
-    return { message: '', flowAction, error: err.message };
+    return { message: '', parts: null, flowAction, error: err.message };
   }
 
   const priorParas = priorMilestoneParagraphs(session);
+
+  if (structured) {
+    const parsed = parseParts(raw);
+    if (parsed) {
+      const intro = firstSentence(parsed.intro);
+      // Dedup body against the intro and prior-shown paragraphs; cap the body.
+      let body = dedup(parsed.body, [...priorParas, normalize(intro)]);
+      body = enforceWordCap(body, bodyCap);
+      let question = parsed.question;
+      // complete_module: guarantee the quiz call-to-action is present.
+      if (flowAction === 'complete_module' && !/start\s*quiz/i.test(question)) {
+        question = `${question ? question.replace(/\s*$/, ' ') : ''}When you're ready, click **Start Quiz** or type **"start quiz"**.`.trim();
+      }
+      const parts = { intro, body, question };
+      const message = [intro, body, question].filter(Boolean).join('\n\n').trim();
+      if (message) return { message, parts, flowAction };
+    }
+    // Parse failed — fall through to prose handling of the raw text.
+  }
+
   let message = dedup(raw, priorParas);
   message = enforceWordCap(message, wordCap);
-  return { message: message || String(raw || '').trim(), flowAction };
+  return { message: message || String(raw || '').trim(), parts: null, flowAction };
 }
 
 module.exports = {
   FLOW_ACTIONS,
+  STRUCTURED_FLOWS,
   deriveFlowAction,
   extractWordCap,
   extractTrailingQuestion,
   computeAdaptation,
   composeTutorTurn,
   // exported for unit tests
+  _parseParts: parseParts,
+  _bodyCapFor: bodyCapFor,
+  _firstSentence: firstSentence,
   _dedup: dedup,
   _enforceWordCap: enforceWordCap,
 };
