@@ -211,20 +211,129 @@ function alreadyShownSummaries(session) {
   return summaries.slice(-4);
 }
 
-/** Parse the model's JSON {intro, body, question}, tolerant of fences/prose. */
+/**
+ * Repair near-JSON the model emits on long bodies: real (unescaped) newlines
+ * and tabs inside string values, trailing commas, and a missing closing brace.
+ * Walks the text tracking in-string state so structural whitespace is left
+ * alone and only in-string control characters get escaped.
+ */
+function repairJsonText(text) {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (const ch of String(text || '')) {
+    if (inString) {
+      if (escaped) { out += ch; escaped = false; continue; }
+      if (ch === '\\') { out += ch; escaped = true; continue; }
+      if (ch === '"') { out += ch; inString = false; continue; }
+      if (ch === '\n') { out += '\\n'; continue; }
+      if (ch === '\r') { continue; }
+      if (ch === '\t') { out += '\\t'; continue; }
+      out += ch;
+      continue;
+    }
+    if (ch === '"') { out += ch; inString = true; continue; }
+    out += ch;
+  }
+  // Unterminated string at EOF → close it.
+  if (inString) out += '"';
+  // Trailing commas before } or ].
+  out = out.replace(/,\s*([}\]])/g, '$1');
+  // Balance braces (missing closers on truncated output).
+  const opens = (out.match(/\{/g) || []).length;
+  const closes = (out.match(/\}/g) || []).length;
+  if (opens > closes) out += '}'.repeat(opens - closes);
+  return out;
+}
+
+/**
+ * String values may carry LITERAL backslash-n sequences (the model double
+ * escaping) — turn them into real paragraph breaks so "\n\n" never renders
+ * as visible text.
+ */
+function cleanPartValue(v) {
+  if (typeof v !== 'string') return '';
+  return v
+    .replace(/\\r/g, '')
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, ' ')
+    .trim();
+}
+
+/** Does a string still look like a leaked parts-object rather than prose? */
+function looksLikeJsonLeak(text) {
+  const t = String(text || '').trim();
+  if (/^[{[]/.test(t)) return true;
+  if (/"(?:intro|body|question)"\s*:/.test(t)) return true;
+  if (/\\n\\n/.test(t)) return true;
+  return false;
+}
+
+/** Parse the model's JSON {intro, body, question}, tolerant of fences/prose/dirt. */
 function parseParts(raw) {
   const text = String(raw || '');
-  let obj = null;
   const fenced = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
-  const braced = fenced ? fenced[1] : (text.match(/\{[\s\S]*\}/) || [])[0];
-  if (braced) { try { obj = JSON.parse(braced); } catch { obj = null; } }
+  // Greedy outer braces (bodies contain no nested objects, but be safe).
+  const braced = fenced ? fenced[1] : (text.match(/\{[\s\S]*\}/) || [])[0] || (
+    // Missing closing brace: take from the first '{' to EOF and let repair close it.
+    text.includes('{') ? text.slice(text.indexOf('{')) : null
+  );
+  if (!braced) return null;
+  let obj = null;
+  try { obj = JSON.parse(braced); } catch {
+    try { obj = JSON.parse(repairJsonText(braced)); } catch { obj = null; }
+  }
   if (!obj || typeof obj !== 'object') return null;
-  const clean = (v) => (typeof v === 'string' ? v.trim() : '');
-  const intro = clean(obj.intro);
-  const body = clean(obj.body);
-  const question = clean(obj.question);
+  const intro = cleanPartValue(obj.intro);
+  const body = cleanPartValue(obj.body);
+  const question = cleanPartValue(obj.question);
   if (!body && !question) return null;
   return { intro, body, question };
+}
+
+// --- assessment anchoring ---------------------------------------------------
+
+const QUESTION_STOPWORDS = new Set(['what', 'which', 'where', 'when', 'does', 'do', 'is', 'are', 'the', 'a', 'an', 'of', 'in', 'to', 'for', 'and', 'or', 'that', 'this', 'with', 'how', 'why', 'can', 'could', 'would', 'your', 'you', 'about', 'between', 'from', 'have', 'has', 'will']);
+const contentWords = (s) => new Set(
+  String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+    .filter((w) => w.length >= 4 && !QUESTION_STOPWORDS.has(w))
+);
+
+/**
+ * Does a composed question still test THIS milestone's objective? Content-word
+ * overlap with the outstanding question or the milestone text. Bias toward
+ * anchoring: a false replacement merely restates the original question; a
+ * false keep lets an evasive student steer the assessment off the objective.
+ */
+function questionOnObjective(question, outstandingCheck, milestoneText) {
+  const q = contentWords(question);
+  if (!q.size) return false;
+  const anchor = contentWords(`${outstandingCheck || ''} ${milestoneText || ''}`);
+  let overlap = 0;
+  for (const w of q) if (anchor.has(w)) overlap += 1;
+  return overlap >= 2 || (q.size <= 3 && overlap >= 1);
+}
+
+const ANCHOR_LINE = (outstandingCheck) => `Now, back to the question: **${String(outstandingCheck).trim()}**`;
+
+/**
+ * Prose turns (clarify): if the message's trailing question drifted off the
+ * milestone objective, strip it and re-anchor to the original outstanding
+ * question. Tangents get answered; the assessment does not follow them.
+ */
+function anchorProseQuestion(message, outstandingCheck, milestoneText) {
+  if (!outstandingCheck) return message;
+  const text = String(message || '').trim();
+  if (text.includes(String(outstandingCheck).trim())) return text; // already anchored
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const last = sentences[sentences.length - 1] || '';
+  if (last.trim().endsWith('?') && !questionOnObjective(last, outstandingCheck, milestoneText)) {
+    return `${sentences.slice(0, -1).join(' ')}\n\n${ANCHOR_LINE(outstandingCheck)}`.trim();
+  }
+  if (!last.trim().endsWith('?')) {
+    return `${text}\n\n${ANCHOR_LINE(outstandingCheck)}`;
+  }
+  return text;
 }
 
 /** Keep an intro to a single sentence (no stacked openers). */
@@ -300,15 +409,17 @@ async function composeTutorTurn({
     bodyWordCap: bodyCap || undefined,
   });
 
+  const outstanding = session?.meta?.outstandingCheck || '';
   let raw;
   try {
-    // Structured turns generate JSON, so they cannot stream readable text —
-    // the done-frame carries the full composed message (the client already
-    // replaces streamed text with it). Prose flows may still stream.
+    // Structured turns generate JSON (API-enforced via response_format), so
+    // they cannot stream readable text — the done-frame carries the full
+    // composed message (the client replaces streamed text with it). Prose
+    // flows may still stream.
     if (!structured && typeof streamCallback === 'function') {
       raw = await callTeacherAPIStream(prompt, 1400, session, { onChunk: streamCallback, globalInstructions: globalInstructions || '' });
     } else {
-      raw = await callTeacherAPI(prompt, 1400, session, null, globalInstructions || '');
+      raw = await callTeacherAPI(prompt, 1400, session, null, globalInstructions || '', structured ? { jsonMode: true } : {});
     }
   } catch (err) {
     return { message: '', parts: null, flowAction, error: err.message };
@@ -317,7 +428,38 @@ async function composeTutorTurn({
   const priorParas = priorMilestoneParagraphs(session);
 
   if (structured) {
-    const parsed = parseParts(raw);
+    let parsed = parseParts(raw);
+
+    // OUTPUT-BOUNDARY FALLBACK: if the parts can't be recovered even after
+    // repair, regenerate ONCE as plain prose — a student must never see raw
+    // JSON or literal \n escapes. Logged loudly with the flowAction.
+    if (!parsed) {
+      console.error('[turnComposer] structured parse failed after repair — regenerating as prose', { flowAction, sample: String(raw || '').slice(0, 160) });
+      try {
+        const prosePrompt = buildTurnPrompt({
+          topicName: session?.topic || 'the subject',
+          moduleTitle: activeModule?.title || '',
+          milestoneText,
+          nextMilestoneText,
+          flowAction,
+          verdict,
+          forceCompleted: !!forceCompleted,
+          outstandingCheck: outstanding,
+          studentMessage: userMessage,
+          embeddedQuestion: embeddedQuestion || null,
+          adaptation,
+          wordCap,
+          points: session?.points || 0,
+          gems: session?.gems || 0,
+          alreadyShownSummaries: alreadyShownSummaries(session),
+          structured: false,
+        });
+        raw = await callTeacherAPI(prosePrompt, 1400, session, null, globalInstructions || '');
+      } catch (regenErr) {
+        console.error('[turnComposer] prose regeneration failed too', { flowAction, error: regenErr.message });
+      }
+    }
+
     if (parsed) {
       const intro = firstSentence(parsed.intro);
       // Dedup body against the intro and prior-shown paragraphs; cap the body.
@@ -328,15 +470,37 @@ async function composeTutorTurn({
       if (flowAction === 'complete_module' && !/start\s*quiz/i.test(question)) {
         question = `${question ? question.replace(/\s*$/, ' ') : ''}When you're ready, click **Start Quiz** or type **"start quiz"**.`.trim();
       }
+      // ASSESSMENT ANCHOR: a retry's question must keep testing THIS
+      // milestone. If the model's question drifted off the objective,
+      // replace it with the original outstanding question.
+      if (flowAction === 'correct_retry' && outstanding && question
+        && !questionOnObjective(question, outstanding, milestoneText)) {
+        question = ANCHOR_LINE(outstanding);
+      }
       const parts = { intro, body, question };
       const message = [intro, body, question].filter(Boolean).join('\n\n').trim();
-      if (message) return { message, parts, flowAction };
+      // Boundary guard: never let anything JSON-shaped through.
+      if (message && !looksLikeJsonLeak(message)) return { message, parts, flowAction };
     }
-    // Parse failed — fall through to prose handling of the raw text.
+    // fall through: prose handling of (possibly regenerated) raw text
   }
 
   let message = dedup(raw, priorParas);
   message = enforceWordCap(message, wordCap);
+  // Prose clarify turns: answer the tangent, but END anchored to the
+  // milestone's own question — an evasive student cannot steer the
+  // assessment off the objective indefinitely.
+  if ((flowAction === 'clarify' || flowAction === 'correct_retry') && outstanding) {
+    message = anchorProseQuestion(message, outstanding, milestoneText);
+  }
+  // Final boundary guard: a JSON-shaped string must never reach the student.
+  if (looksLikeJsonLeak(message)) {
+    console.error('[turnComposer] output still JSON-shaped after fallback — recovering parts as prose', { flowAction });
+    const rescued = parseParts(message);
+    message = rescued
+      ? [firstSentence(rescued.intro), rescued.body, rescued.question].filter(Boolean).join('\n\n').trim()
+      : message.replace(/\\n/g, '\n').replace(/^[{[\s]+|[}\]\s]+$/g, '').replace(/"(intro|body|question)"\s*:\s*"?/g, '').replace(/",?\s*$/gm, '').trim();
+  }
   return { message: message || String(raw || '').trim(), parts: null, flowAction };
 }
 
@@ -350,6 +514,11 @@ module.exports = {
   composeTutorTurn,
   // exported for unit tests
   _parseParts: parseParts,
+  _repairJsonText: repairJsonText,
+  _cleanPartValue: cleanPartValue,
+  _looksLikeJsonLeak: looksLikeJsonLeak,
+  _questionOnObjective: questionOnObjective,
+  _anchorProseQuestion: anchorProseQuestion,
   _bodyCapFor: bodyCapFor,
   _firstSentence: firstSentence,
   _dedup: dedup,

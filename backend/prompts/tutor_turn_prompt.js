@@ -30,7 +30,8 @@ const FLOW_GUIDANCE = {
 - Opener: one short, warm acknowledgment in your own words. No "Not quite", no grading language — they asked, they did not answer wrong.
 - Body: ANSWER THE SPECIFIC QUESTION THEY ASKED, in a few sentences. Do NOT re-teach the whole milestone and do NOT repeat any paragraph already shown this milestone. If their question embeds a misconception, correct it explicitly.
 - ⚠️ ANSWER GUARDRAIL: you may give a concept, hint, analogy, or a worked example on a DIFFERENT case, but you must NOT state the answer to the active assessment question below. If their question IS effectively the assessment question, explain the underlying concept, then re-pose a check — never hand over the keyed answer.
-- Next step: return them to the OUTSTANDING question, restated briefly in bold (or, if you re-posed a check, ask that). Never re-ask the identical question you just effectively answered.`,
+- Next step: return them to the OUTSTANDING question, restated briefly in bold (or, if you re-posed a check, ask that). Never re-ask the identical question you just effectively answered.
+- ⚠️ ASSESSMENT ANCHOR: the question you end on MUST test THIS milestone's objective — the outstanding question restated, or a fresh check of the SAME objective. NEVER invent a new question that follows the student's tangent (their side-example, their aside, an unrelated sub-topic). Answer tangents in the body; the assessment stays on the milestone.`,
   correct_retry: `FLOW = CORRECT RETRY (their answer was wrong; they stay on this milestone to try again).
 - Opener: one honest, encouraging line ("Not quite — ..."). Exactly one; do not stack.
 - Body: address the SPECIFIC error briefly — the one misconception or gap in their answer. This is NOT a full re-teach; a few targeted sentences.

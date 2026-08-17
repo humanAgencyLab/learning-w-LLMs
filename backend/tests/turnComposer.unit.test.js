@@ -164,6 +164,111 @@ describe('structured teaching output (A) — {intro, body, question}', () => {
   });
 });
 
+describe('raw-JSON leak defense — dirty structured output never reaches a student', () => {
+  const { _parseParts, _repairJsonText, _cleanPartValue, _looksLikeJsonLeak } = require('../agents/turnComposerAgent');
+  const renderOf = (parts) => [parts.intro, parts.body, parts.question].filter(Boolean).join('\n\n');
+  const assertClean = (msg) => {
+    expect(msg).not.toMatch(/^\s*\{/);
+    expect(msg).not.toMatch(/"(intro|body|question)"/);
+    expect(msg).not.toMatch(/\\n/); // no literal backslash-n anywhere
+  };
+
+  it('embedded REAL newlines inside string values (the 3-of-9 failure mode)', () => {
+    const dirty = '{"intro": "Starting methods.", "body": "First paragraph about methods.\nStill the body with a real newline.\n\nSecond paragraph.", "question": "What is a method?"}';
+    expect(() => JSON.parse(dirty)).toThrow(); // proves this is the breaking case
+    const parts = _parseParts(dirty);
+    expect(parts).not.toBeNull();
+    expect(parts.body).toMatch(/First paragraph/);
+    expect(parts.body).toMatch(/Second paragraph/);
+    assertClean(renderOf(parts));
+  });
+
+  it('literal \\n\\n sequences inside values become real paragraph breaks', () => {
+    const parts = _parseParts('{"intro":"I.","body":"Para one.\\n\\nPara two.","question":"Q?"}');
+    expect(parts.body).toBe('Para one.\n\nPara two.');
+    assertClean(renderOf(parts));
+  });
+
+  it('code fences and trailing prose around the JSON', () => {
+    const parts = _parseParts('Here you go!\n```json\n{"intro":"I.","body":"B.","question":"Q?"}\n```\nHope that helps!');
+    expect(parts).toEqual({ intro: 'I.', body: 'B.', question: 'Q?' });
+  });
+
+  it('a missing closing brace is repaired', () => {
+    const parts = _parseParts('{"intro":"I.","body":"A body that got cut off","question":"Q?"');
+    expect(parts).not.toBeNull();
+    expect(parts.body).toMatch(/cut off/);
+    assertClean(renderOf(parts));
+  });
+
+  it('trailing commas are repaired', () => {
+    const parts = _parseParts('{"intro":"I.","body":"B.","question":"Q?",}');
+    expect(parts).toEqual({ intro: 'I.', body: 'B.', question: 'Q?' });
+  });
+
+  it('the boundary guard recognizes every leak shape', () => {
+    expect(_looksLikeJsonLeak('{"intro":"x"}')).toBe(true);
+    expect(_looksLikeJsonLeak('  { "body": "y" }')).toBe(true);
+    expect(_looksLikeJsonLeak('some prose with "question": inside')).toBe(true);
+    expect(_looksLikeJsonLeak('text with literal \\n\\n escapes')).toBe(true);
+    expect(_looksLikeJsonLeak('A normal teaching message.\n\nWith paragraphs. What is X?')).toBe(false);
+  });
+
+  it('structured turns request API-enforced JSON (response_format), the strongest defense', () => {
+    const agent = require('fs').readFileSync(require.resolve('../agents/turnComposerAgent'), 'utf8');
+    expect(agent).toMatch(/structured \? \{ jsonMode: true \} : \{\}/);
+    const svc = require('fs').readFileSync(require.resolve('../services/teacherService'), 'utf8');
+    expect(svc).toMatch(/opts\.jsonMode \? \{ response_format: \{ type: 'json_object' \} \}/);
+  });
+
+  it('repairJsonText leaves already-valid JSON untouched', () => {
+    const valid = '{"intro":"I.","body":"B.","question":"Q?"}';
+    expect(JSON.parse(_repairJsonText(valid))).toEqual(JSON.parse(valid));
+  });
+
+  it('cleanPartValue strips \\r and turns \\n into newlines', () => {
+    expect(_cleanPartValue('a\\r\\nb')).toBe('a\nb');
+  });
+});
+
+describe('assessment anchor — clarify/retry questions stay on the milestone', () => {
+  const { _questionOnObjective, _anchorProseQuestion } = require('../agents/turnComposerAgent');
+  const OUTSTANDING = 'Is the expression (age >= 18) a boolean expression?';
+  const MILESTONE = 'Understand boolean expressions and comparison operators';
+
+  it('keeps a question that tests the milestone objective', () => {
+    expect(_questionOnObjective('What makes (x > 5) a boolean expression?', OUTSTANDING, MILESTONE)).toBe(true);
+    expect(_questionOnObjective('Which comparison operators produce boolean results?', OUTSTANDING, MILESTONE)).toBe(true);
+  });
+
+  it('flags a drifted question (the age-decimal tangent from the sim)', () => {
+    expect(_questionOnObjective('What would age 17.5 be rounded to as a decimal?', OUTSTANDING, MILESTONE)).toBe(false);
+    expect(_questionOnObjective('How many decimal places should we display?', OUTSTANDING, MILESTONE)).toBe(false);
+  });
+
+  it('replaces a drifted trailing question with the anchored original', () => {
+    const msg = 'Good question — decimals work like this in Java. What would 17.5 round to as a decimal?';
+    const out = _anchorProseQuestion(msg, OUTSTANDING, MILESTONE);
+    expect(out).not.toMatch(/round to as a decimal\?$/);
+    expect(out).toContain(`Now, back to the question: **${OUTSTANDING}**`);
+  });
+
+  it('appends the anchor when the reply has no trailing question', () => {
+    const out = _anchorProseQuestion('Decimals are stored as doubles in Java.', OUTSTANDING, MILESTONE);
+    expect(out).toContain(`**${OUTSTANDING}**`);
+  });
+
+  it('leaves an on-objective trailing question alone', () => {
+    const msg = 'Booleans are true/false values. Which comparison operators produce boolean results?';
+    expect(_anchorProseQuestion(msg, OUTSTANDING, MILESTONE)).toBe(msg);
+  });
+
+  it('leaves a message that already restates the outstanding question alone', () => {
+    const msg = `Here is the answer to your side question. Now, back to the question: **${OUTSTANDING}**`;
+    expect(_anchorProseQuestion(msg, OUTSTANDING, MILESTONE)).toBe(msg);
+  });
+});
+
 describe('buildTurnPrompt — one-message shape and guardrails', () => {
   const common = { topicName: 'Java', moduleTitle: 'Methods', milestoneText: 'Define a method', verdict: 'clarify', points: 10, gems: 0, adaptation: { level: 'onTrack' } };
 

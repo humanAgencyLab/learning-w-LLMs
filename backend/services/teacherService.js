@@ -45,7 +45,7 @@ const instructorSystemMessage = (globalInstructions) => {
 };
 
 // Call Groq API for teacher response with retry and validation
-const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validationContext = null, globalInstructions = '') => {
+const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validationContext = null, globalInstructions = '', opts = {}) => {
   const groqClient = getGroqClient();
 
   // Build messages array with conversation history (outside retry loop for efficiency)
@@ -142,7 +142,10 @@ const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validati
         messages,
         temperature: 0.7,
         top_p: 0.9,
-        max_tokens: effectiveMaxTokens
+        max_tokens: effectiveMaxTokens,
+        // Structured composer turns: the API enforces valid JSON, so real
+        // newlines inside string values can't break the parse downstream.
+        ...(opts.jsonMode ? { response_format: { type: 'json_object' } } : {}),
       });
 
       // Validate response structure more robustly

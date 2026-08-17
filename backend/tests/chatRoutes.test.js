@@ -171,9 +171,14 @@ describe('Chat Routes', () => {
       expect(response.body.data.followedUpOutstanding).toBe(true);
       expect(response.body.data.hadCheckInReply).toBe(true);
 
-      // Verify outstanding question was cleared and new one set
+      // ASSESSMENT ANCHOR (2026-08): this turn grades as a clarification (the
+      // all-purpose mock makes the grader fail open to clarification_request),
+      // and on a clarify turn the tutor may answer tangents but must END on
+      // the MILESTONE's question — it can no longer clear the outstanding
+      // question and swap in new material ("primitive data types"), which was
+      // exactly the drift defect. The anchor restates the original question.
       const updatedSession = await Session.findById(testSessionId);
-      expect(updatedSession.meta.outstandingCheck).toContain('What are the primitive data types');
+      expect(updatedSession.meta.outstandingCheck).toContain('cannot be reassigned');
       expect(updatedSession.meta.countSinceLastCheck).toBe(0);
     });
 
