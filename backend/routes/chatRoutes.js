@@ -1743,7 +1743,14 @@ Return ONLY valid JSON in this format:
             const turnMessageType = cm?.messageType
               || (finalAssessment ? 'assessment_answer' : (wasMilestoneStart ? 'milestone_start' : 'other'));
 
-            const extractedQ = extractQuestion(assistantResponse);
+            let extractedQ = extractQuestion(assistantResponse);
+            // Strip the re-anchor prefix before storing: an anchored question
+            // ("Now, back to the question: **X**") must store as X, or every
+            // later restatement nests another prefix ("The question on the
+            // table is still: **Now, back to the question: …**").
+            if (extractedQ) {
+              extractedQ = extractedQ.replace(/^now,?\s*back to the question:\s*/i, '').replace(/^\*\*|\*\*$/g, '').trim();
+            }
             if (extractedQ && !moduleJustCompleted) {
               session.meta.outstandingCheck = extractedQ;
               session.meta.countSinceLastCheck = 0;

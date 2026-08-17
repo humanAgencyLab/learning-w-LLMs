@@ -282,6 +282,14 @@ describe('assessment anchor — clarify/retry questions stay on the milestone', 
     expect(_anchorProseQuestion(msg, OUTSTANDING, MILESTONE)).toBe(msg);
   });
 
+  it('never nests the anchor prefix (a stored anchored question is unwrapped first)', () => {
+    const { _anchorProseQuestion: anchor } = require('../agents/turnComposerAgent');
+    const storedWithPrefix = 'Now, back to the question: **Is (age >= 18) a boolean expression?**';
+    const out = anchor('Decimals digress. What is 17.5 rounded?', storedWithPrefix, MILESTONE);
+    expect(out).not.toMatch(/back to the question: \*\*Now, back to the question/i);
+    expect((out.match(/Now, back to the question/g) || []).length).toBe(1);
+  });
+
   it('leaves a message that already restates the outstanding question alone', () => {
     const msg = `Here is the answer to your side question. Now, back to the question: **${OUTSTANDING}**`;
     expect(_anchorProseQuestion(msg, OUTSTANDING, MILESTONE)).toBe(msg);

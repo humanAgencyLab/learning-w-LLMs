@@ -319,7 +319,12 @@ function questionOnObjective(question, outstandingCheck, milestoneText) {
   return overlap >= 2 || (q.size <= 3 && overlap >= 1);
 }
 
-const ANCHOR_LINE = (outstandingCheck) => `Now, back to the question: **${String(outstandingCheck).trim()}**`;
+// Defensive prefix strip: if a stored outstanding question ever carries the
+// anchor phrasing (legacy sessions), don't nest it a second time.
+const ANCHOR_LINE = (outstandingCheck) => {
+  const q = String(outstandingCheck).trim().replace(/^now,?\s*back to the question:\s*/i, '').replace(/^\*\*|\*\*$/g, '').trim();
+  return `Now, back to the question: **${q}**`;
+};
 
 /**
  * Prose turns (clarify): if the message's trailing question drifted off the
