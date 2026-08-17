@@ -815,15 +815,38 @@ export default function InstructorStudentDetailPage() {
                       Updated {formatDateTime(t.updatedAt)} · Modules quiz-passed {t.passedModules}/{t.moduleCount} · Milestones {t.completedMilestones}/{t.totalMilestones}
                     </p>
                   </div>
-                  <span className="w-24 h-1.5 bg-hairline-softer rounded-full overflow-hidden flex-shrink-0">
-                    <span
-                      className={`block h-full rounded-full ${t.completed ? 'bg-approve-strong' : (t.progressPct || 0) > 0 ? 'bg-brand' : 'bg-hairline-strong'}`}
-                      style={{ width: `${Math.min(t.progressPct || 0, 100)}%` }}
-                    />
-                  </span>
-                  <span className={`w-[74px] text-right text-[11px] font-semibold ${t.completed ? 'text-approve' : (t.progressPct || 0) > 0 ? 'text-brand' : 'text-ink-300'}`}>
-                    {t.completed ? 'Complete' : `${t.phase} · ${t.progressPct}%`}
-                  </span>
+                  {/* Bar + label share ONE number: work done over work owed
+                      (milestones completed + quizzes passed, out of milestones
+                      + module quizzes). The raw progressPct is the session's
+                      gamification POINTS (progressService sets progressPct =
+                      points), so it showed "learning · 5%" on a topic with all
+                      milestones done, and Complete rows with few banked points
+                      drew a near-empty green bar. */}
+                  {(() => {
+                    const workTotal = (t.totalMilestones || 0) + (t.moduleCount || 0);
+                    const workDone = (t.completedMilestones || 0) + (t.passedModules || 0);
+                    const pct = t.completed
+                      ? 100
+                      : workTotal > 0
+                        ? Math.round((100 * workDone) / workTotal)
+                        : Math.min(t.progressPct || 0, 100);
+                    return (
+                      <>
+                        <span className="w-24 h-1.5 bg-hairline-softer rounded-full overflow-hidden flex-shrink-0">
+                          <span
+                            className={`block h-full rounded-full ${t.completed ? 'bg-approve-strong' : pct > 0 ? 'bg-brand' : 'bg-hairline-strong'}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </span>
+                        <span
+                          className={`w-[74px] text-right text-[11px] font-semibold ${t.completed ? 'text-approve' : pct > 0 ? 'text-brand' : 'text-ink-300'}`}
+                          title={t.completed ? 'All module quizzes passed' : `${t.completedMilestones || 0}/${t.totalMilestones || 0} milestones + ${t.passedModules || 0}/${t.moduleCount || 0} quizzes passed`}
+                        >
+                          {t.completed ? 'Complete' : `${t.phase} · ${pct}%`}
+                        </span>
+                      </>
+                    );
+                  })()}
                   <button
                     type="button"
                     onClick={() => handleViewSession(t.courseTopicId, t.sessionId)}

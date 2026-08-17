@@ -145,7 +145,12 @@ function StudentTableRow({ student, courseShort, expanded, onToggle, onMonitor }
                 <div key={tp.topicId} className="flex items-center gap-2.5 py-1">
                   <span className="flex-1 text-sm text-ink-600 truncate">{tp.topicTitle}</span>
                   <span className="w-[70px] h-[5px] bg-hairline-softer rounded-full overflow-hidden flex-shrink-0">
-                    <span className={`block h-full rounded-full ${topicBarColor(tp)}`} style={{ width: `${Math.min(tp.progressPct || 0, 100)}%` }} />
+                    {/* A completed topic always draws a full bar — progressPct
+                        is the session's points, and a completed session with
+                        few banked points used to render a near-empty green
+                        sliver (this endpoint doesn't ship milestone counts, so
+                        in-progress bars stay points-based here). */}
+                    <span className={`block h-full rounded-full ${topicBarColor(tp)}`} style={{ width: `${tp.completed ? 100 : Math.min(tp.progressPct || 0, 100)}%` }} />
                   </span>
                   <span className={`w-[64px] text-right text-[10.5px] font-semibold ${topicLabelColor(tp)}`}>
                     {tp.completed ? 'Complete' : PHASE_LABELS[tp.phase] || tp.phase}
