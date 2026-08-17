@@ -128,7 +128,7 @@ Return ONLY valid JSON with EXACTLY these two fields — no prose outside the JS
   "body": "${flowAction === 'clarify'
       ? `The direct answer to what they asked — a few targeted sentences, ${bodyWordCap || 140} words max. Start with the answer itself; no intro line, no restating their question, no milestone re-teach.`
       : `The targeted correction of their specific error — a few sentences, ${bodyWordCap || 160} words max. No intro line, no milestone re-teach.`}",
-  "question": "The assessment question this turn ends on. It MUST test the current milestone's objective: the outstanding question restated (\\"Now, back to the question: ...\\" wording is fine) or a fresh check of the SAME objective. Open-ended only — never True/False, never multiple choice. Never a question that follows the student's tangent."
+  "question": "The assessment question this turn ends on. It MUST test the current milestone's objective: the outstanding question restated (\\"Now, back to the question: ...\\" wording is fine) or a fresh check of the SAME objective. Open-ended only — never True/False, never multiple choice. Phrase it as a direct question ending with a question mark, not as an imperative. Never a question that follows the student's tangent."
 }
 
 Hard rules:
@@ -146,7 +146,7 @@ Return ONLY valid JSON with EXACTLY these three fields — no prose outside the 
         : `A DEVELOPED explanation that actually teaches the concept — aim for ${bodyWordTarget || 250}-${bodyWordCap || 400} words across 2-3 short paragraphs (use \\n\\n between paragraphs). Do NOT answer in one or two sentences; use the budget. Ceiling: ${bodyWordCap || 400} words.`}",
   "question": "${flowAction === 'complete_module'
       ? 'The quiz call-to-action: tell them to click **Start Quiz** or type \\"start quiz\\". This is NOT a milestone question.'
-      : 'ONE open-ended assessment question the student answers in their OWN WORDS in the chat. It MUST be open-ended — NEVER a True/False question, NEVER multiple choice, NEVER offer A) B) C) D) options or Yes/No buttons. Just the question.'}"
+      : 'ONE open-ended assessment question the student answers in their OWN WORDS in the chat. It MUST be open-ended — NEVER a True/False question, NEVER multiple choice, NEVER offer A) B) C) D) options or Yes/No buttons. Phrase it as a direct question ending with a question mark, not as an imperative instruction. Just the question.'}"
 }
 
 Hard rules:

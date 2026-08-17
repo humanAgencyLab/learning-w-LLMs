@@ -1743,7 +1743,15 @@ Return ONLY valid JSON in this format:
             const turnMessageType = cm?.messageType
               || (finalAssessment ? 'assessment_answer' : (wasMilestoneStart ? 'milestone_start' : 'other'));
 
-            let extractedQ = extractQuestion(assistantResponse);
+            // Prefer the composer's structured question part: it IS the
+            // assessment question, no inference needed. The prose regex is
+            // only a fallback for uncomposed responses — it requires a '?',
+            // and gpt-oss phrases questions imperatively ("In your own words,
+            // explain…") often enough that regex-only silently dropped the
+            // outstanding check and the next turn re-taught from scratch.
+            let extractedQ = (composedParts && typeof composedParts.question === 'string' && composedParts.question.trim())
+              ? composedParts.question.trim()
+              : extractQuestion(assistantResponse);
             // Strip the re-anchor prefix before storing: an anchored question
             // ("Now, back to the question: **X**") must store as X, or every
             // later restatement nests another prefix ("The question on the

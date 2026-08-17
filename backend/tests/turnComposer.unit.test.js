@@ -240,6 +240,16 @@ describe('raw-JSON leak defense — dirty structured output never reaches a stud
     expect(svc).toMatch(/opts\.jsonMode \? \{ response_format: \{ type: 'json_object' \} \}/);
   });
 
+  it('outstandingCheck stores the composed question PART, not a prose regex (gpt-oss asks imperatively, without "?")', () => {
+    const routes = require('fs').readFileSync(require.resolve('../routes/chatRoutes'), 'utf8');
+    // The storage site must prefer composedParts.question; the '?'-requiring
+    // extractQuestion regex is only the uncomposed fallback. gpt-oss-120b
+    // phrases assessment questions as imperatives ("In your own words,
+    // explain…") which the regex misses — dropping the outstanding check and
+    // re-teaching from scratch on the next turn.
+    expect(routes).toMatch(/composedParts\.question === 'string'[\s\S]{0,200}composedParts\.question\.trim\(\)\s*:\s*extractQuestion\(assistantResponse\)/);
+  });
+
   it('repairJsonText leaves already-valid JSON untouched', () => {
     const valid = '{"intro":"I.","body":"B.","question":"Q?"}';
     expect(JSON.parse(_repairJsonText(valid))).toEqual(JSON.parse(valid));
