@@ -54,17 +54,8 @@ const addRequestId = (req, res, next) => {
   next();
 };
 
-// Groq client setup (lazy initialization to avoid test conflicts)
-let groq;
-const getGroqClient = () => {
-  if (!groq) {
-    const Groq = require('groq-sdk');
-    groq = new Groq({
-      apiKey: process.env.GROQ_API_KEY
-    });
-  }
-  return groq;
-};
+// Shared Groq client (lazy; injects reasoning defaults for gpt-oss models)
+const getGroqClient = () => require('../lib/llmClient').getGroqClient();
 
 // Assessment prompt builder now imported from srl_assessment_prompt.js
 
@@ -101,7 +92,7 @@ const callAssessmentAPI = async (prompt, isRetry = false) => {
   try {
     const groqClient = getGroqClient();
     const response = await groqClient.chat.completions.create({
-      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+      model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
       messages: [
         {
           role: 'system',

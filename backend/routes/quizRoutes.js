@@ -186,7 +186,7 @@ Return ONLY valid JSON in this exact format:
 Generate exactly ${questionCount} multiple-choice questions for "${topic}". Each option must be specific and standalone. Include explanations.`;
 
     const response = await groqClient.chat.completions.create({
-      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+      model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
       messages: [
         {
           role: 'system',
@@ -243,7 +243,7 @@ CRITICAL: NEVER use "All of the above", "None of the above", or any compound opt
 Generate ${questionCount} revision questions for "${topic}". Each option must be specific and standalone. Include explanations.`;
 
         const retryResponse = await groqClient.chat.completions.create({
-          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
           messages: [
             {
               role: 'system',
@@ -288,7 +288,7 @@ const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones =
     const prompt = buildQuizPrompt(moduleTitle, difficulty, questionCount, milestones, teachingMessages, quizPattern, globalInstructions) + (extraHint || '');
     
     const response = await groqClient.chat.completions.create({
-      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+      model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
       messages: [
         {
           role: 'system',
@@ -381,7 +381,7 @@ const generateQuiz = async (moduleTitle, difficulty, questionCount, milestones =
 ⚠️⚠️⚠️ RETRY: Your previous attempt failed. Return ONLY valid JSON. Focus EXCLUSIVELY on milestone topics.`;
 
         const retryResponse = await groqClient.chat.completions.create({
-          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
           messages: [
             {
               role: 'system',
@@ -981,7 +981,7 @@ router.post('/v1/quiz/submit', requireAuth, addRequestId, async (req, res) => {
         const analysisPrompt = buildQuizFailureAnalysisPrompt(quizResults, module.milestones || []);
         
         const analysisResponse = await groqClient.chat.completions.create({
-          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
           messages: [
             {
               role: 'system',

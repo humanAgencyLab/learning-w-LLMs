@@ -1,6 +1,7 @@
 'use strict';
 
 const Groq = require('groq-sdk');
+const { wrapWithReasoningDefaults } = require('../lib/llmClient');
 const { compose } = require('./personas');
 const { GROQ_API_KEY, GROQ_MODEL } = require('./config');
 const { make } = require('./logger');
@@ -9,7 +10,7 @@ const { sleep, jitter } = require('./apiClient');
 let groqClient = null;
 function getGroq() {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set — cannot run LLM-backed sim.');
-  if (!groqClient) groqClient = new Groq({ apiKey: GROQ_API_KEY });
+  if (!groqClient) groqClient = wrapWithReasoningDefaults(new Groq({ apiKey: GROQ_API_KEY }));
   return groqClient;
 }
 

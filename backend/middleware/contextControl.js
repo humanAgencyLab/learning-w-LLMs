@@ -195,7 +195,7 @@ async function summarizeConversation(session, messages, requestId) {
           content: summarizationPrompt
         }
       ],
-      model: 'llama-3.1-8b-instant',
+      model: process.env.GROQ_MODEL_CHEAP || 'openai/gpt-oss-120b',
       temperature: 0.3,
       max_tokens: SUMMARY_MAX_TOKENS,
       top_p: 0.9
@@ -310,7 +310,8 @@ async function checkContextLimits(session, routePath, requestId) {
   const estimatedPromptTokens = Math.ceil(totalTokens * 1.2); // 20% overhead
   const estimatedTotalTokens = estimatedPromptTokens + maxTokens;
 
-  // Check against model limits (assuming 8K context for llama-3.1-8b-instant)
+  // Conservative context budget (well under every model we route to; keeping
+  // it small just triggers summarization earlier, which is the safe direction)
   const modelContextLimit = 8000;
   const safetyMargin = 1000; // Leave room for system prompts
   const effectiveLimit = modelContextLimit - safetyMargin;

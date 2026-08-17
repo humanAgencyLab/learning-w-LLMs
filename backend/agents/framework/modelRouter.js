@@ -1,5 +1,5 @@
-const CHEAP_MODEL = () => process.env.GROQ_MODEL_CHEAP || 'llama-3.1-8b-instant';
-const EXPENSIVE_MODEL = () => process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const CHEAP_MODEL = () => process.env.GROQ_MODEL_CHEAP || 'openai/gpt-oss-120b';
+const EXPENSIVE_MODEL = () => process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 
 const TASK_MODEL_MAP = {
   intent: 'cheap',

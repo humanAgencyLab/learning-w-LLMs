@@ -1,4 +1,4 @@
-const Groq = require('groq-sdk');
+const { getGroqClient } = require('../lib/llmClient');
 
 const generateQuiz = async (topic, stage, sessionHistory = []) => {
   const stageDescriptions = {
@@ -34,12 +34,10 @@ Return as JSON in this exact format:
 }`;
 
   try {
-    const groq = new Groq({
-      apiKey: process.env.GROQ_API_KEY,
-    });
-    
+    const groq = getGroqClient();
+
     const response = await groq.chat.completions.create({
-      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+      model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
       messages: [
         {
           role: 'system',

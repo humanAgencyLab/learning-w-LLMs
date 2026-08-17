@@ -48,7 +48,7 @@ async function gradeLegacy(c) {
     { topicTitle: c.topic }
   );
   const resp = await client.chat.completions.create({
-    model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+    model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
     messages: [
       { role: 'system', content: 'You are an expert educational assessment AI. Return ONLY valid JSON matching the schema. No prose, no markdown blocks, no explanations outside the JSON.' },
       { role: 'user', content: prompt },

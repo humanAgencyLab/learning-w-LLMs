@@ -382,7 +382,7 @@ Return ONLY valid JSON in this format:
 
       try {
         const topicResponse = await groqClient.chat.completions.create({
-          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
           messages: [
             {
               role: 'system',
@@ -583,7 +583,7 @@ Return ONLY valid JSON in this format:
       try {
         // Call LLM to analyze intent and decide action
         const intentResponse = await groqClient.chat.completions.create({
-      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+      model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
           messages: [
             {
               role: 'system',
@@ -1856,7 +1856,7 @@ Return ONLY valid JSON in this format:
       
       try {
         const decisionResponse = await groqClient.chat.completions.create({
-          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
           messages: [
             {
               role: 'system',
@@ -2054,7 +2054,7 @@ Return ONLY valid JSON in this format:
           
           try {
             const assessmentResponse = await groqClient.chat.completions.create({
-              model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+              model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
               messages: [
                 {
                   role: 'system',

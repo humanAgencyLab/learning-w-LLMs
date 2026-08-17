@@ -97,7 +97,7 @@ const updateContextSummary = async (session, userMessage, assistantResponse, gro
     
     // Call LLM to generate/update summary
     const summaryResponse = await groqClient.chat.completions.create({
-      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+      model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
       messages: [
         {
           role: 'system',

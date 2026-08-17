@@ -12,7 +12,6 @@
  * leaves a diagnosable record.
  */
 const crypto = require('crypto');
-const Groq = require('groq-sdk');
 const mongoose = require('mongoose');
 
 const SimulationRun = require('../../models/SimulationRun');
@@ -21,6 +20,7 @@ const CourseTopic = require('../../models/CourseTopic');
 const Session = require('../../models/Session');
 const User = require('../../models/User');
 const { useMultiAgent } = require('../../agents/framework/featureFlag');
+const { getGroqClient } = require('../../lib/llmClient');
 const { SimStudentClient, sleep } = require('./simStudentClient');
 const {
   PERSONAS, intentForTurn, hintForIntent, nextProbe, PROBE_SEQUENCE, PROBE_MIN_TURN, isProbeReady,
@@ -30,17 +30,13 @@ const logger = require('../../utils/logger');
 const MAX_TURNS_PER_STUDENT = 18;
 const WALL_CLOCK_MS_PER_STUDENT = 8 * 60 * 1000;
 const MAX_CONSECUTIVE_FAILURES = 3;
-const STUDENT_MODEL = process.env.SIM_GROQ_MODEL || 'llama-3.1-8b-instant';
+const STUDENT_MODEL = process.env.SIM_GROQ_MODEL || 'openai/gpt-oss-120b';
 const SIM_PASSWORD = process.env.SIM_PASSWORD || 'SimStudent!2025';
 
-let _groq = null;
+// Shared client: injects reasoning_effort:'low' for gpt-oss models so the
+// 180-token student-reply budget below isn't eaten by reasoning tokens.
 function getGroq() {
-  if (!_groq) {
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error('GROQ_API_KEY is not configured');
-    _groq = new Groq({ apiKey });
-  }
-  return _groq;
+  return getGroqClient();
 }
 
 /** One student reply. Mirrors SyntheticStudent.generateReply. */
