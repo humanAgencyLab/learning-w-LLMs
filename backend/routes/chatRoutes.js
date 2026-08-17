@@ -1646,8 +1646,11 @@ Return ONLY valid JSON in this format:
               wasMilestoneStart,
             });
 
+            const moduleCompleteEmbeddedQ = typeof cm?.embeddedQuestion === 'string' && cm.embeddedQuestion.trim()
+              ? cm.embeddedQuestion.trim() : null;
+
             let assistantResponse = '';
-            if (moduleJustCompleted) {
+            if (moduleJustCompleted && !moduleCompleteEmbeddedQ) {
               // Deterministic — no re-lecture, one honest opener + quiz prompt.
               const openerLine = forceCompletedThisTurn
                 ? `That wraps up **${activeModule?.title || 'this module'}** — you worked through every milestone, including the tricky last one you can revisit anytime.`
@@ -1661,6 +1664,30 @@ Return ONLY valid JSON in this format:
                 session.meta.milestoneBeingTaught = false;
                 session.meta.countSinceLastCheck = 0;
               }
+            } else if (moduleJustCompleted) {
+              // A hybrid answer whose follow-up landed on the module-completing
+              // turn: the composer answers the follow-up (1-2 sentences) AND
+              // gives the summary + quiz prompt in one message — the follow-up
+              // must not be dropped just because the module finished here.
+              if (session.meta) {
+                session.meta.outstandingCheck = null;
+                session.meta.milestoneBeingTaught = false;
+                session.meta.countSinceLastCheck = 0;
+              }
+              const composed = await composeTutorTurn({
+                session,
+                userMessage,
+                flowAction: 'complete_module',
+                verdict: 'correct',
+                assessment: gs.assessmentResult?.payload || assessment || null,
+                embeddedQuestion: moduleCompleteEmbeddedQ,
+                forceCompleted: forceCompletedThisTurn,
+                retryCount: retryCountForTeacher,
+                globalInstructions: courseGlobalInstructions,
+                streamCallback: graphStreamCallback,
+              });
+              assistantResponse = composed.message
+                || `Nice work — you’ve completed every milestone in **${activeModule?.title || 'this module'}**. When you’re ready, type **“start quiz”**.`;
             } else {
               const composed = await composeTutorTurn({
                 session,

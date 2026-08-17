@@ -168,6 +168,14 @@ describe('route + gate contracts (source)', () => {
     expect(route).toMatch(/revisit anytime|revisit this later/);
   });
 
+  it('a hybrid follow-up on the module-completing turn is composed, not dropped', () => {
+    // When a correct final answer also carries a question, the module-complete
+    // branch routes through the composer (which answers the follow-up) instead
+    // of the deterministic quiz banner.
+    expect(route).toMatch(/moduleJustCompleted && !moduleCompleteEmbeddedQ/);
+    expect(route).toMatch(/flowAction: 'complete_module',[\s\S]*embeddedQuestion: moduleCompleteEmbeddedQ/);
+  });
+
   it('gate refusal wording is subject-neutral and repeat-aware; the DECISION is unchanged', () => {
     // Scope to the STUDENT-FACING builder only. The internal refusalReason
     // (analytics event, never shown) legitimately still names the artifact.
