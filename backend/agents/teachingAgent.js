@@ -65,6 +65,10 @@ async function runTeachingAgent({
   milestoneInfo,
   globalInstructions,
   streamCallback,
+  // Graph-path turn context (opener rework): {milestoneStart, messageTypeHint,
+  // embeddedQuestion}. Omitted on the legacy path — buildTeacherPrompt then
+  // behaves exactly as before, keeping the single-agent path unchanged.
+  turnContext,
 }) {
   const prompt = buildTeacherPrompt(
     session,
@@ -72,8 +76,17 @@ async function runTeachingAgent({
     !!isFollowUp,
     assessmentResult || null,
     milestoneInfo || null,
-    globalInstructions || ''
+    globalInstructions || '',
+    turnContext || undefined
   );
+
+  // A direct clarification answer is legitimately short — holding it to the
+  // 80-word teaching floor would force padding (or a validation-retry loop)
+  // on a reply whose whole point is to be targeted.
+  const isClarifyTurn =
+    assessmentResult?.isClarificationRequest ||
+    (!assessmentResult && turnContext?.messageTypeHint === 'clarification_request');
+  const validate = (out) => validateTeaching(out, isClarifyTurn ? { minWords: 20 } : undefined);
 
   // Streaming: single attempt, mirroring the legacy path (callTeacherAPIStream
   // deliberately has no retry — re-streaming after a validation failure would
@@ -82,7 +95,7 @@ async function runTeachingAgent({
   if (typeof streamCallback === 'function') {
     try {
       const content = await callTeacherAPIStream(prompt, 1500, session, { onChunk: streamCallback, globalInstructions: globalInstructions || '' });
-      const check = validateTeaching({ content });
+      const check = validate({ content });
       return {
         type: 'teaching',
         payload: check.valid ? { content } : null,
@@ -106,7 +119,7 @@ async function runTeachingAgent({
       const content = await callTeacherAPI(prompt + errHint, 1500, session, null, globalInstructions || '');
       return { content };
     },
-    validateTeaching,
+    validate,
     { agentName: 'TeachingAgent' },
   );
 

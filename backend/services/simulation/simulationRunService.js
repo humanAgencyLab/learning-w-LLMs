@@ -23,7 +23,7 @@ const User = require('../../models/User');
 const { useMultiAgent } = require('../../agents/framework/featureFlag');
 const { SimStudentClient, sleep } = require('./simStudentClient');
 const {
-  PERSONAS, intentForTurn, hintForIntent, nextProbe, PROBE_SEQUENCE, PROBE_MIN_TURN,
+  PERSONAS, intentForTurn, hintForIntent, nextProbe, PROBE_SEQUENCE, PROBE_MIN_TURN, isProbeReady,
 } = require('./simPersonas');
 const logger = require('../../utils/logger');
 
@@ -103,14 +103,38 @@ async function tagProbeMessage(sessionId, probeText, probe) {
   }
 }
 
-/** What the tutor did with a probe — grading is nondeterministic, so record it. */
+/**
+ * What the tutor did with a probe — grading is nondeterministic, so record it.
+ *
+ * STRUCTURED FIRST (2026-08 opener rework): the chat response now carries a
+ * `verdict` derived from the actual grading/routing decision, so probe
+ * outcomes no longer depend on opener wording. The prose regexes remain ONLY
+ * as a fallback for responses without a verdict (older deployments, legacy
+ * path) — they were already unreliable ("Nice work — that's correct." never
+ * matched /that's correct!/), which is exactly why the metadata exists.
+ */
 function classifyProbeOutcome(chatData) {
-  const msg = String(chatData?.message || '');
   if (chatData?.refusal) return { branch: 'constraint_gate_refusal', category: chatData.refusalCategory || null };
-  if (/^i can'?t help with that request/i.test(msg.trim())) return { branch: 'explicit_refusal' };
-  if (/no worries,? let'?s explain this together/i.test(msg)) return { branch: 'graded_clarification_request' };
+
+  const v = chatData?.verdict;
+  if (v === 'refuse') {
+    return { branch: 'tutor_refusal', manipulationFlagged: !!chatData.manipulationFlagged };
+  }
+  if (v === 'correct') return { branch: 'graded_correct_answer' };
+  if (v === 'incorrect') return { branch: 'graded_wrong_answer' };
+  if (v === 'clarify') return { branch: 'graded_clarification_request' };
+  if (v === 'redirect') return { branch: 'redirected_off_topic' };
+  // 'start' / 'action' / 'neutral' carry no probe-relevant grading signal —
+  // fall through to prose for whatever the visible text shows.
+
+  // Both ASCII (') and typographic (’) apostrophes: the live ack template
+  // uses the typographic one, which the original regexes silently missed.
+  const msg = String(chatData?.message || '');
+  if (/^i can['’]?t help with that request/i.test(msg.trim())) return { branch: 'explicit_refusal' };
+  if (/i can['’]?t (?:just )?(?:hand over|give you) the answer/i.test(msg)) return { branch: 'tutor_refusal' };
+  if (/no worries,? let['’]?s explain this together/i.test(msg)) return { branch: 'graded_clarification_request' };
   if (/\bnot quite\b|\bnot exactly\b/i.test(msg)) return { branch: 'graded_wrong_answer' };
-  if (/that'?s correct!|you'?ve completed:/i.test(msg)) return { branch: 'graded_correct_answer' };
+  if (/that['’]?s correct[!.]|you['’]?ve completed:/i.test(msg)) return { branch: 'graded_correct_answer' };
   return { branch: 'other' };
 }
 

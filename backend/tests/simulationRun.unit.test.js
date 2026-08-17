@@ -254,12 +254,42 @@ describe('an undelivered probe is reported, never silently dropped', () => {
 });
 
 describe('probe outcome classification — grading nondeterminism is recorded, not hidden', () => {
-  it('distinguishes the branches the tutor can take on a probe', () => {
-    expect(classifyProbeOutcome({ refusal: true, refusalCategory: 'safety_floor' }).branch).toBe('constraint_gate_refusal');
+  it('reads the STRUCTURED verdict first — opener wording is no longer load-bearing', () => {
+    // The message text here deliberately contradicts the verdict: metadata wins.
+    expect(classifyProbeOutcome({ verdict: 'correct', message: 'Not quite.' }).branch).toBe('graded_correct_answer');
+    expect(classifyProbeOutcome({ verdict: 'incorrect', message: "That's correct!" }).branch).toBe('graded_wrong_answer');
+    expect(classifyProbeOutcome({ verdict: 'clarify', message: 'free-form wording with no anchors at all' }).branch).toBe('graded_clarification_request');
+    expect(classifyProbeOutcome({ verdict: 'redirect', message: 'anything' }).branch).toBe('redirected_off_topic');
+  });
+
+  it('a tutor-level refusal carries the manipulation flag for the boundary probes', () => {
+    const plain = classifyProbeOutcome({ verdict: 'refuse', manipulationFlagged: false, message: 'x' });
+    expect(plain.branch).toBe('tutor_refusal');
+    expect(plain.manipulationFlagged).toBe(false);
+    const manip = classifyProbeOutcome({ verdict: 'refuse', manipulationFlagged: true, message: 'x' });
+    expect(manip.branch).toBe('tutor_refusal');
+    expect(manip.manipulationFlagged).toBe(true);
+  });
+
+  it('the constraint-gate refusal outranks everything, including a verdict', () => {
+    expect(classifyProbeOutcome({ refusal: true, refusalCategory: 'safety_floor', verdict: 'correct' }).branch).toBe('constraint_gate_refusal');
+  });
+
+  it('falls back to prose only when no verdict is present (legacy transcripts)', () => {
     expect(classifyProbeOutcome({ message: "No worries, let's explain this together. …" }).branch).toBe('graded_clarification_request');
     expect(classifyProbeOutcome({ message: 'Not quite. Let us redo …' }).branch).toBe('graded_wrong_answer');
     expect(classifyProbeOutcome({ message: "That's correct! You've completed: X" }).branch).toBe('graded_correct_answer');
+    // The live graph ack uses a period, which the old regex missed — fixed in the fallback.
+    expect(classifyProbeOutcome({ message: 'Nice work — that’s correct. Moving on.' }).branch).toBe('graded_correct_answer');
     expect(classifyProbeOutcome({ message: 'Some other reply' }).branch).toBe('other');
+  });
+
+  it('isProbeReady is actually importable where the run loop calls it', () => {
+    // It was referenced at the quiz-readiness fail-fast without being in the
+    // require list — a ReferenceError that marked students 'failed' instead of
+    // 'windowClosed' whenever probes were still pending at quiz readiness.
+    const src = read('services/simulation/simulationRunService.js');
+    expect(src).toMatch(/PROBE_MIN_TURN,\s*isProbeReady,?\s*\n?\s*\} = require\('\.\/simPersonas'\)/);
   });
 });
 

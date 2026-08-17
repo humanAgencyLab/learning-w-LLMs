@@ -14,6 +14,7 @@ Rules (critical):
 - Use the provided points/gems/progress ONLY if it naturally fits.
 - Avoid repeating the same phrasing across turns. Prefer varied tone.
 - If the user is confused/upset or asked for a direct answer, set include=false.
+- ⚠️ MATCH THE TURN'S VERDICT: if verdict is "refuse", "redirect", or "incorrect", set include=false — NEVER celebrate or cheer on a refusal, an off-topic redirect, or a wrong answer. Celebration fits "correct" and module/milestone completion only.
 - No emojis except the 💎 gem symbol (allowed sparingly).
 - No markdown headings, no bullet lists. Plain text only.`;
 
@@ -32,6 +33,7 @@ function buildUserPrompt({ session, baseMessage, context }) {
   return `CONTEXT:
 - phase: ${phase}
 - action: ${context?.action || 'unknown'}
+- verdict: ${context?.verdict || 'unknown'}
 - milestoneCompleted: ${context?.milestoneCompleted ? 'true' : 'false'}
 - moduleCompleted: ${context?.moduleCompleted ? 'true' : 'false'}
 - points: ${points}/100

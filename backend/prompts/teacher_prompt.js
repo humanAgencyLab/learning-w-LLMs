@@ -1,7 +1,7 @@
 // Teacher Prompt - Unified Teaching System
 // This prompt provides a consistent structure for ALL teaching scenarios
 
-const buildTeacherPrompt = (session, userMessage, isFollowUp = false, assessmentResult = null, milestoneInfo = null, globalInstructions = '') => {
+const buildTeacherPrompt = (session, userMessage, isFollowUp = false, assessmentResult = null, milestoneInfo = null, globalInstructions = '', turnContext = undefined) => {
   const { topic, activeModuleId, plan, profile, phase, meta, points = 0, gems = 0 } = session;
   const topicName = topic || 'the subject';
   const activeModule = plan.find(m => m.id === activeModuleId);
@@ -171,7 +171,26 @@ Ask them what topic or subject they'd like to learn about today.`;
   } else if (isFollowUp) {
     scenarioType = 'follow_up';
   }
-  
+
+  /**
+   * Graph-path turn context (2026-08 opener rework). first_teaching used to be
+   * the DEFAULT scenario — any turn that skipped the assessment node rendered
+   * the "Thank you for approving the study plan" template, so clarifications
+   * and mid-milestone messages opened with a session-start non-sequitur. With
+   * turnContext present (multi-agent path only; the legacy path passes
+   * nothing and keeps its old behavior), the template is gated to a GENUINE
+   * milestone start; every other assessment-less turn continues the
+   * conversation instead of restarting it.
+   */
+  if (turnContext && scenarioType === 'first_teaching' && !turnContext.milestoneStart) {
+    scenarioType = turnContext.messageTypeHint === 'clarification_request'
+      ? 'direct_clarification'
+      : 'continue_teaching';
+  }
+  const embeddedQuestion = (turnContext && typeof turnContext.embeddedQuestion === 'string' && turnContext.embeddedQuestion.trim())
+    ? turnContext.embeddedQuestion.trim()
+    : null;
+
   // Use effective milestone for teaching
   const milestoneToTeach = effectiveMilestone || currentMilestone;
   const milestoneTextToTeach = milestoneToTeach?.text || currentMilestone?.text || 'the current topic';
@@ -302,15 +321,12 @@ ${scenarioType === 'first_teaching' ? `
    - ⚠️⚠️⚠️ CRITICAL: Use a DIFFERENT teaching approach (different examples, different style, different angle)
    - ⚠️⚠️⚠️ CRITICAL: Reinforce the SAME concepts from "${milestoneTextToTeach}" - do NOT introduce new concepts or topics
 ` : scenarioType === 'clarification_request' ? `
-   ⚠️⚠️⚠️ CLARIFICATION REQUEST - EXPLAIN SAME MILESTONE:
-   - ⚠️⚠️⚠️ CRITICAL: Start with EXACT wording: "No worries, let's explain this together."
-   - ⚠️⚠️⚠️ GAMIFICATION (ONE short sentence at most — trim or drop it when the instructor's guidelines need the space or set a different tone): e.g."You're making progress toward **${topicName}**."
-   - ⚠️⚠️⚠️ TRANSITION: Say: "Let's redo **${milestoneTextToTeach}**."
+   ⚠️⚠️⚠️ CLARIFICATION REQUEST - ANSWER THEIR QUESTION DIRECTLY:
+   - Open with a brief, warm acknowledgment in your own words (e.g. that it's a good question to ask) — friendly, natural, no fixed script
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT start with "Not quite" or "That's incorrect" - the user asked for help, not gave a wrong answer
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT use any negative feedback - they asked for help, not gave a wrong answer
-   - ⚠️⚠️⚠️ CRITICAL: You MUST re-teach the SAME milestone "${milestoneTextToTeach}" again
-   - ⚠️⚠️⚠️ CRITICAL: Use a DIFFERENT teaching approach than before (different examples, different explanation style, different angle)
-   - ⚠️⚠️⚠️ CRITICAL: This is a RE-TEACH of "${milestoneTextToTeach}" - do NOT move to next milestone yet
+   - ⚠️⚠️⚠️ CRITICAL: ANSWER THE SPECIFIC QUESTION THEY ASKED, directly and concisely. Do NOT re-teach the whole milestone. Do NOT treat their question as an answer to the assessment question.
+   - ⚠️⚠️⚠️ CRITICAL: If their question contains a misconception, correct the misconception explicitly — don't just answer around it
    - ⚠️⚠️⚠️ CRITICAL: Stay on the SAME milestone - clarification requests NEVER advance milestones
 ` : scenarioType === 'incorrect_first' ? `
    ⚠️⚠️⚠️ INCORRECT FIRST ATTEMPT - RE-TEACH SAME MILESTONE:
@@ -333,13 +349,18 @@ ${scenarioType === 'first_teaching' ? `
 `}
 
 SECOND PARAGRAPH - TEACHING CONTENT (REQUIRED - ${teachingWordRange} words, NO "STEP 2:" LABEL):
-   ${scenarioType === 'clarification_request' || scenarioType === 'incorrect_first' ? `
+   ${scenarioType === 'clarification_request' ? `
+   - ⚠️⚠️⚠️ CRITICAL: This paragraph ANSWERS THE STUDENT'S QUESTION — 2-6 focused sentences aimed at exactly what they asked, using the milestone's concepts
+   - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT re-teach the whole milestone. They asked ONE question; answer THAT question.
+   - ⚠️⚠️⚠️ CRITICAL: If the question embeds a misconception ("isn't the domain the values that make it undefined?"), correct the misconception explicitly and explain why
+   - ⚠️⚠️⚠️ CRITICAL: Stay within "${milestoneTextToTeach}" concepts — do NOT introduce other milestones' material
+   ` : scenarioType === 'incorrect_first' ? `
    - ⚠️⚠️⚠️ CRITICAL: You MUST provide ${teachingWordRange} words of teaching content about "${milestoneTextToTeach}" (THE SAME MILESTONE) again
    - ⚠️⚠️⚠️ CRITICAL: Use a DIFFERENT teaching approach than the previous attempt - different examples, different explanation style, different angle
    - ⚠️⚠️⚠️ CRITICAL: This is a RE-TEACH of the SAME milestone - do NOT move to next milestone
    - ⚠️⚠️⚠️ CRITICAL: You MUST reinforce the SAME concepts from "${milestoneTextToTeach}" - do NOT introduce new concepts or topics
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT introduce concepts from other milestones or new topics not covered in "${milestoneTextToTeach}"
-   - ⚠️⚠️⚠️ EXAMPLE: If milestone is "Learn for loops and while loops" and user gives wrong answer or asks for clarification, explain for loops and while loops again (maybe with different examples), but do NOT introduce "do-while loops" or other new concepts
+   - ⚠️⚠️⚠️ EXAMPLE: If milestone is "Learn for loops and while loops" and user gives wrong answer, explain for loops and while loops again (maybe with different examples), but do NOT introduce "do-while loops" or other new concepts
    - ⚠️⚠️⚠️ EXAMPLE: If previous teaching used code examples, try using analogies or diagrams. If previous used step-by-step, try a different structure.
    - ⚠️⚠️⚠️ THINK: "The user didn't understand ${milestoneTextToTeach}. I need to explain the SAME concepts again, but in a different way. I will NOT introduce new topics."
    ` : scenarioType === 'incorrect_second' ? `
@@ -347,7 +368,7 @@ SECOND PARAGRAPH - TEACHING CONTENT (REQUIRED - ${teachingWordRange} words, NO "
    - ⚠️⚠️⚠️ CRITICAL: You are now teaching a COMPLETELY NEW milestone - do NOT re-teach the previous one
    - ⚠️⚠️⚠️ CRITICAL: The previous milestone is done - teach ONLY the next milestone "${milestoneTextToTeach}"
    ` : ''}
-   - ⚠️⚠️⚠️ CRITICAL: You MUST provide ${teachingWordRange} words of teaching content about "${milestoneTextToTeach}" ONLY
+   ${scenarioType === 'clarification_request' ? `- The teaching content of this turn is the DIRECT ANSWER to their question — no word minimum, stay focused on what they asked` : `- ⚠️⚠️⚠️ CRITICAL: You MUST provide ${teachingWordRange} words of teaching content about "${milestoneTextToTeach}" ONLY`}
    ${scenarioType === 'correct_move_next' ? `
    - ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT say "Now, let's explore more about ${previousMilestoneText}" or "Let's continue with ${previousMilestoneText}" - this is WRONG
    - ⚠️⚠️⚠️ CRITICAL: The previous milestone "${previousMilestoneText}" is COMPLETED. After the brief acknowledgment, do NOT teach or re-explain anything from it.
@@ -372,7 +393,10 @@ THIRD PARAGRAPH - ASSESSMENT QUESTION (REQUIRED - ONE question ending with ?, NO
      * Multiple Choice: "**What is [concept]?**\nA) Option 1\nB) Option 2\nC) Option 3\nD) Option 4" (user selects A, B, C, or D)
      * True/False: "**True or False: [statement]**" (user answers True/False)
    - Vary question types to keep learning engaging - use MCQ or T/F when the concept has clear alternatives
-   ${scenarioType === 'clarification_request' || scenarioType === 'incorrect_first' ? `
+   ${scenarioType === 'clarification_request' ? `
+   - ⚠️⚠️⚠️ CRITICAL: RESTATE THE ORIGINAL OUTSTANDING QUESTION (briefly, in bold) — the student still owes an answer to it. Do NOT invent a new question, and do NOT treat their clarification as an answer to it.
+   - ⚠️⚠️⚠️ EXAMPLE: "Now, back to the question: **[the original assessment question]**"
+   ` : scenarioType === 'incorrect_first' ? `
    - ⚠️⚠️⚠️ CRITICAL: End with EXACTLY ONE assessment question about "${milestoneTextToTeach}" (THE SAME MILESTONE)
    - ⚠️⚠️⚠️ CRITICAL: Ask a DIFFERENT question than the previous one - test understanding from a different angle
    - ⚠️⚠️⚠️ CRITICAL: This question should be about the SAME milestone you just re-taught
@@ -407,7 +431,7 @@ THIRD PARAGRAPH - ASSESSMENT QUESTION (REQUIRED - ONE question ending with ?, NO
 
 ⚠️⚠️⚠️ VALIDATION CHECKLIST (VERIFY ALL):
 ✓ Do I have the first paragraph with context (1-3 sentences, NO "STEP 1:" label)?
-✓ Do I have the second paragraph with ${teachingWordRange} words of teaching content about "${milestoneTextToTeach}" ONLY (NO "STEP 2:" label)?
+${scenarioType === 'clarification_request' ? `✓ Did I ANSWER the student's specific question directly (not re-teach the milestone), and restate the original outstanding question at the end?` : `✓ Do I have the second paragraph with ${teachingWordRange} words of teaching content about "${milestoneTextToTeach}" ONLY (NO "STEP 2:" label)?`}
 ✓ Do I have the third paragraph ending with EXACTLY ONE assessment question about "${milestoneTextToTeach}" ONLY (NO "STEP 3:" label)?
 ✓ Did I avoid using step labels like "STEP 1:", "STEP 2:", "STEP 3:" in my response?
 ✓ Did I avoid teaching topics from other milestones?
@@ -497,28 +521,37 @@ If ANY check fails, rewrite your response.
 `;
   } else if (scenarioType === 'clarification_request') {
     scenarioInstructions = `
-⚠️⚠️⚠️ CRITICAL INSTRUCTIONS FOR CLARIFICATION REQUEST:
-- Student asked for clarification or indicated they don't understand (e.g., "I don't know", "can you explain", "no idea", "help", "confused", "i forgot", "don't remember")
-- This is NOT a wrong answer - they're asking for help
+⚠️⚠️⚠️ CRITICAL INSTRUCTIONS FOR CLARIFICATION REQUEST — ANSWER, DON'T RE-TEACH:
+- The student asked a QUESTION about the material ("what do you mean by 'range'?", "is x=0 in the domain?") or said they don't understand something specific.
+- This is NOT a wrong answer, and it is NOT a request to restart the lesson.
 
-⚠️⚠️⚠️ ABSOLUTE FIRST PARAGRAPH STRUCTURE (MANDATORY - FOLLOW THIS EXACT ORDER):
-1. "No worries, let's explain this together."
-2. "You're making progress toward **${topicName}**."
-3. "Let's redo **${milestoneTextToTeach}**."
+STRUCTURE (three short parts, natural wording — no fixed script):
+1. Brief friendly acknowledgment in your own words (vary it; never a canned line).
+2. A DIRECT ANSWER to exactly what they asked — 2-6 focused sentences. If their question contains a misconception, correct it explicitly and say why it's a misconception.
+3. Return to the open assessment question: restate it briefly in bold ("Now, back to the question: **...**"). Do NOT invent a new question. Do NOT grade anything.
 
-- ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT use "Not quite" or "That's incorrect" - they asked for help, not gave a wrong answer
-- ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT use negative feedback phrases - they didn't answer incorrectly, they asked for help
-- ⚠️⚠️⚠️ YOU MUST RE-TEACH THE SAME MILESTONE "${milestoneTextToTeach}" in this SAME response
-- ⚠️⚠️⚠️ Use a DIFFERENT teaching approach (different examples, different style, different angle)
-- ⚠️⚠️⚠️ CRITICAL: Reinforce the SAME concepts from "${milestoneTextToTeach}" - do NOT introduce new concepts or topics
-- ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT introduce concepts from other milestones or new topics not covered in "${milestoneTextToTeach}"
-- ⚠️⚠️⚠️ EXAMPLE: If milestone is "Learn for loops and while loops" and user asks for clarification, explain for loops and while loops again (maybe with different examples), but do NOT introduce "do-while loops" or other new concepts
-- ⚠️⚠️⚠️ After re-teaching, ask a DIFFERENT assessment question about the SAME milestone
-- ⚠️⚠️⚠️ CRITICAL: The new question must ONLY test concepts you ACTUALLY taught in your response - do NOT ask about concepts you didn't mention
-- ⚠️⚠️⚠️ Do NOT move to next milestone yet - this is a re-teach of the current one
-- ⚠️⚠️⚠️ CRITICAL: Stay on the SAME milestone - clarification requests NEVER advance milestones
-- Follow the SAME structure: Friendly opening + Gamification + Transition → Re-teaching (${teachingWordRange} words, different approach, SAME concepts) → ONE different assessment question
-- ⚠️⚠️⚠️ ALL IN ONE MESSAGE: Friendly opening + Gamification + Transition + Re-teaching + New Question
+- ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT re-teach the whole milestone. Answer the question they asked and nothing more.
+- ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT use "Not quite" or negative feedback - they asked for help, not gave a wrong answer
+- ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT open with a session-start or plan-approval line - this is mid-conversation
+- ⚠️⚠️⚠️ CRITICAL: Stay within "${milestoneTextToTeach}" concepts; clarification requests NEVER advance milestones
+- This reply may legitimately be SHORT. A targeted 60-word answer beats a 300-word re-teach.
+`;
+  } else if (scenarioType === 'direct_clarification') {
+    scenarioInstructions = `
+⚠️⚠️⚠️ INSTRUCTIONS FOR A CLARIFICATION WITH NO OPEN QUESTION:
+- The student asked a question about the material and there is no outstanding assessment question.
+- Part 1: answer their question directly and concisely (2-6 sentences); correct any embedded misconception explicitly.
+- Part 2: connect the answer back into teaching "${milestoneTextToTeach}" — continue the lesson naturally from what they asked.
+- Part 3: end with EXACTLY ONE assessment question about "${milestoneTextToTeach}".
+- ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: no session-start or plan-approval opener — this is mid-conversation. Open by engaging with their question.
+`;
+  } else if (scenarioType === 'continue_teaching') {
+    scenarioInstructions = `
+⚠️⚠️⚠️ INSTRUCTIONS FOR CONTINUING MID-MILESTONE:
+- This is a CONTINUATION of an ongoing lesson on "${milestoneTextToTeach}" — NOT a session start.
+- ⚠️⚠️⚠️ ABSOLUTE PROHIBITION: Do NOT use the "Thank you for approving the study plan..." opener or any session-start framing. Respond to what the student actually said, in context.
+- Acknowledge their message naturally in one sentence, then teach (or continue teaching) "${milestoneTextToTeach}" with ${teachingWordRange} words of content, and end with EXACTLY ONE assessment question about it.
+- Keep conversational continuity — reference what has already been covered rather than restarting.
 `;
   } else if (scenarioType === 'incorrect_first') {
     scenarioInstructions = `
@@ -552,6 +585,20 @@ If ANY check fails, rewrite your response.
 `;
   }
   
+  // Hybrid answer+question (graph path): the grader graded the answer half;
+  // the question half must not be dropped. Weave the answer to it into the
+  // graded reply — and when the "question" is really a misconception, correct
+  // it rather than merely answering it.
+  if (embeddedQuestion && ['correct_move_next', 'correct_needs_more', 'incorrect_first', 'incorrect_second', 'follow_up'].includes(scenarioType)) {
+    scenarioInstructions += `
+⚠️⚠️⚠️ HYBRID MESSAGE — THE STUDENT ALSO ASKED A QUESTION IN THE SAME MESSAGE:
+"${embeddedQuestion}"
+- Address it EXPLICITLY in your reply (1-3 sentences), in addition to the graded feedback for their answer.
+- If it states a misconception as a question ("...but isn't the domain the values that make it undefined?"), CORRECT the misconception directly and say why — do not just answer around it.
+- Weave this into the first or second paragraph; do not let it derail the scenario structure.
+`;
+  }
+
   // Determine tutor role
   const tutorRole = topicName.toLowerCase().includes('programming') || 
                      topicName.toLowerCase().includes('code') ||

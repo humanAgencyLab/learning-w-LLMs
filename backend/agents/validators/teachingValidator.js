@@ -5,20 +5,24 @@ const MIN_WORDS = 80;
 // need headroom above that.
 const MAX_WORDS = 650;
 
-function validateTeaching(output) {
+function validateTeaching(output, opts = {}) {
   const errors = [];
 
   if (!output || typeof output !== 'object' || !output.content) {
     return { valid: false, errors: ['Output must have a content field'] };
   }
 
+  // opts.minWords lowers the floor for turns whose right answer is short —
+  // a direct clarification answer is 2-6 sentences, not a lesson.
+  const minWords = Number.isFinite(opts.minWords) ? opts.minWords : MIN_WORDS;
+
   const content = output.content;
   const wordCount = content.split(/\s+/).filter(Boolean).length;
   const questionCount = (content.match(/\?/g) || []).length;
   const hasStepLabels = /STEP\s*[123]|Context:|Teaching Content:/i.test(content);
 
-  if (wordCount < MIN_WORDS) {
-    errors.push(`Content too short: ${wordCount} words (minimum ${MIN_WORDS})`);
+  if (wordCount < minWords) {
+    errors.push(`Content too short: ${wordCount} words (minimum ${minWords})`);
   }
   if (wordCount > MAX_WORDS) {
     errors.push(`Content too long: ${wordCount} words (maximum ${MAX_WORDS})`);

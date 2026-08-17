@@ -106,9 +106,31 @@ async function convManagerNode(state) {
  * exactly the routes someone remembered to list.
  */
 function routeAfterConvManager(state) {
-  const action = state.convManagerResult?.payload?.action;
+  const payload = state.convManagerResult?.payload || {};
+  const action = payload.action;
+
+  // Message-type routing (2026-08 opener rework). solution_request and
+  // off_topic never reach grading or teaching: the route composes a
+  // deterministic reply (held refusal / gentle redirect) with structured
+  // verdict metadata. NOTE this deliberately removes solution requests from
+  // the grading path — previously "just give me the answer" was graded like
+  // an answer attempt (and could even score as passing, the A6 hole).
+  if (payload.messageType === 'solution_request' || payload.messageType === 'off_topic') {
+    return END;
+  }
+
   if (action === 'assess') return 'assessment';
-  if (action === 'teach' || action === 'clarify') return 'teaching';
+  // A clarification while a question is outstanding goes through the GRADER,
+  // not straight to teaching: RULE 0 is the authoritative judge of whether a
+  // message is really a clarification or an answer attempt with a question
+  // bolted on. (The old 'clarify' → teaching shortcut skipped assessment,
+  // which made isFollowUp=false, which made buildTeacherPrompt fall into its
+  // first_teaching DEFAULT — the mechanism behind the plan-approval template
+  // opening every clarification reply.)
+  if (action === 'clarify') {
+    return state.session?.meta?.outstandingCheck ? 'assessment' : 'teaching';
+  }
+  if (action === 'teach') return 'teaching';
   // Conversation manager may return respond_naturally/provide_guidance while a milestone is active.
   // Those must still run the teaching agent so the student gets full content + one check-in question.
   if (action === 'start_quiz') return END;
@@ -182,6 +204,20 @@ async function teachingNode(state) {
   // content that is about to be replaced.
   const willAdvance = !!(assessment?.understood && assessment?.recommendation !== 'clarify_again');
 
+  // Turn context for scenario selection (2026-08 opener rework): the
+  // plan-approval template fires ONLY on a genuine milestone start; other
+  // assessment-less turns continue the conversation. embeddedQuestion carries
+  // the question half of a hybrid answer+question message so grading and the
+  // answer can land in one reply.
+  const cmPayload = state.convManagerResult?.payload || {};
+  const turnContext = {
+    milestoneStart: !state.session?.meta?.outstandingCheck && !state.session?.meta?.milestoneBeingTaught,
+    messageTypeHint: cmPayload.messageType || null,
+    embeddedQuestion: typeof cmPayload.embeddedQuestion === 'string' && cmPayload.embeddedQuestion.trim()
+      ? cmPayload.embeddedQuestion.trim()
+      : null,
+  };
+
   const result = await runTeachingAgent({
     session: state.session,
     userMessage: state.userMessage,
@@ -195,6 +231,7 @@ async function teachingNode(state) {
     // to after the study window.
     globalInstructions: state.globalInstructions,
     streamCallback: willAdvance ? null : state.streamCallback,
+    turnContext,
   });
   return { teachingResult: result };
 }
