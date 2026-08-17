@@ -426,6 +426,14 @@ const SessionSchema = new mongoose.Schema({
       type: mongoose.Schema.Types.Mixed,
       default: {}
     },
+    // Consecutive non-advancing clarify/correct_retry turns (2026-08 loop
+    // hardening): drives the composer's concreteness escalation and the hard
+    // cap on teaching re-emissions. Reset on any advancing turn.
+    clarifyStreak: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
     milestonesToReview: {
       type: [Number],
       default: []

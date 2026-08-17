@@ -22,7 +22,7 @@ const { useMultiAgent, useStreaming } = require('../agents/framework/featureFlag
 const { runIntentAgent } = require('../agents/intentAgent');
 const { runStudyGraph } = require('../agents/graph/runGraph');
 const { runEngagementAgent } = require('../agents/engagementAgent');
-const { deriveFlowAction, composeTutorTurn, extractTrailingQuestion } = require('../agents/turnComposerAgent');
+const { deriveFlowAction, composeTutorTurn, extractTrailingQuestion, recoverOutstanding } = require('../agents/turnComposerAgent');
 const { evaluateConstraints, buildRefusalMessage, recordRefusal } = require('../services/constraintGateService');
 
 // Extract question from assistant response
@@ -551,6 +551,7 @@ Return ONLY valid JSON in this format:
           session.meta.milestoneBeingTaught = false;
           session.meta.outstandingCheck = null;
           session.meta.countSinceLastCheck = 0;
+          session.meta.clarifyStreak = 0;
           session.phase = 'quizzing';
           await session.save();
 
@@ -847,6 +848,7 @@ Return ONLY valid JSON in this format:
         session.meta.milestoneBeingTaught = false;
         session.meta.outstandingCheck = null;
         session.meta.countSinceLastCheck = 0;
+        session.meta.clarifyStreak = 0;
         await session.save();
 
         return res.json({
@@ -905,6 +907,7 @@ Return ONLY valid JSON in this format:
           session.meta.milestoneBeingTaught = false;
           session.meta.outstandingCheck = null;
           session.meta.countSinceLastCheck = 0;
+          session.meta.clarifyStreak = 0;
           session.phase = 'learning';
           
           // Reset all milestones in this module to incomplete
@@ -1027,6 +1030,7 @@ Return ONLY valid JSON in this format:
           session.meta.milestoneBeingTaught = false;
           session.meta.outstandingCheck = null;
           session.meta.countSinceLastCheck = 0;
+          session.meta.clarifyStreak = 0;
           session.phase = 'learning';
           
           // Reset all milestones in this module to incomplete
@@ -1290,6 +1294,7 @@ Return ONLY valid JSON in this format:
           session.meta.milestoneBeingTaught = false;
           session.meta.outstandingCheck = null;
           session.meta.countSinceLastCheck = 0;
+          session.meta.clarifyStreak = 0;
           session.phase = 'learning';
           
           // Reset retry counts for new module
@@ -1637,7 +1642,7 @@ Return ONLY valid JSON in this format:
              * start_quiz exits earlier; gate/solution refusals exit on their
              * own branches. Everything reaching here is a teaching-ish flow.
              */
-            const flowAction = deriveFlowAction({
+            let flowAction = deriveFlowAction({
               refused: false,
               startQuiz: false,
               moduleJustCompleted,
@@ -1645,6 +1650,54 @@ Return ONLY valid JSON in this format:
               assessment: gs.assessmentResult?.payload || assessment,
               wasMilestoneStart,
             });
+
+            /**
+             * CLARIFY HARDENING (2026-08 loop fix). A clarification sent
+             * mid-teaching must never restart the milestone. The 36-message
+             * loop: outstandingCheck was lost → wasMilestoneStart looked true
+             * → every clarification became a fresh first_teach re-dump, 16
+             * turns in a row. If the classifier says clarification_request,
+             * the grader didn't run (no outstanding question to grade), and a
+             * prior teaching turn exists for THIS milestone, the flow is
+             * clarify — and the anchor is recovered from the prior turn's
+             * structured question part, else the milestone objective itself.
+             * A genuine first message of a session phrased as a question
+             * (no prior teaching turn) still teaches first. Grading and
+             * advancement are untouched: nothing here marks milestones,
+             * touches retry counts, or changes any assessment payload.
+             */
+            let forcedClarify = false;
+            if ((flowAction === 'first_teach' || flowAction === 'continue')
+              && cm?.messageType === 'clarification_request') {
+              const priorTeachingTurn = [...(session.messages || [])].reverse().find((m) =>
+                m.role === 'assistant' && m.metadata?.graphPath
+                && (m.metadata.milestoneIndexAtSend ?? milestoneIdx) === milestoneIdx
+                && (!session.activeModuleId || !m.metadata.moduleIdAtSend || String(m.metadata.moduleIdAtSend) === String(session.activeModuleId))
+                && ['first_teach', 'advance_milestone', 'clarify', 'correct_retry', 'continue'].includes(m.metadata.flowAction));
+              if (priorTeachingTurn) {
+                flowAction = 'clarify';
+                forcedClarify = true;
+                if (!session.meta.outstandingCheck) {
+                  const recovered = recoverOutstanding(session) || currentMilestone?.text || null;
+                  if (recovered) {
+                    session.meta.outstandingCheck = recovered;
+                    session.meta.milestoneBeingTaught = true;
+                  }
+                }
+              }
+            }
+
+            // Repetition guard bookkeeping: consecutive non-advancing
+            // clarify/retry turns. Advancing or module-completing turns reset
+            // it; the composer escalates concreteness at >=2 and stops
+            // re-emitting teaching entirely at >=4.
+            const clarifyTurn = flowAction === 'clarify' || flowAction === 'correct_retry'
+              || (flowAction === 'continue' && cm?.messageType === 'clarification_request');
+            if (clarifyTurn) {
+              session.meta.clarifyStreak = (session.meta.clarifyStreak || 0) + 1;
+            } else {
+              session.meta.clarifyStreak = 0;
+            }
 
             // Embedded follow-up on a graded-ANSWER turn (hybrid). The
             // classifier's embeddedQuestion is LLM output and populates
@@ -1702,7 +1755,7 @@ Return ONLY valid JSON in this format:
                       : (gs.assessmentResult?.payload || assessment).understood && (gs.assessmentResult?.payload || assessment).recommendation !== 'clarify_again'
                         ? 'correct'
                         : (gs.assessmentResult?.payload || assessment).understood ? 'clarify' : 'incorrect')
-                  : (wasMilestoneStart ? 'start' : 'neutral'),
+                  : (forcedClarify ? 'clarify' : (wasMilestoneStart ? 'start' : 'neutral')),
                 assessment: gs.assessmentResult?.payload || assessment || null,
                 embeddedQuestion: embeddedQ,
                 forceCompleted: forceCompletedThisTurn,
@@ -1711,8 +1764,27 @@ Return ONLY valid JSON in this format:
                 streamCallback: graphStreamCallback,
               });
               composedParts = composed.parts;
-              assistantResponse = composed.message
-                || (advancedToNextMilestone ? 'Nice work — let’s keep going.' : (cm?.response || 'Let’s keep going — tell me where you’d like to focus.'));
+              if (composed.message) {
+                assistantResponse = composed.message;
+              } else {
+                // Composer came back empty (API error / empty prose). The old
+                // bare stub ("Let's keep going — tell me where you'd like to
+                // focus.") dropped the thread entirely — no question, no
+                // anchor, so the next turn looked like a milestone start. Keep
+                // the stub short but carry the outstanding question so the
+                // session cannot lose its anchor on a degraded turn.
+                const fallbackBase = advancedToNextMilestone
+                  ? 'Nice work — let’s keep going.'
+                  : (cm?.response || 'Let’s keep going — tell me where you’d like to focus.');
+                const outstandingQ = session.meta?.outstandingCheck;
+                if (outstandingQ && ['first_teach', 'advance_milestone', 'clarify', 'correct_retry', 'continue'].includes(flowAction)) {
+                  const anchorLine = `Now, back to the question: **${outstandingQ}**`;
+                  assistantResponse = `${fallbackBase}\n\n${anchorLine}`;
+                  composedParts = { intro: '', body: fallbackBase, question: anchorLine };
+                } else {
+                  assistantResponse = fallbackBase;
+                }
+              }
             }
 
             /**
@@ -1727,6 +1799,9 @@ Return ONLY valid JSON in this format:
              *   start     — genuine milestone/session start turn
              *   neutral   — everything else (continuation, small talk)
              * ('refuse'/'redirect'/'action' are set on their own branches.)
+             * A forced clarify (hardening above: ungraded clarification
+             * mid-teaching) is verdict 'clarify' — same meaning, and the
+             * decision was made deterministically above, not here.
              */
             const finalAssessment = gs.assessmentResult?.payload || assessment;
             let turnVerdict;
@@ -1735,6 +1810,8 @@ Return ONLY valid JSON in this format:
               else if (finalAssessment.understood && finalAssessment.recommendation !== 'clarify_again') turnVerdict = 'correct';
               else if (finalAssessment.understood) turnVerdict = 'clarify';
               else turnVerdict = 'incorrect';
+            } else if (forcedClarify) {
+              turnVerdict = 'clarify';
             } else if (wasMilestoneStart) {
               turnVerdict = 'start';
             } else {
@@ -1783,9 +1860,12 @@ Return ONLY valid JSON in this format:
             // the single opener + optional one gamification line itself, which
             // is what stops the stacking/duplication.
             const milestoneIndexAtSend = session.meta?.currentMilestoneIndex ?? 0;
+            // milestoneIndexAtSend is per-module; moduleIdAtSend disambiguates it
+            // so anchor recovery can never resurrect a previous module's question.
+            const moduleIdAtSend = session.activeModuleId || null;
             session.messages.push(
               { id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: cm?.intent || 'learning', phaseAtSend: session.phase, graphPath: true, messageType: turnMessageType, milestoneIndexAtSend } },
-              { id: `msg_${Date.now() + 1}`, role: 'assistant', content: assistantResponse, timestamp: new Date(), metadata: { intent: cm?.action || 'teach', phaseAtSend: session.phase, graphPath: true, hadCheckInReply: !!extractedQ, messageType: turnMessageType, verdict: turnVerdict, flowAction, ...(composedParts ? { parts: composedParts } : {}), manipulationFlagged: !!cm?.manipulationFlagged, milestoneIndexAtSend } },
+              { id: `msg_${Date.now() + 1}`, role: 'assistant', content: assistantResponse, timestamp: new Date(), metadata: { intent: cm?.action || 'teach', phaseAtSend: session.phase, graphPath: true, hadCheckInReply: !!extractedQ, messageType: turnMessageType, verdict: turnVerdict, flowAction, ...(composedParts ? { parts: composedParts } : {}), manipulationFlagged: !!cm?.manipulationFlagged, milestoneIndexAtSend, moduleIdAtSend } },
             );
             await session.save();
 
@@ -2531,6 +2611,7 @@ Return ONLY valid JSON in this format:
           // Clear the old outstanding question - it was answered
           session.meta.outstandingCheck = null;
           session.meta.countSinceLastCheck = 0;
+          session.meta.clarifyStreak = 0;
           console.log('Cleared outstanding question after correct answer and milestone completion', {
             sessionId,
             previousQuestion: previousOutstandingCheck?.substring(0, 100) || 'none',

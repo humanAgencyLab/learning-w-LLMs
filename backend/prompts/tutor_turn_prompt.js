@@ -77,6 +77,15 @@ function buildTurnPrompt({
   light = false,
   bodyWordTarget,
   bodyWordCap,
+  // Loop hardening (2026-08): consecutive non-advancing clarify/retry turns,
+  // and whether the latest message is a near-duplicate of the previous one.
+  clarifyStreak = 0,
+  repeatedClarification = false,
+  // True when the anchor is the milestone OBJECTIVE (last-resort recovery),
+  // not a real assessment question — the answer guardrail must not fire then,
+  // or the clarify turn is forbidden from explaining the content it exists
+  // to clarify.
+  outstandingIsObjective = false,
 }) {
   const guidance = (light && flowAction === 'correct_retry')
     ? FLOW_GUIDANCE.correct_retry_light
@@ -90,8 +99,12 @@ function buildTurnPrompt({
     ? `\nYou MAY add at most ONE short encouragement line (e.g. progress toward **${topicName}** — ${Math.max(0, 100 - (points || 0))} points to go). At most one, and only because this is a positive turn. Never add it on a wrong answer, a refusal, or a redirect.`
     : `\nDo NOT add any gamification/encouragement line on this turn — it would contradict the situation.`;
 
-  const guardBlock = (flowAction === 'clarify' || flowAction === 'correct_retry') && outstandingCheck
+  const guardBlock = (flowAction === 'clarify' || flowAction === 'correct_retry') && outstandingCheck && !outstandingIsObjective
     ? `\n⚠️⚠️⚠️ ACTIVE ASSESSMENT QUESTION (do NOT state its answer anywhere in your message):\n"${outstandingCheck}"\n`
+    : '';
+
+  const streakBlock = (flowAction === 'clarify' || flowAction === 'correct_retry') && (clarifyStreak >= 2 || repeatedClarification)
+    ? `\n⚠️⚠️⚠️ REPEATED CLARIFICATIONS (${clarifyStreak} non-advancing turn${clarifyStreak === 1 ? '' : 's'} in a row${repeatedClarification ? '; their latest message is nearly identical to their previous one' : ''}): your earlier answers did not land. Do NOT re-explain the concept in general terms and do NOT repeat your previous wording. Give the MOST CONCRETE possible answer to their exact question — name the specific thing they should do or include, a tiny worked example is ideal — in at most 3 sentences. Then warmly and explicitly invite them to attempt the assessment question as their next message. If they are asking what their answer should include, list plainly and literally what to include.`
     : '';
 
   const hybridBlock = embeddedQuestion
@@ -118,7 +131,7 @@ Turn verdict (already decided upstream — your message must agree with it): ${v
 
 ${guidance}
 ${studentBlock}
-${guardBlock}${hybridBlock}${shownBlock}${capRule}${gamRule}
+${guardBlock}${streakBlock}${hybridBlock}${shownBlock}${capRule}${gamRule}
 
 The student just said:
 "${studentMessage}"

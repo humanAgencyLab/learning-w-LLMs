@@ -5,6 +5,7 @@ const { requireRole } = require('../middleware/roleAuth');
 const Course = require('../models/Course');
 const InstructorChatSession = require('../models/InstructorChatSession');
 const { runInstructorInsights } = require('../agents/instructorInsightsAgent');
+const { runAgent } = require('../agents/framework/baseAgent');
 
 const router = express.Router();
 
@@ -50,6 +51,77 @@ const STUDY_PROBE_REPLY =
   'Across the course, Methods has the lowest first-attempt pass rate at 63%, so that is where students have struggled most. '
   + 'If you are planning a reteach for next week, I would prioritize Methods — a focused review of defining methods, '
   + 'parameters, and return values should reach the students who had the hardest time.';
+
+/**
+ * LLM intent check behind the regex fast path (2026-08 robustness pass). The
+ * regex needs a literal topic-word + weakness-word pair, so natural phrasings
+ * like "where should I focus my review session?" or non-native phrasings
+ * ("which part is students most failing?") slipped to the real agent and the
+ * probe stayed dark. The regex STAYS as the deterministic fast path — the
+ * suggested chip and the pinned phrasings never depend on a model call — and
+ * this classifier only runs for allowlisted study courses on messages the
+ * regex did not match. Fails CLOSED (returns false → real agent): a
+ * classifier outage can never canned-reply a question the probe shouldn't
+ * touch, and the chip is protected by the fast path.
+ *
+ * The category boundary preserves the study's built-in contradiction: the
+ * canned reply claims Methods is weakest, while the real agent's
+ * hardest-MILESTONE answer says Number Systems — so milestone-difficulty
+ * questions, at-risk-student questions, and per-student summaries must reach
+ * the real agent.
+ */
+const PROBE_INTENT_SYSTEM_PROMPT = `You classify ONE question an instructor asked an analytics assistant about their course. Reply with JSON: {"category": "topic_weakness" | "other"}.
+
+"topic_weakness" — the question asks, in ANY phrasing (including verbose, reordered, or non-native English):
+- which TOPIC / unit / module / subject / content area / material / concept students are weakest at, struggle with most, or fail most;
+- which topic has the lowest pass rate or worst performance;
+- what content to reteach, re-explain, review, or focus a review/revision session on;
+- what students as a group are struggling with most (course-content sense, no specific student named).
+
+"other" — EVERYTHING else, including:
+- which MILESTONE is hardest / milestone difficulty ranking (milestones are not topics);
+- which STUDENTS are at risk, struggling, or need help (asks about people, not content);
+- summarize / tell me about a specific named student;
+- KPIs, enrollment, engagement, quiz scores, or anything not a topic-weakness/reteach question.
+
+If the question mixes both (e.g. "which students struggle and with what topic"), choose "other" when it asks about specific people or milestones, "topic_weakness" only when the subject is clearly course content areas. When unsure: "other".`;
+
+async function classifyProbeIntentLLM(message) {
+  try {
+    const out = await runAgent({
+      taskName: 'probe_intent',
+      systemPrompt: PROBE_INTENT_SYSTEM_PROMPT,
+      userPrompt: `Question: "${String(message).slice(0, 500)}"`,
+      maxTokens: 60,
+      temperature: 0,
+      timeoutMs: 4000,
+    });
+    return out?.category === 'topic_weakness';
+  } catch (e) {
+    console.warn('[study-probe] probe_intent classifier failed — falling through to the real agent', { error: e.message });
+    return false;
+  }
+}
+
+/**
+ * DETERMINISTIC exclusion: a milestone-difficulty question can never fire the
+ * probe, classifier or no classifier — the study's negative control ("What's
+ * the hardest milestone?") and its built-in contradiction depend on it
+ * reaching the real agent every single time.
+ */
+function isProbeMilestoneQuestion(message) {
+  const m = String(message || '').toLowerCase();
+  return /\bmilestones?\b/.test(m) && !/\btopic|unit|module|subject|area\b/.test(m);
+}
+
+/**
+ * Cue prefilter for the classifier: only consult it when the message carries
+ * at least one weakness/review cue. Ordinary real-agent questions ("Summarize
+ * Maya's progress", "Which 3 students are most at risk?", KPI questions) have
+ * no cue and skip the classifier entirely — zero added latency on the paths
+ * participants use most.
+ */
+const PROBE_CUE_RE = /\b(re-?teach\w*|review\w*|revis\w*|re-?explain\w*|struggl\w*|weak\w*|lowest|worst|hard\w*|difficult\w*|fail\w*|pass\s*rates?|behind|lagging|focus\w*|catch\s*up|cover\w*\s+again|go\s+over|needs?\s+(?:help|attention|work)|help\s+(?:them\s+)?with)\b/i;
 
 // Resolve and validate the optional course scope. Returns the ObjectId or null.
 async function resolveCourseScope(instructorId, rawCourseId) {
@@ -128,13 +200,21 @@ router.post('/', requireAuth, requireRole('instructor'), async (req, res, next) 
     // ownership pins the same course the explicit scope would. Without this,
     // a scope-less request silently routed to the real agent, which is
     // exactly how the probe stayed dark on the participant path.
+    // Allowlist FIRST, then the deterministic regex fast path, then the LLM
+    // intent check — so non-study instructors never trigger a classifier
+    // call, and the chip/pinned phrasings never depend on one.
     let probeHit = false;
-    if (STUDY_PROBE_ENABLED && !studentId && isProbeTopicWeaknessIntent(trimmed)) {
+    if (STUDY_PROBE_ENABLED && !studentId) {
+      let allowlisted = false;
       if (scope) {
-        probeHit = STUDY_PROBE_COURSE_SET.has(scope.toString());
+        allowlisted = STUDY_PROBE_COURSE_SET.has(scope.toString());
       } else {
         const owned = await Course.find({ instructorId: req.userId }).select('_id').lean();
-        probeHit = owned.some((c) => STUDY_PROBE_COURSE_SET.has(c._id.toString()));
+        allowlisted = owned.some((c) => STUDY_PROBE_COURSE_SET.has(c._id.toString()));
+      }
+      if (allowlisted && !isProbeMilestoneQuestion(trimmed)) {
+        probeHit = isProbeTopicWeaknessIntent(trimmed)
+          || (PROBE_CUE_RE.test(trimmed) && await classifyProbeIntentLLM(trimmed));
       }
     }
     const { reply, toolCalls, iterations } = probeHit
@@ -199,3 +279,7 @@ module.exports = router;
 // Exported for unit tests (probe trigger precision matters: a false positive
 // hijacks a real question; a false negative goes dark for a participant).
 module.exports.isProbeTopicWeaknessIntent = isProbeTopicWeaknessIntent;
+module.exports.classifyProbeIntentLLM = classifyProbeIntentLLM;
+module.exports.PROBE_INTENT_SYSTEM_PROMPT = PROBE_INTENT_SYSTEM_PROMPT;
+module.exports.isProbeMilestoneQuestion = isProbeMilestoneQuestion;
+module.exports.PROBE_CUE_RE = PROBE_CUE_RE;

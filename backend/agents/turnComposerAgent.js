@@ -346,6 +346,143 @@ function anchorProseQuestion(message, outstandingCheck, milestoneText) {
   return text;
 }
 
+/** Strip the re-anchor prefix + bold wrapping from a stored/recovered question. */
+function stripAnchorPrefix(q) {
+  return String(q || '').replace(/^now,?\s*back to the question:\s*/i, '').replace(/^\*\*|\*\*$/g, '').trim();
+}
+
+/**
+ * Outstanding-question recovery (2026-08 loop hardening). When
+ * meta.outstandingCheck is missing — prior extraction failed, a fallback turn
+ * carried no question, a restart wiped it — the question is almost always
+ * still present in a prior assistant turn's structured parts for the SAME
+ * milestone. Recover it instead of letting a clarification degrade into a
+ * fresh first_teach re-dump: that degradation is exactly the 36-message loop
+ * the boundary sim produced on "Lists & Dynamic Arrays".
+ */
+function recoverOutstanding(session) {
+  const idx = session?.meta?.currentMilestoneIndex ?? 0;
+  const moduleId = session?.activeModuleId ? String(session.activeModuleId) : null;
+  const msgs = session?.messages || [];
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.role !== 'assistant') continue;
+    const md = m.metadata || {};
+    // A complete_module turn's question part is the quiz CTA, not a check.
+    if (md.flowAction === 'complete_module') continue;
+    // milestoneIndexAtSend is PER-MODULE, so module identity must match too —
+    // module A's milestone-0 question must not resurface on module B's
+    // milestone 0. Messages predating the moduleIdAtSend stamp pass through
+    // (legacy sessions; the index filter is all they have).
+    if ((md.milestoneIndexAtSend ?? idx) !== idx) continue;
+    if (moduleId && md.moduleIdAtSend && String(md.moduleIdAtSend) !== moduleId) continue;
+    const q = md.parts?.question;
+    if (typeof q === 'string' && q.trim()) return stripAnchorPrefix(q);
+  }
+  return null;
+}
+
+// Lesson-style openers a light turn must never lead with — their presence is
+// the signature of a milestone re-dump ("We're starting the Array-based list
+// milestone...") rather than a direct answer.
+const LESSON_OPENER_RE = /^\s*(let'?s (?:begin|start|work on|implement|tackle)|we(?:'re| are)\s+(?:starting|beginning|now)|now we(?:'ll| will)\b|this (?:milestone|session|module) (?:covers|introduces|focuses)|welcome to|we'll start)/i;
+
+/**
+ * HARD GUARD for light (clarify/correct_retry) bodies: never a milestone
+ * teaching block. Strips a lesson-style opening sentence, caps paragraphs at
+ * two, and truncates at the word cap keeping the FRONT (a clarify answer
+ * leads with the answer, so the front is the part that matters). Unlike
+ * enforceWordCap this has no 1.6x slack — light turns are short by contract.
+ */
+function hardCapLightBody(body, cap) {
+  let text = String(body || '').trim();
+  if (!text) return text;
+  let paras = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  if (paras.length > 2) paras = paras.slice(0, 2);
+  const firstSentences = paras[0].split(/(?<=[.!?])\s+/);
+  if (firstSentences.length > 1 && LESSON_OPENER_RE.test(firstSentences[0])) {
+    paras[0] = firstSentences.slice(1).join(' ');
+  }
+  text = paras.join('\n\n').trim();
+  if (!cap) return text;
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length <= cap) return text;
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const acc = [];
+  let count = 0;
+  for (const s of sentences) {
+    const w = s.split(/\s+/).filter(Boolean).length;
+    if (acc.length && count + w > cap) break;
+    acc.push(s);
+    count += w;
+  }
+  return acc.join(' ').trim();
+}
+
+/**
+ * Near-identical repeat detection: token-set Jaccard of the current message
+ * against the previous two user messages. The looping boundary student sent
+ * 17 rephrasings of the same scope question — each pair well above 0.6.
+ * Called BEFORE the current message is pushed to session.messages.
+ */
+function isRepeatedUserMessage(session, userMessage) {
+  const tokens = (s) => new Set(normalize(s).split(' ').filter((w) => w.length >= 3));
+  const cur = tokens(userMessage);
+  if (cur.size < 3) return false;
+  const priorUsers = (session?.messages || []).filter((m) => m.role === 'user').slice(-2);
+  for (const m of priorUsers) {
+    const prev = tokens(m.content);
+    if (!prev.size) continue;
+    let inter = 0;
+    for (const w of cur) if (prev.has(w)) inter += 1;
+    const union = new Set([...cur, ...prev]).size;
+    if (union && inter / union >= 0.6) return true;
+  }
+  return false;
+}
+
+/**
+ * Synthesize {intro:'', body, question} parts from a prose message so
+ * question-bearing turns still card their question on the fallback path.
+ *
+ * The heuristic is deliberately CONSERVATIVE because whatever it cards
+ * becomes the graded outstandingCheck: a false positive arms the grader on a
+ * turn that carried no question (adversarial review caught "Which is why the
+ * doubling strategy wins." being carded). So: a last paragraph is a question
+ * only when it ends with '?', carries the anchor phrasing, or restates the
+ * outstanding question — and the no-'?' imperative-check phrasings
+ * ("In your own words, ..." — gpt-oss's habit) count ONLY on question-bearing
+ * flows, never on 'continue' (whose trailing CTA "Tell me when you're
+ * ready..." is not a check; pre-hardening, continue turns only armed the
+ * grader via a literal '?', and that must stay true).
+ */
+const QUESTION_BEARING_FLOWS = ['first_teach', 'advance_milestone', 'clarify', 'correct_retry'];
+function synthesizeProseParts(message, flowAction, outstanding) {
+  if (!QUESTION_BEARING_FLOWS.includes(flowAction) && flowAction !== 'continue') return null;
+  const paras = String(message || '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  if (paras.length < 2) return null;
+  const last = paras[paras.length - 1];
+  const stripped = last.replace(/\*\*/g, '').trim();
+  const outstandingCore = stripAnchorPrefix(outstanding);
+  let looksQuestion = /\?$/.test(stripped)
+    || /^now,?\s*back to the question:/i.test(stripped)
+    || (!!outstandingCore && stripped.includes(outstandingCore));
+  if (!looksQuestion && QUESTION_BEARING_FLOWS.includes(flowAction)) {
+    looksQuestion = /^(in your own words|explain|describe|walk me through)\b/i.test(stripped);
+  }
+  if (!looksQuestion) return null;
+  return { intro: '', body: paras.slice(0, -1).join('\n\n'), question: last };
+}
+
+/** Streak-cap collapse: after repeated non-advancing turns, stop re-emitting
+ * teaching entirely — two sentences, then the anchored question. Fires on a
+ * genuine repeat loop (streak>=4 with a near-identical message) or as an
+ * absolute backstop (streak>=6) so distinct, productive questions aren't
+ * punished at 4. */
+function collapseToTwoSentences(text) {
+  return String(text || '').split(/(?<=[.!?])\s+/).slice(0, 2).join(' ').trim();
+}
+
 /** Keep an intro to a single sentence (no stacked openers). */
 function firstSentence(s) {
   const t = String(s || '').trim();
@@ -400,6 +537,22 @@ async function composeTutorTurn({
   const light = LIGHT_FLOWS.includes(flowAction);
   const bodyCap = structured ? bodyCapFor(flowAction, wordCap) : null;
 
+  // ANCHOR RECOVERY (2026-08 loop hardening): a light turn must always have a
+  // question to anchor to. If meta.outstandingCheck is gone, recover it from a
+  // prior turn's structured question part; failing that, the milestone
+  // objective itself is the anchor. Never compose a clarify with no anchor.
+  let outstanding = session?.meta?.outstandingCheck || '';
+  if (!outstanding && light) outstanding = recoverOutstanding(session) || milestoneText || '';
+  // When the anchor is the milestone OBJECTIVE (last-resort recovery), the
+  // "do not state the answer" guardrail must not fire — it would forbid the
+  // clarify turn from explaining the very content being clarified.
+  const outstandingIsObjective = !!outstanding && normalize(outstanding) === normalize(milestoneText);
+
+  // Repetition escalation: streak is maintained by the route on session.meta;
+  // near-identical detection compares against the prior two user messages.
+  const clarifyStreak = session?.meta?.clarifyStreak || 0;
+  const repeatedClarification = light && isRepeatedUserMessage(session, userMessage);
+
   const prompt = buildTurnPrompt({
     topicName: session?.topic || 'the subject',
     moduleTitle: activeModule?.title || '',
@@ -408,7 +561,7 @@ async function composeTutorTurn({
     flowAction,
     verdict,
     forceCompleted: !!forceCompleted,
-    outstandingCheck: session?.meta?.outstandingCheck || '',
+    outstandingCheck: outstanding,
     studentMessage: userMessage,
     embeddedQuestion: embeddedQuestion || null,
     adaptation,
@@ -420,9 +573,10 @@ async function composeTutorTurn({
     light,
     bodyWordTarget: structured && !light ? Math.min(TEACH_BODY_TARGET, bodyCap) : undefined,
     bodyWordCap: bodyCap || undefined,
+    clarifyStreak,
+    repeatedClarification,
+    outstandingIsObjective,
   });
-
-  const outstanding = session?.meta?.outstandingCheck || '';
   let raw;
   try {
     // Structured turns generate JSON (API-enforced via response_format), so
@@ -466,6 +620,9 @@ async function composeTutorTurn({
           gems: session?.gems || 0,
           alreadyShownSummaries: alreadyShownSummaries(session),
           structured: false,
+          clarifyStreak,
+          repeatedClarification,
+          outstandingIsObjective,
         });
         raw = await callTeacherAPI(prosePrompt, 1400, session, null, globalInstructions || '');
       } catch (regenErr) {
@@ -481,6 +638,16 @@ async function composeTutorTurn({
       // Dedup body against the intro and prior-shown paragraphs; cap the body.
       let body = dedup(parsed.body, [...priorParas, normalize(intro)]);
       body = enforceWordCap(body, bodyCap);
+      // HARD GUARD: a light turn can never carry a milestone teaching block —
+      // strip lesson openers, cap paragraphs, front-truncate at the word cap.
+      // At the streak cap the body collapses to two sentences: after four
+      // non-advancing turns the tutor stops re-emitting teaching entirely.
+      if (light) {
+        body = hardCapLightBody(body, bodyCap);
+        if ((clarifyStreak >= 4 && repeatedClarification) || clarifyStreak >= 6) {
+          body = collapseToTwoSentences(body);
+        }
+      }
       let question = parsed.question;
       // complete_module: guarantee the quiz call-to-action is present.
       if (flowAction === 'complete_module' && !/start\s*quiz/i.test(question)) {
@@ -511,7 +678,13 @@ async function composeTutorTurn({
   }
 
   let message = dedup(raw, priorParas);
-  message = enforceWordCap(message, wordCap);
+  // Light flows get the strict light cap even on the prose fallback (the
+  // instructor cap alone left a fallback clarify entirely uncapped); other
+  // flows keep the instructor cap.
+  message = light ? hardCapLightBody(message, bodyCap) : enforceWordCap(message, wordCap);
+  if (light && ((clarifyStreak >= 4 && repeatedClarification) || clarifyStreak >= 6)) {
+    message = collapseToTwoSentences(message);
+  }
   // Prose clarify turns: answer the tangent, but END anchored to the
   // milestone's own question — an evasive student cannot steer the
   // assessment off the objective indefinitely.
@@ -526,7 +699,10 @@ async function composeTutorTurn({
       ? [firstSentence(rescued.intro), rescued.body, rescued.question].filter(Boolean).join('\n\n').trim()
       : message.replace(/\\n/g, '\n').replace(/^[{[\s]+|[}\]\s]+$/g, '').replace(/"(intro|body|question)"\s*:\s*"?/g, '').replace(/",?\s*$/gm, '').trim();
   }
-  return { message: message || String(raw || '').trim(), parts: null, flowAction };
+  // Even prose turns card their question when one is recognizable — the
+  // renderer and the outstanding-check storage both key on parts.question.
+  const finalMessage = message || String(raw || '').trim();
+  return { message: finalMessage, parts: synthesizeProseParts(finalMessage, flowAction, outstanding), flowAction };
 }
 
 module.exports = {
@@ -538,6 +714,9 @@ module.exports = {
   extractTrailingQuestion,
   computeAdaptation,
   composeTutorTurn,
+  recoverOutstanding,
+  isRepeatedUserMessage,
+  stripAnchorPrefix,
   // exported for unit tests
   _parseParts: parseParts,
   _repairJsonText: repairJsonText,
@@ -549,4 +728,8 @@ module.exports = {
   _firstSentence: firstSentence,
   _dedup: dedup,
   _enforceWordCap: enforceWordCap,
+  _hardCapLightBody: hardCapLightBody,
+  _synthesizeProseParts: synthesizeProseParts,
+  _collapseToTwoSentences: collapseToTwoSentences,
+  _ANCHOR_LINE: ANCHOR_LINE,
 };

@@ -17,6 +17,7 @@ const TASK_MODEL_MAP = {
   topic_draft_modify: 'expensive',
   struggle_summary: 'cheap',
   instructor_insights: 'expensive',
+  probe_intent: 'cheap',
 };
 
 function getModelForTask(taskName) {
