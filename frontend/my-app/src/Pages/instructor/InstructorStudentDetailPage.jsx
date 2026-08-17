@@ -141,7 +141,7 @@ function MessagesViewer({ courseId, sessionId }) {
                     : 'bg-transparent text-gray-900'
                 }`}>
                   {m.role === 'assistant' ? (
-                    <MessageContent content={m.content} isLastMessage={idx === messages.length - 1} />
+                    <MessageContent content={m.content} parts={m.metadata?.parts} isLastMessage={idx === messages.length - 1} />
                   ) : (
                     <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
                   )}

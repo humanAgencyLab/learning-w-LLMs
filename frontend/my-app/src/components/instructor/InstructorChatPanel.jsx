@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation, matchPath } from 'react-router-dom';
 import * as chatApi from '../../lib/instructorChatApi';
+import AssistantMarkdown from './AssistantMarkdown';
 
 /**
  * Course/student scope for the floating panel, derived from the URL.
@@ -54,13 +55,16 @@ function Message({ role, content, toolCalls }) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+        className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm leading-relaxed ${
           isUser
-            ? 'bg-brand-tint text-ink-900'
+            ? 'whitespace-pre-wrap bg-brand-tint text-ink-900'
             : 'bg-surface-chip text-ink-600'
         }`}
       >
-        {content}
+        {/* Assistant replies go through the markdown renderer (which handles
+            its own line breaks — no pre-wrap, or lists would double-space);
+            user messages stay raw pre-wrapped text. */}
+        {isUser ? content : <AssistantMarkdown content={content} />}
         {!isUser && <ToolCallSummary toolCalls={toolCalls} />}
       </div>
     </div>

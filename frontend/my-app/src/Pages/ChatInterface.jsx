@@ -1086,8 +1086,9 @@ function ChatInterface() {
 message.role === 'user' ? 'text-sm' : 'text-base'
                           }`}>
                             {message.role === 'assistant' ? (
-                              <MessageContent 
+                              <MessageContent
                                 content={message.content}
+                                parts={message.metadata?.parts || message.parts}
                                 isLastMessage={index === sessionMessages.length - 1}
                                 points={points}
                                 gems={gems}

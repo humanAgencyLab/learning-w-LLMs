@@ -175,14 +175,18 @@ const useSessionStore = create(
         }
       },
 
-      appendMessage: ({ role, content, ts, tokens }) => {
+      appendMessage: ({ role, content, ts, tokens, metadata }) => {
         const tsVal = ts || new Date().toISOString();
         const newMessage = {
           id: `msg-${tsVal}-${Math.random().toString(36).slice(2, 11)}`,
           role,
           content,
           ts: tsVal,
-          tokens: tokens || 0
+          tokens: tokens || 0,
+          // Structured parts ({ intro, body, question }) from the chat
+          // response ride along so live messages render the same
+          // parts-driven question card as resumed/replayed ones.
+          ...(metadata ? { metadata } : {})
         };
         
         set(state => ({
@@ -747,14 +751,21 @@ const useSessionStore = create(
                   role: 'assistant',
                   content: response.data.message,
                   ts: new Date().toISOString(),
-                  tokens: response.data.tokensOut
+                  tokens: response.data.tokensOut,
+                  metadata: response.data.parts ? { parts: response.data.parts } : undefined
                 });
               } else if (hadStreamChunks && response.data?.message) {
                 set(s => {
                   const messages = [...(s.messages || [])];
                   const last = messages[messages.length - 1];
                   if (last?.role === 'assistant') {
-                    messages[messages.length - 1] = { ...last, content: response.data.message };
+                    messages[messages.length - 1] = {
+                      ...last,
+                      content: response.data.message,
+                      ...(response.data.parts
+                        ? { metadata: { ...(last.metadata || {}), parts: response.data.parts } }
+                        : {})
+                    };
                   }
                   return { messages };
                 });
