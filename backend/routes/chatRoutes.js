@@ -22,7 +22,7 @@ const { useMultiAgent, useStreaming } = require('../agents/framework/featureFlag
 const { runIntentAgent } = require('../agents/intentAgent');
 const { runStudyGraph } = require('../agents/graph/runGraph');
 const { runEngagementAgent } = require('../agents/engagementAgent');
-const { deriveFlowAction, composeTutorTurn } = require('../agents/turnComposerAgent');
+const { deriveFlowAction, composeTutorTurn, extractTrailingQuestion } = require('../agents/turnComposerAgent');
 const { evaluateConstraints, buildRefusalMessage, recordRefusal } = require('../services/constraintGateService');
 
 // Extract question from assistant response
@@ -1646,8 +1646,19 @@ Return ONLY valid JSON in this format:
               wasMilestoneStart,
             });
 
-            const moduleCompleteEmbeddedQ = typeof cm?.embeddedQuestion === 'string' && cm.embeddedQuestion.trim()
-              ? cm.embeddedQuestion.trim() : null;
+            // Embedded follow-up on a graded-ANSWER turn (hybrid). The
+            // classifier's embeddedQuestion is LLM output and populates
+            // inconsistently, so fall back to a deterministic trailing-question
+            // extraction of the student's own message. Only on a graded answer
+            // that is NOT itself a clarification — so a pure question is never
+            // treated as a hybrid.
+            const gradedAnswerTurn = !!(gs.assessmentResult?.payload || assessment)
+              && (gs.assessmentResult?.payload || assessment).responseType !== 'clarification_request';
+            const embeddedQ = (typeof cm?.embeddedQuestion === 'string' && cm.embeddedQuestion.trim())
+              ? cm.embeddedQuestion.trim()
+              : (gradedAnswerTurn ? extractTrailingQuestion(userMessage) : null);
+
+            const moduleCompleteEmbeddedQ = embeddedQ;
 
             let assistantResponse = '';
             if (moduleJustCompleted && !moduleCompleteEmbeddedQ) {
@@ -1701,7 +1712,7 @@ Return ONLY valid JSON in this format:
                         : (gs.assessmentResult?.payload || assessment).understood ? 'clarify' : 'incorrect')
                   : (wasMilestoneStart ? 'start' : 'neutral'),
                 assessment: gs.assessmentResult?.payload || assessment || null,
-                embeddedQuestion: typeof cm?.embeddedQuestion === 'string' && cm.embeddedQuestion.trim() ? cm.embeddedQuestion.trim() : null,
+                embeddedQuestion: embeddedQ,
                 forceCompleted: forceCompletedThisTurn,
                 retryCount: retryCountForTeacher,
                 globalInstructions: courseGlobalInstructions,

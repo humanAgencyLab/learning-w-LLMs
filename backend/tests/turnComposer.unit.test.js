@@ -7,7 +7,7 @@
  * — nothing in this module judges correctness.
  */
 const {
-  FLOW_ACTIONS, deriveFlowAction, extractWordCap, computeAdaptation, _dedup, _enforceWordCap,
+  FLOW_ACTIONS, deriveFlowAction, extractWordCap, extractTrailingQuestion, computeAdaptation, _dedup, _enforceWordCap,
 } = require('../agents/turnComposerAgent');
 const { buildTurnPrompt } = require('../prompts/tutor_turn_prompt');
 const fs = require('fs');
@@ -56,6 +56,22 @@ describe('extractWordCap — instructor length rule', () => {
   it('returns null when there is no cap', () => {
     expect(extractWordCap('Use worked examples and be encouraging.')).toBeNull();
     expect(extractWordCap('')).toBeNull();
+  });
+});
+
+describe('extractTrailingQuestion — deterministic hybrid backstop', () => {
+  it('pulls the follow-up out of an answer+question message', () => {
+    expect(extractTrailingQuestion('parameters are inputs and the return value is output — but can a method return nothing at all?'))
+      .toMatch(/can a method return nothing/i);
+    expect(extractTrailingQuestion('The domain is all reals except 2. Is x=0 in the domain?'))
+      .toMatch(/is x=0 in the domain/i);
+    expect(extractTrailingQuestion('It returns the sum. What about void methods?'))
+      .toMatch(/what about void methods/i);
+  });
+  it('returns null for a pure answer or a pure question (not a hybrid)', () => {
+    expect(extractTrailingQuestion('a method is a reusable block of code')).toBeNull();
+    expect(extractTrailingQuestion('can a method return nothing?')).toBeNull();
+    expect(extractTrailingQuestion('')).toBeNull();
   });
 });
 

@@ -42,6 +42,27 @@ function deriveFlowAction({
   return 'continue';
 }
 
+/**
+ * Deterministic trailing-question extraction — the backstop for a hybrid
+ * answer+question when the classifier's embeddedQuestion comes back empty
+ * (it's LLM output and populates inconsistently). Returns the last
+ * question-shaped clause of a message that ALSO contains non-question content,
+ * or null. Only meaningful on a graded-answer turn (the caller gates on that),
+ * so a pure clarification is never mistaken for a hybrid.
+ */
+function extractTrailingQuestion(message) {
+  const text = String(message || '').trim();
+  if (!text.includes('?')) return null;
+  // Split on sentence enders and em/en dashes; keep the segment before each '?'.
+  const segments = text.split(/(?<=[.?!])\s+|\s+[—–-]\s+/).map((s) => s.trim()).filter(Boolean);
+  const questions = segments.filter((s) => s.endsWith('?') || /^(can|could|would|should|does|do|is|are|what|why|how|when|where|which|will|won't|isn't|doesn't)\b/i.test(s));
+  if (!questions.length) return null;
+  // Require some non-question content too, else it's a pure question (clarify).
+  const nonQ = segments.filter((s) => !questions.includes(s)).join(' ').trim();
+  if (nonQ.length < 8) return null;
+  return questions[questions.length - 1].replace(/\s+/g, ' ').slice(0, 300);
+}
+
 /** Instructor word cap from free-text guidelines, or null. */
 function extractWordCap(globalInstructions) {
   const t = String(globalInstructions || '').toLowerCase();
@@ -250,6 +271,7 @@ module.exports = {
   FLOW_ACTIONS,
   deriveFlowAction,
   extractWordCap,
+  extractTrailingQuestion,
   computeAdaptation,
   composeTutorTurn,
   // exported for unit tests
