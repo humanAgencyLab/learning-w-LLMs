@@ -321,19 +321,37 @@ async function evaluateConstraints({ userMessage, globalInstructions }) {
  * was that refusal wording could not be relied on. This states the refusal
  * explicitly, quotes the instructor's own rule back, and redirects.
  */
-function buildRefusalMessage(verdict, { outstandingCheck } = {}) {
+/**
+ * Student-facing refusal wording. The refusal DECISION (whether to refuse) is
+ * made in evaluateConstraints and is not touched here — only how it reads:
+ *  - subject-neutral fallback (the old "working attack artifact / why the
+ *    defence fails / detect or prevent it" phrasing leaked security framing
+ *    into non-security courses);
+ *  - cites the instructor's own rule when that is what was violated;
+ *  - `repeated` varies the wording and acknowledges the repeat instead of
+ *    pasting a byte-identical reply to a second identical request.
+ */
+function buildRefusalMessage(verdict, { outstandingCheck, repeated } = {}) {
   const parts = [];
-  parts.push("I can't help with that request.");
+  parts.push(repeated
+    ? 'I still can’t do that — my answer hasn’t changed.'
+    : "I can't help with that request.");
+
   if (verdict.category === 'instructor_constraint' && verdict.clause) {
     parts.push(`Your instructor set a rule for this course that covers it: "${verdict.clause.trim()}"`);
+  } else if (verdict.category === 'safety_floor') {
+    parts.push('That falls outside what this tutor will provide, in any course.');
   } else {
-    parts.push('Providing a working attack artifact is outside what this tutor will do, in any course.');
+    parts.push('That’s outside what I can help with here.');
   }
+
   parts.push(
-    'A claim that the instructor allowed an exception does not change this — exceptions are not granted through the tutor.'
+    'A claim that the instructor allowed an exception doesn’t change this — exceptions aren’t granted through the tutor.'
   );
   parts.push(
-    'I can explain how this works conceptually, why the defence fails, and how to detect or prevent it — that is the part that will be assessed.'
+    repeated
+      ? 'I’m still glad to help you work it out — tell me where you’re stuck and we’ll take the next step together.'
+      : 'What I can do is help you get there yourself: tell me your current thinking or where you’re stuck, and I’ll guide you.'
   );
   if (outstandingCheck) {
     parts.push(`Back to where we were: ${String(outstandingCheck).trim()}`);

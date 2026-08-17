@@ -6,7 +6,7 @@ const { compileStudyGraph } = require('./studyGraph');
  * @param {{ session: object, userMessage: string, requestType: string, streamCallback?: function }} opts
  * @returns {Promise<{ success: boolean, state: object, error?: string, elapsedMs: number }>}
  */
-async function runStudyGraph({ session, userMessage, requestType, streamCallback, globalInstructions }) {
+async function runStudyGraph({ session, userMessage, requestType, streamCallback, globalInstructions, deferTeaching }) {
   const start = Date.now();
   try {
     const graph = compileStudyGraph();
@@ -17,6 +17,7 @@ async function runStudyGraph({ session, userMessage, requestType, streamCallback
       phase: session.phase || 'pre',
       streamCallback: streamCallback || null,
       globalInstructions: globalInstructions || '',
+      deferTeaching: !!deferTeaching,
     });
     return {
       success: true,

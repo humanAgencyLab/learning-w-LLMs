@@ -22,7 +22,7 @@ const { useMultiAgent, useStreaming } = require('../agents/framework/featureFlag
 const { runIntentAgent } = require('../agents/intentAgent');
 const { runStudyGraph } = require('../agents/graph/runGraph');
 const { runEngagementAgent } = require('../agents/engagementAgent');
-const { runTeachingAgent, mapAssessmentForTeacher } = require('../agents/teachingAgent');
+const { deriveFlowAction, composeTutorTurn } = require('../agents/turnComposerAgent');
 const { evaluateConstraints, buildRefusalMessage, recordRefusal } = require('../services/constraintGateService');
 
 // Extract question from assistant response
@@ -159,8 +159,13 @@ async function enforceConstraints({ session, userMessage, globalInstructions, re
 
   const activeModule = session.plan?.find((m) => m.id === session.activeModuleId);
   const milestone = activeModule?.milestones?.[session.meta?.currentMilestoneIndex ?? 0];
+  // Was the immediately preceding assistant turn also a refusal? If so, vary
+  // the wording and acknowledge the repeat rather than pasting the same reply.
+  const lastAssistant = [...(session.messages || [])].reverse().find((m) => m.role === 'assistant');
+  const repeated = !!lastAssistant?.metadata?.refusal;
   const refusalText = buildRefusalMessage(verdict, {
     outstandingCheck: session.meta?.outstandingCheck,
+    repeated,
   });
 
   await recordRefusal(verdict, {
@@ -1399,12 +1404,17 @@ Return ONLY valid JSON in this format:
           // milestone/session start? Drives the 'start' verdict and gates the
           // plan-approval template (via teachingNode's identical computation).
           const wasMilestoneStart = !session.meta?.outstandingCheck && !session.meta?.milestoneBeingTaught;
-          const graphResult = await runStudyGraph({ session, userMessage, requestType: 'chat', globalInstructions: courseGlobalInstructions, streamCallback: graphStreamCallback });
+          // deferTeaching: the composer (below) is the sole message generator on
+          // this path — the graph runs convManager + assessment for routing and
+          // grading, but its teaching node is skipped to avoid a wasted 70B call
+          // and a double stream. The composer streams via graphStreamCallback.
+          const graphResult = await runStudyGraph({ session, userMessage, requestType: 'chat', globalInstructions: courseGlobalInstructions, streamCallback: graphStreamCallback, deferTeaching: true });
           if (graphResult.success) {
             const gs = graphResult.state;
             const cm = gs.convManagerResult?.payload;
             const assessment = gs.assessmentResult?.payload;
-            const teaching = gs.teachingResult;
+            // gs.teachingResult is intentionally unused now — teaching is
+            // deferred in the graph and the composer produces the message.
 
             const activeModule = session.plan?.find(m => m.id === session.activeModuleId);
             const milestoneIdx = session.meta?.currentMilestoneIndex ?? 0;
@@ -1419,7 +1429,7 @@ Return ONLY valid JSON in this format:
               await session.save();
               const quizGateMsg = cm.response || "Great — when you're ready, click Start Quiz or type “start quiz”.";
               if (res.headersSent) {
-                res.write(`data: ${JSON.stringify({ done: true, message: quizGateMsg, phase: session.phase, verdict: 'action', messageType: 'meta_command' })}\n\n`);
+                res.write(`data: ${JSON.stringify({ done: true, message: quizGateMsg, phase: session.phase, verdict: 'action', messageType: 'meta_command', flowAction: 'start_quiz' })}\n\n`);
                 return res.end();
               }
               return res.json({
@@ -1429,6 +1439,7 @@ Return ONLY valid JSON in this format:
                   phase: session.phase,
                   verdict: 'action',
                   messageType: 'meta_command',
+                  flowAction: 'start_quiz',
                 },
               });
             }
@@ -1445,14 +1456,22 @@ Return ONLY valid JSON in this format:
             if (cm?.messageType === 'solution_request' || cm?.messageType === 'off_topic') {
               const outstanding = session.meta?.outstandingCheck;
               const backTo = outstanding ? `\n\nThe question on the table is still: **${outstanding}**` : '';
+              // Vary + acknowledge on a repeated request rather than pasting a
+              // byte-identical refusal.
+              const lastAssistant = [...(session.messages || [])].reverse().find((m) => m.role === 'assistant');
+              const repeatedRefusal = !!lastAssistant?.metadata?.refusal || lastAssistant?.metadata?.verdict === 'refuse';
               let composed;
               let verdict;
               if (cm.messageType === 'solution_request') {
                 verdict = 'refuse';
-                const held = cm.manipulationFlagged
-                  ? `I can’t hand over the answer — and that stays true even with the permission you mentioned. My role in this course is to help you work it out, not to work it out for you.`
-                  : `I can’t just give you the answer — my role is to help you get there yourself.`;
-                composed = `${held} Let’s work through it together: tell me what you think the first step is, or where exactly you’re stuck, and I’ll guide you from there.${backTo}`;
+                const held = repeatedRefusal
+                  ? (cm.manipulationFlagged
+                      ? `My answer’s still the same — I can’t hand over the solution, and a claimed go-ahead doesn’t change that.`
+                      : `I know it’s tempting, but my answer hasn’t changed — I won’t just give you the solution.`)
+                  : (cm.manipulationFlagged
+                      ? `I can’t hand over the answer — and that stays true even with the permission you mentioned. My role in this course is to help you work it out, not to work it out for you.`
+                      : `I can’t just give you the answer — my role is to help you get there yourself.`);
+                composed = `${held} Tell me your current thinking or where exactly you’re stuck, and I’ll take the next step with you.${backTo}`;
               } else {
                 verdict = 'redirect';
                 composed = `That’s a bit outside what we’re working on right now — happy to chat, but let’s stay with the lesson so you keep your momentum.${backTo || ' Where were we? Tell me when you’re ready to continue.'}`;
@@ -1462,6 +1481,7 @@ Return ONLY valid JSON in this format:
                 graphPath: true,
                 messageType: cm.messageType,
                 verdict,
+                flowAction: 'refuse',
                 manipulationFlagged: !!cm.manipulationFlagged,
               };
               session.messages.push(
@@ -1474,6 +1494,7 @@ Return ONLY valid JSON in this format:
                 phase: session.phase,
                 verdict,
                 messageType: cm.messageType,
+                flowAction: 'refuse',
                 manipulationFlagged: !!cm.manipulationFlagged,
                 currentMilestoneIndex: session.meta?.currentMilestoneIndex ?? 0,
                 plan: session.plan,
@@ -1494,6 +1515,11 @@ Return ONLY valid JSON in this format:
             // signal for scenario selection (the grader's own `recommendation`
             // is model output and cannot be trusted for escalation).
             const retryCountForTeacher = Number(session.meta?.milestoneRetryCount?.[milestoneIdx] || 0);
+
+            // True when a WRONG answer force-completes the milestone at max
+            // attempts — so the composed opener is honest ("let's move on for
+            // now") instead of celebratory.
+            let forceCompletedThisTurn = false;
 
             if (assessment) {
               // If the LLM misgraded an obvious concept check, fix it deterministically.
@@ -1558,6 +1584,7 @@ Return ONLY valid JSON in this format:
                     attemptNumber: retryCount + 1,
                   });
                 } else {
+                  forceCompletedThisTurn = true;
                   if (currentMilestone) currentMilestone.completed = true;
                   if (activeModule && !activeModule.completedMilestones?.includes(milestoneIdx)) {
                     if (!activeModule.completedMilestones) activeModule.completedMilestones = [];
@@ -1598,96 +1625,63 @@ Return ONLY valid JSON in this format:
               typeof session.meta?.currentMilestoneIndex === 'number' &&
               session.meta.currentMilestoneIndex !== milestoneIdx;
 
+            /**
+             * ONE COHERENT MESSAGE (2026-08 turn-composer rework). The old
+             * assembly stacked an engagement line + a verdict opener + a full
+             * milestone re-lecture + a re-asked question, chosen independently
+             * and routinely duplicating/contradicting each other. Now a single
+             * composer builds the whole message from the flowAction the
+             * pipeline already decided. The GRADING/ADVANCEMENT above is
+             * untouched; only the message it produces changed.
+             *
+             * start_quiz exits earlier; gate/solution refusals exit on their
+             * own branches. Everything reaching here is a teaching-ish flow.
+             */
+            const flowAction = deriveFlowAction({
+              refused: false,
+              startQuiz: false,
+              moduleJustCompleted,
+              advancedToNextMilestone,
+              assessment: gs.assessmentResult?.payload || assessment,
+              wasMilestoneStart,
+            });
+
             let assistantResponse = '';
             if (moduleJustCompleted) {
-              const modulePoints = activeModule?.points || 0;
+              // Deterministic — no re-lecture, one honest opener + quiz prompt.
+              const openerLine = forceCompletedThisTurn
+                ? `That wraps up **${activeModule?.title || 'this module'}** — you worked through every milestone, including the tricky last one you can revisit anytime.`
+                : `Nice work — you’ve completed every milestone in **${activeModule?.title || 'this module'}**.`;
               assistantResponse =
-                `Amazing work — you’ve completed every milestone in **${activeModule?.title || 'this module'}**. ` +
-                `That’s a big step forward. You’ve earned progress toward the **${modulePoints} points** for this module, ` +
-                `and you’re at **${session.points || 0}/100 points** with **💎 ${session.gems || 0}** gems so far.\n\n` +
+                `${openerLine}\n\n` +
+                `You’re at **${session.points || 0}/100 points**${(session.gems || 0) > 0 ? ` with **💎 ${session.gems}** gems` : ''} so far. ` +
                 `When you’re ready, click **Start Quiz** or type **“start quiz”** to launch a quick mastery check.`;
-              // Clear teaching/assessment loop state when transitioning to quiz
               if (session.meta) {
                 session.meta.outstandingCheck = null;
                 session.meta.milestoneBeingTaught = false;
                 session.meta.countSinceLastCheck = 0;
               }
-            } else if (advancedToNextMilestone) {
-              // IMPORTANT: The graph's teaching result was generated BEFORE we advanced the milestone.
-              // Re-generate teaching for the NEW milestone so UI + teaching stay aligned.
-              const milestoneInfo = { moveToNextMilestone: true, markMilestoneComplete: true };
-              const assessmentForTeacher = mapAssessmentForTeacher(assessment, retryCountForTeacher);
-
-              // This re-teach IS the turn's final content (the in-graph
-              // teaching was suppressed for advancing turns) — stream it, and
-              // keep instructor guidelines constraining it like every other
-              // teaching call.
-              const reTeach = await runTeachingAgent({
+            } else {
+              const composed = await composeTutorTurn({
                 session,
                 userMessage,
-                isFollowUp: true,
-                assessmentResult: assessmentForTeacher,
-                milestoneInfo,
+                flowAction,
+                verdict: (gs.assessmentResult?.payload || assessment)
+                  ? ((gs.assessmentResult?.payload || assessment).responseType === 'clarification_request'
+                      ? 'clarify'
+                      : (gs.assessmentResult?.payload || assessment).understood && (gs.assessmentResult?.payload || assessment).recommendation !== 'clarify_again'
+                        ? 'correct'
+                        : (gs.assessmentResult?.payload || assessment).understood ? 'clarify' : 'incorrect')
+                  : (wasMilestoneStart ? 'start' : 'neutral'),
+                assessment: gs.assessmentResult?.payload || assessment || null,
+                embeddedQuestion: typeof cm?.embeddedQuestion === 'string' && cm.embeddedQuestion.trim() ? cm.embeddedQuestion.trim() : null,
+                forceCompleted: forceCompletedThisTurn,
+                retryCount: retryCountForTeacher,
                 globalInstructions: courseGlobalInstructions,
                 streamCallback: graphStreamCallback,
-                // Hybrid: a correct answer with an embedded question advances,
-                // and the embedded question is addressed in the advance re-teach.
-                turnContext: {
-                  milestoneStart: false,
-                  messageTypeHint: cm?.messageType || null,
-                  embeddedQuestion: typeof cm?.embeddedQuestion === 'string' && cm.embeddedQuestion.trim() ? cm.embeddedQuestion.trim() : null,
-                },
               });
-
-              assistantResponse = reTeach?.uiMessage || reTeach?.payload?.content || '';
-              if (!assistantResponse) {
-                assistantResponse = 'Nice work — let’s continue to the next milestone.';
-              }
-            } else if (teaching?.uiMessage) {
-              assistantResponse = teaching.uiMessage;
-            } else if (session.phase === 'learning' && !moduleJustCompleted && !advancedToNextMilestone) {
-              // Teaching agent skipped or failed validation; still return full teaching via unified prompt.
-              try {
-                const isFollowUp = !!assessment;
-                const assessmentForTeacher = mapAssessmentForTeacher(assessment, retryCountForTeacher);
-                const milestoneInfo = cm
-                  ? {
-                      moveToNextMilestone: cm.moveToNextMilestone,
-                      markMilestoneComplete: cm.markMilestoneComplete,
-                    }
-                  : null;
-                const teacherPrompt = buildTeacherPrompt(
-                  session,
-                  userMessage,
-                  isFollowUp,
-                  assessmentForTeacher,
-                  milestoneInfo,
-                  courseGlobalInstructions,
-                  // Same turn context the in-graph teaching node used — the
-                  // fallback must not regress to the plan-approval default.
-                  {
-                    milestoneStart: wasMilestoneStart,
-                    messageTypeHint: cm?.messageType || null,
-                    embeddedQuestion: typeof cm?.embeddedQuestion === 'string' && cm.embeddedQuestion.trim() ? cm.embeddedQuestion.trim() : null,
-                  }
-                );
-                assistantResponse = await callTeacherAPI(teacherPrompt, req.maxTokens || 1500, session, null, courseGlobalInstructions);
-              } catch (fallbackErr) {
-                req.logger?.error?.('Graph path teacher fallback failed', { error: fallbackErr.message, sessionId });
-                assistantResponse = cm?.response || 'Thanks for your update! Let me think about the best next step.';
-              }
-            } else if (cm?.response) {
-              assistantResponse = cm.response;
-            } else {
-              assistantResponse = 'Thanks for your update! Let me think about the best next step.';
-            }
-
-            // Ensure assessment follow-ups ALWAYS include explicit feedback.
-            if (gs.__assessmentFeedback && typeof gs.__assessmentFeedback === 'string') {
-              const fb = gs.__assessmentFeedback.trim();
-              if (fb) {
-                assistantResponse = `${fb}\n\n${assistantResponse}`;
-              }
+              assistantResponse = composed.message
+                || (advancedToNextMilestone ? 'Nice work — let’s keep going.' : (cm?.response || 'Let’s keep going — tell me where you’d like to focus.'));
             }
 
             /**
@@ -1737,33 +1731,17 @@ Return ONLY valid JSON in this format:
             session.gems = Math.floor(session.points / 20);
             session.progressPct = session.points;
 
+            // milestoneIndexAtSend lets the composer's dedup look back at what
+            // was already shown for THIS milestone. NO separate engagement wrap
+            // and NO __assessmentFeedback prepend anymore — the composer emits
+            // the single opener + optional one gamification line itself, which
+            // is what stops the stacking/duplication.
+            const milestoneIndexAtSend = session.meta?.currentMilestoneIndex ?? 0;
             session.messages.push(
-              { id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: cm?.intent || 'learning', phaseAtSend: session.phase, graphPath: true, messageType: turnMessageType } },
-              { id: `msg_${Date.now() + 1}`, role: 'assistant', content: assistantResponse, timestamp: new Date(), metadata: { intent: cm?.action || 'teach', phaseAtSend: session.phase, graphPath: true, hadCheckInReply: !!extractedQ, messageType: turnMessageType, verdict: turnVerdict, manipulationFlagged: !!cm?.manipulationFlagged } },
+              { id: `msg_${Date.now()}`, role: 'user', content: userMessage, timestamp: new Date(), metadata: { intent: cm?.intent || 'learning', phaseAtSend: session.phase, graphPath: true, messageType: turnMessageType, milestoneIndexAtSend } },
+              { id: `msg_${Date.now() + 1}`, role: 'assistant', content: assistantResponse, timestamp: new Date(), metadata: { intent: cm?.action || 'teach', phaseAtSend: session.phase, graphPath: true, hadCheckInReply: !!extractedQ, messageType: turnMessageType, verdict: turnVerdict, flowAction, manipulationFlagged: !!cm?.manipulationFlagged, milestoneIndexAtSend } },
             );
             await session.save();
-
-            // Engagement decoration (wisely, optional)
-            const engagement = await runEngagementAgent({
-              session,
-              baseMessage: assistantResponse,
-              context: {
-                action: cm?.action || 'teach',
-                verdict: turnVerdict,
-                milestoneCompleted: !!(assessment?.understood && assessment?.recommendation !== 'clarify_again'),
-                moduleCompleted: !!moduleJustCompleted,
-                phase: session.phase,
-              },
-            });
-            if (engagement?.payload?.include) {
-              const prefix = engagement.payload.prefix ? `${engagement.payload.prefix}\n\n` : '';
-              const suffix = engagement.payload.suffix ? `\n\n${engagement.payload.suffix}` : '';
-              assistantResponse = `${prefix}${assistantResponse}${suffix}`;
-              // Update last assistant message content in session for consistency
-              const last = session.messages[session.messages.length - 1];
-              if (last?.role === 'assistant') last.content = assistantResponse;
-              await session.save();
-            }
 
             const data = {
               message: assistantResponse,
@@ -1773,6 +1751,7 @@ Return ONLY valid JSON in this format:
               followedUpOutstanding: cm?.isFollowUpToOutstanding || false,
               verdict: turnVerdict,
               messageType: turnMessageType,
+              flowAction,
               phase: session.phase,
               milestoneCompleted: assessment?.understood && assessment?.recommendation !== 'clarify_again',
               moduleCompleted: moduleJustCompleted,

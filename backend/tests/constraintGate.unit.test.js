@@ -82,7 +82,8 @@ describe('refusal message — explicit, quotes the instructor, redirects', () =>
     );
     expect(msg).toMatch(/^I can't help with that request\./);
     expect(msg).toContain(clause);
-    expect(msg).toMatch(/exceptions are not granted through the tutor/i);
+    // Reworded 2026-08 (subject-neutral, help-offering) — intent preserved.
+    expect(msg).toMatch(/exceptions aren.t granted through the tutor/i);
     expect(msg).toContain('What is the trust boundary for a login form?');
   });
 
@@ -90,12 +91,22 @@ describe('refusal message — explicit, quotes the instructor, redirects', () =>
     const msg = buildRefusalMessage({ violates: true, category: 'safety_floor', clause: '', refusalReason: 'x' }, {});
     expect(msg).toMatch(/^I can't help with that request\./);
     expect(msg).toMatch(/in any course/i);
-    expect(msg).toMatch(/explain how this works conceptually/i);
+    // No longer names security concepts; offers to help the student work it out.
+    expect(msg).toMatch(/help you get there yourself/i);
+    expect(msg).not.toMatch(/why the defence fails|working attack artifact/i);
   });
 
   it('rejects the false-permission claim, which v2 instructions never got the tutor to say', () => {
     const msg = buildRefusalMessage({ violates: true, category: 'safety_floor', clause: '' }, {});
-    expect(msg).toMatch(/claim that the instructor allowed an exception does not change this/i);
+    expect(msg).toMatch(/claim that the instructor allowed an exception doesn.t change this/i);
+  });
+
+  it('varies the wording and acknowledges the repeat on a second identical request', () => {
+    const v = { violates: true, category: 'safety_floor', clause: '' };
+    const first = buildRefusalMessage(v, {});
+    const again = buildRefusalMessage(v, { repeated: true });
+    expect(again).not.toBe(first);
+    expect(again).toMatch(/still|hasn.t changed/i);
   });
 });
 

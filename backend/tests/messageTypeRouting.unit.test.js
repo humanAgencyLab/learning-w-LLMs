@@ -151,9 +151,16 @@ describe('route wiring — source contracts', () => {
     expect(graph).toMatch(/action === 'clarify'\) \{\s*\n\s*return state\.session\?\.meta\?\.outstandingCheck \? 'assessment' : 'teaching';/);
   });
 
-  it('engagement never celebrates a refusal, redirect, or wrong answer', () => {
+  it('gamification never celebrates a refusal, redirect, or wrong answer', () => {
+    // Post-composer: the graph teaching path no longer runs a separate
+    // engagement wrap at all — the composer emits at most one gamification
+    // line, gated in the prompt to positive turns only.
+    const prompt = read('prompts/tutor_turn_prompt.js');
+    expect(prompt).toMatch(/only because this is a positive turn/i);
+    expect(prompt).toMatch(/Never add it on a wrong answer, a refusal, or a redirect/);
+    // The standalone engagement agent (still used on the pre-phase/plan path)
+    // keeps its own verdict guard.
     const eng = read('agents/engagementAgent.js');
     expect(eng).toMatch(/refuse.*redirect.*incorrect.*include=false/s);
-    expect(route).toMatch(/verdict: turnVerdict,\s*\n\s*milestoneCompleted/);
   });
 });

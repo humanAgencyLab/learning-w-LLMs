@@ -25,6 +25,11 @@ const AgentState = Annotation.Root({
   // stays instruction-blind for the study window per PILOT_DECISIONS.md — see
   // the teachingNode comment; do not pass this to assessmentNode.
   globalInstructions: Annotation({ reducer: (_, v) => v, default: () => '' }),
+  // When true, teachingNode skips generation entirely: the route's turn
+  // composer produces the single student-facing message instead, so running
+  // the in-graph teacher here would be a wasted 70B call AND a double stream.
+  // convManager + assessment still run — only the teaching text is deferred.
+  deferTeaching: Annotation({ reducer: (_, v) => v, default: () => false }),
 
   intentResult:       Annotation({ reducer: (_, v) => v, default: () => null }),
   planResult:         Annotation({ reducer: (_, v) => v, default: () => null }),
@@ -182,6 +187,10 @@ function routeAfterAssessment(state) {
 }
 
 async function teachingNode(state) {
+  // Composer owns the message on the live chat path — skip generation here.
+  if (state.deferTeaching) {
+    return { teachingResult: { type: 'teaching', payload: null, uiMessage: null, valid: false, errors: ['deferred'] } };
+  }
   const cm = state.convManagerResult?.payload;
   const assessment = state.assessmentResult?.payload;
   const isFollowUp = !!assessment;
