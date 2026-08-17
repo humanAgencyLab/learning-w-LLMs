@@ -26,12 +26,14 @@ const FLOW_GUIDANCE = {
 - Opener: one short natural line that responds to what they actually said. Do NOT re-open the lesson or restate the milestone intro.
 - Body: move the SAME milestone forward by a step — a next idea, nuance, or example NOT already shown. Do NOT re-emit the milestone lecture.
 - Next step: exactly one assessment question (fresh wording).`,
-  clarify: `FLOW = CLARIFY (the student asked a question about the material).
-- Opener: one short, warm acknowledgment in your own words. No "Not quite", no grading language — they asked, they did not answer wrong.
-- Body: ANSWER THE SPECIFIC QUESTION THEY ASKED, in a few sentences. Do NOT re-teach the whole milestone and do NOT repeat any paragraph already shown this milestone. If their question embeds a misconception, correct it explicitly.
+  clarify: `FLOW = CLARIFY (the student asked a question about the material). This is a LIGHT turn — NOT a teaching turn.
+- ANSWER THE SPECIFIC QUESTION THEY ASKED, directly, in a few sentences. Start with the answer itself — do NOT open with a teaching-style intro line and do NOT restate what they asked ("You're seeking clarification on..." is banned). No fresh paragraph of milestone teaching, no re-teach, no repeating anything already shown this milestone. If their question embeds a misconception, correct it explicitly.
 - ⚠️ ANSWER GUARDRAIL: you may give a concept, hint, analogy, or a worked example on a DIFFERENT case, but you must NOT state the answer to the active assessment question below. If their question IS effectively the assessment question, explain the underlying concept, then re-pose a check — never hand over the keyed answer.
-- Next step: return them to the OUTSTANDING question, restated briefly in bold (or, if you re-posed a check, ask that). Never re-ask the identical question you just effectively answered.
-- ⚠️ ASSESSMENT ANCHOR: the question you end on MUST test THIS milestone's objective — the outstanding question restated, or a fresh check of the SAME objective. NEVER invent a new question that follows the student's tangent (their side-example, their aside, an unrelated sub-topic). Answer tangents in the body; the assessment stays on the milestone.`,
+- ⚠️ ASSESSMENT ANCHOR: the question you end on MUST test THIS milestone's objective — the outstanding question restated (the "Now, back to the question: ..." wording is fine), or a fresh check of the SAME objective. NEVER a new question that follows the student's tangent. Never re-ask the identical question you just effectively answered.`,
+  correct_retry_light: `FLOW = CORRECT RETRY (their answer was wrong; they stay on this milestone). This is a LIGHT turn — NOT a teaching turn.
+- A short, honest, targeted correction of the SPECIFIC error in their answer — the one misconception or gap — in a few sentences. NOT a re-teach of the milestone, no teaching-style intro line.
+- ⚠️ ANSWER GUARDRAIL: do NOT state the answer to the assessment question. Hint, reframe, or work a different example.
+- ⚠️ ASSESSMENT ANCHOR: end on the milestone's own question — re-posed in fresh wording testing the SAME objective, or the outstanding question restated.`,
   correct_retry: `FLOW = CORRECT RETRY (their answer was wrong; they stay on this milestone to try again).
 - Opener: one honest, encouraging line ("Not quite — ..."). Exactly one; do not stack.
 - Body: address the SPECIFIC error briefly — the one misconception or gap in their answer. This is NOT a full re-teach; a few targeted sentences.
@@ -69,10 +71,16 @@ function buildTurnPrompt({
   // the explanation (up to 400 for a full teach; honor a stricter instructor
   // cap). clarify/continue stay as one prose message (structured=false).
   structured = false,
+  // Light structured turns (clarify, correct_retry): {body, question} only —
+  // a short direct answer/correction plus the anchored question, no intro and
+  // no teaching-shaped body.
+  light = false,
   bodyWordTarget,
   bodyWordCap,
 }) {
-  const guidance = FLOW_GUIDANCE[flowAction] || FLOW_GUIDANCE.continue;
+  const guidance = (light && flowAction === 'correct_retry')
+    ? FLOW_GUIDANCE.correct_retry_light
+    : (FLOW_GUIDANCE[flowAction] || FLOW_GUIDANCE.continue);
 
   const capRule = wordCap
     ? `\n⚠️⚠️⚠️ INSTRUCTOR LENGTH RULE — HARD CAP: the BODY (your explanation) must be UNDER ${wordCap} words. This is the instructor's rule and it is not optional. Be concise; do not pad. The opener and the one-line next step do not count toward the body, but keep them short too.`
@@ -114,7 +122,20 @@ ${guardBlock}${hybridBlock}${shownBlock}${capRule}${gamRule}
 
 The student just said:
 "${studentMessage}"
-${structured ? `
+${structured && light ? `
+Return ONLY valid JSON with EXACTLY these two fields — no prose outside the JSON, NO "intro" field (light turns have no framing line; start straight in):
+{
+  "body": "${flowAction === 'clarify'
+      ? `The direct answer to what they asked — a few targeted sentences, ${bodyWordCap || 140} words max. Start with the answer itself; no intro line, no restating their question, no milestone re-teach.`
+      : `The targeted correction of their specific error — a few sentences, ${bodyWordCap || 160} words max. No intro line, no milestone re-teach.`}",
+  "question": "The assessment question this turn ends on. It MUST test the current milestone's objective: the outstanding question restated (\\"Now, back to the question: ...\\" wording is fine) or a fresh check of the SAME objective. Open-ended only — never True/False, never multiple choice. Never a question that follows the student's tangent."
+}
+
+Hard rules:
+- body and question are SEPARATE fields — never put the question inside the body, and never bold a question inline at the end of the body.
+- Do NOT repeat any sentence across the two fields, and do NOT repeat anything from ALREADY EXPLAINED above.
+- Obey the instructor's length/style rules. Valid JSON only.`
+: structured ? `
 Return ONLY valid JSON with EXACTLY these three fields — no prose outside the JSON:
 {
   "intro": "ONE short framing sentence that names this milestone/concept and agrees with the verdict and flow above. One sentence. No stacked openers. Not the body.",

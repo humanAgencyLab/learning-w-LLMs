@@ -118,12 +118,30 @@ describe('computeAdaptation — student signals from data already on the session
 });
 
 describe('structured teaching output (A) — {intro, body, question}', () => {
-  const { _parseParts, _bodyCapFor, _firstSentence, STRUCTURED_FLOWS } = require('../agents/turnComposerAgent');
+  const { _parseParts, _bodyCapFor, _firstSentence, STRUCTURED_FLOWS, LIGHT_FLOWS } = require('../agents/turnComposerAgent');
 
-  it('only the four teaching flows are structured; clarify/continue stay prose', () => {
-    expect(STRUCTURED_FLOWS).toEqual(['first_teach', 'correct_retry', 'advance_milestone', 'complete_module']);
-    expect(STRUCTURED_FLOWS).not.toContain('clarify');
+  it('five flows are structured (so the question always cards); only continue stays prose', () => {
+    expect(STRUCTURED_FLOWS).toEqual(['first_teach', 'clarify', 'correct_retry', 'advance_milestone', 'complete_module']);
     expect(STRUCTURED_FLOWS).not.toContain('continue');
+  });
+
+  it('clarify and correct_retry are LIGHT — {body, question} with no intro, no teaching shape', () => {
+    expect(LIGHT_FLOWS).toEqual(['clarify', 'correct_retry']);
+    const p = buildTurnPrompt({ topicName: 'Java', moduleTitle: 'Methods', milestoneText: 'Define a method', flowAction: 'clarify', verdict: 'clarify', structured: true, light: true, bodyWordCap: 140, outstandingCheck: 'What keyword returns a value?', adaptation: {} });
+    expect(p).toMatch(/EXACTLY these two fields/);
+    expect(p).toMatch(/NO "intro" field/);
+    expect(p).not.toMatch(/"intro":/);
+    expect(p).toMatch(/Start with the answer itself/);
+    expect(p).toMatch(/never bold a question inline/);
+    const retry = buildTurnPrompt({ topicName: 'Java', moduleTitle: 'Methods', milestoneText: 'Define a method', flowAction: 'correct_retry', verdict: 'incorrect', structured: true, light: true, bodyWordCap: 160, outstandingCheck: 'What keyword returns a value?', adaptation: {} });
+    expect(retry).toMatch(/targeted correction of their specific error/i);
+    expect(retry).toMatch(/NOT a teaching turn/);
+  });
+
+  it('the clarify guidance bans the restatement opener and the teaching intro', () => {
+    const p = buildTurnPrompt({ topicName: 'Java', flowAction: 'clarify', verdict: 'clarify', structured: true, light: true, outstandingCheck: 'Q?', adaptation: {} });
+    expect(p).toMatch(/You're seeking clarification on\.\.\." is banned/);
+    expect(p).toMatch(/do NOT open with a teaching-style intro line/i);
   });
 
   it('a structured prompt asks for JSON parts, a developed body, and open-ended questions', () => {
@@ -145,11 +163,12 @@ describe('structured teaching output (A) — {intro, body, question}', () => {
     expect(p).toMatch(/OPEN-ENDED[\s\S]*never True\/False, never multiple choice/i);
   });
 
-  it('body cap: 400 for a full teach, honors a stricter instructor cap, 160 for retry', () => {
+  it('body cap: 400 for a full teach, honors a stricter instructor cap, 160/140 for light flows', () => {
     expect(_bodyCapFor('first_teach', null)).toBe(400);
     expect(_bodyCapFor('advance_milestone', null)).toBe(400);
     expect(_bodyCapFor('first_teach', 150)).toBe(150);
     expect(_bodyCapFor('correct_retry', null)).toBe(160);
+    expect(_bodyCapFor('clarify', null)).toBe(140);
     expect(_bodyCapFor('complete_module', null)).toBe(120);
   });
 

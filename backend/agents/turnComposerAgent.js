@@ -17,16 +17,21 @@ const FLOW_ACTIONS = [
 ];
 
 /**
- * Flows that emit STRUCTURED {intro, body, question} for three-block UI
- * rendering. clarify/continue stay as one short prose message (the spec keeps
- * them targeted and does not restructure them).
+ * Flows that emit STRUCTURED parts so the renderer cards the question
+ * consistently. Full teaching shape {intro, developed body, question}:
+ * first_teach and advance_milestone (complete_module = short summary + quiz
+ * CTA). LIGHT shape {body, question} — no intro, no teaching body: clarify
+ * (direct answer) and correct_retry (targeted correction). Only `continue`
+ * stays prose.
  */
-const STRUCTURED_FLOWS = ['first_teach', 'correct_retry', 'advance_milestone', 'complete_module'];
+const STRUCTURED_FLOWS = ['first_teach', 'clarify', 'correct_retry', 'advance_milestone', 'complete_module'];
+const LIGHT_FLOWS = ['clarify', 'correct_retry'];
 
 /** Full-teach body ceiling; a stricter instructor cap wins. */
 const TEACH_BODY_CAP = 400;
 const TEACH_BODY_TARGET = 250;
 const RETRY_BODY_CAP = 160;
+const CLARIFY_BODY_CAP = 140;
 
 /**
  * Label over existing decisions — NOT new flow logic. Every input is a value
@@ -348,6 +353,7 @@ function firstSentence(s) {
 function bodyCapFor(flowAction, instructorCap) {
   if (flowAction === 'complete_module') return Math.min(instructorCap || 120, 120);
   if (flowAction === 'correct_retry') return Math.min(instructorCap || RETRY_BODY_CAP, RETRY_BODY_CAP);
+  if (flowAction === 'clarify') return Math.min(instructorCap || CLARIFY_BODY_CAP, CLARIFY_BODY_CAP);
   // first_teach / advance_milestone: up to 400, or the stricter instructor cap.
   return instructorCap ? Math.min(instructorCap, TEACH_BODY_CAP) : TEACH_BODY_CAP;
 }
@@ -386,6 +392,7 @@ async function composeTutorTurn({
   const wordCap = extractWordCap(globalInstructions);
   const adaptation = computeAdaptation({ session, assessment, retryCount, userMessage });
   const structured = STRUCTURED_FLOWS.includes(flowAction);
+  const light = LIGHT_FLOWS.includes(flowAction);
   const bodyCap = structured ? bodyCapFor(flowAction, wordCap) : null;
 
   const prompt = buildTurnPrompt({
@@ -405,7 +412,8 @@ async function composeTutorTurn({
     gems: session?.gems || 0,
     alreadyShownSummaries: alreadyShownSummaries(session),
     structured,
-    bodyWordTarget: structured ? Math.min(TEACH_BODY_TARGET, bodyCap) : undefined,
+    light,
+    bodyWordTarget: structured && !light ? Math.min(TEACH_BODY_TARGET, bodyCap) : undefined,
     bodyWordCap: bodyCap || undefined,
   });
 
@@ -461,7 +469,10 @@ async function composeTutorTurn({
     }
 
     if (parsed) {
-      const intro = firstSentence(parsed.intro);
+      // Light flows (clarify, correct_retry) carry NO intro — a direct
+      // answer/correction plus the anchored question, so the renderer cards
+      // the question without the turn reading like a fresh lesson.
+      const intro = light ? '' : firstSentence(parsed.intro);
       // Dedup body against the intro and prior-shown paragraphs; cap the body.
       let body = dedup(parsed.body, [...priorParas, normalize(intro)]);
       body = enforceWordCap(body, bodyCap);
@@ -470,12 +481,21 @@ async function composeTutorTurn({
       if (flowAction === 'complete_module' && !/start\s*quiz/i.test(question)) {
         question = `${question ? question.replace(/\s*$/, ' ') : ''}When you're ready, click **Start Quiz** or type **"start quiz"**.`.trim();
       }
-      // ASSESSMENT ANCHOR: a retry's question must keep testing THIS
-      // milestone. If the model's question drifted off the objective,
-      // replace it with the original outstanding question.
-      if (flowAction === 'correct_retry' && outstanding && question
-        && !questionOnObjective(question, outstanding, milestoneText)) {
+      // ASSESSMENT ANCHOR: a clarify/retry question must keep testing THIS
+      // milestone. If the model's question drifted off the objective (or came
+      // back empty), replace it with the original outstanding question.
+      if (light && outstanding
+        && (!question || !questionOnObjective(question, outstanding, milestoneText))
+        && !String(question || '').includes(String(outstanding).trim())) {
         question = ANCHOR_LINE(outstanding);
+      }
+      // A light body must not ALSO end in an inline question — the question
+      // lives in its own part so the renderer cards it consistently.
+      if (light) {
+        const bodySentences = body.split(/(?<=[.!?])\s+/);
+        if (bodySentences.length > 1 && bodySentences[bodySentences.length - 1].trim().endsWith('?')) {
+          body = bodySentences.slice(0, -1).join(' ').trim();
+        }
       }
       const parts = { intro, body, question };
       const message = [intro, body, question].filter(Boolean).join('\n\n').trim();
@@ -507,6 +527,7 @@ async function composeTutorTurn({
 module.exports = {
   FLOW_ACTIONS,
   STRUCTURED_FLOWS,
+  LIGHT_FLOWS,
   deriveFlowAction,
   extractWordCap,
   extractTrailingQuestion,

@@ -128,7 +128,7 @@ function MessagesViewer({ courseId, sessionId }) {
         </div>
       )}
 
-      <div className="max-h-[520px] overflow-auto px-4 py-4 bg-gray-50/50">
+      <div className="max-h-[calc(100vh-230px)] min-h-[420px] overflow-auto px-4 py-4 bg-gray-50/50">
         {messages.length === 0 && !loading ? (
           <div className="text-center text-sm text-gray-500 py-10">No messages yet.</div>
         ) : (
@@ -373,7 +373,7 @@ function QuizzesViewer({ courseId, sessionId }) {
         </div>
       )}
 
-      <div className="max-h-[520px] overflow-auto px-4 py-4 bg-gray-50/50">
+      <div className="max-h-[calc(100vh-230px)] min-h-[420px] overflow-auto px-4 py-4 bg-gray-50/50">
         {loading && attempts.length === 0 ? (
           <div className="text-center text-sm text-gray-400 py-10">Loading quizzes…</div>
         ) : totalCount === 0 ? (
@@ -785,25 +785,26 @@ export default function InstructorStudentDetailPage() {
         </div>
       )}
 
-      {/* Two-column body: topics + session replay stacked left, sticky
-          notes/trend rail right. The replay (SessionViewer) lives INSIDE the
-          left column, directly under Topics — it used to render full-width
-          below the whole grid, so whenever the right rail was taller than the
-          Topics card the grid row stretched and left a large dead gap under
-          Topics before the transcript began. */}
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-5 items-start">
+      {/* CHAT-FIRST layout: this page is session replay, so the transcript is
+          the primary region — the main column takes all remaining width and
+          the notes/trend/refusals rail is a fixed narrow sidebar. On narrow
+          screens the sidebar stacks BELOW the chat (single-column order:
+          main column first, aside after). */}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-5 items-start">
         <div className="space-y-5">
+        {/* Compact topic selector: tight rows in a capped, self-scrolling list
+            so the chat below stays the page's dominant region. */}
         <div className="bg-surface border border-hairline rounded-2xl shadow-card overflow-hidden animate-riseIn">
-          <div className="px-5 py-4 border-b border-hairline-soft">
-            <p className="text-base font-bold text-ink-900">Topics</p>
-            <p className="text-xs text-ink-300 mt-0.5">Open the latest session for any topic</p>
+          <div className="px-5 py-3 border-b border-hairline-soft flex items-baseline justify-between">
+            <p className="text-sm font-bold text-ink-900">Topics <span className="text-ink-300 font-semibold">{topics.length}</span></p>
+            <p className="text-xs text-ink-300">Open the latest session for any topic</p>
           </div>
-          <div className="p-1.5 px-3 pb-3">
+          <div className="p-1.5 px-3 pb-2 max-h-64 overflow-y-auto">
             {topics.length === 0 ? (
               <div className="px-4 py-8 text-sm text-ink-400 text-center">No sessions yet.</div>
             ) : (
               topics.map((t) => (
-                <div key={t.courseTopicId} className="flex items-center gap-3.5 px-2 py-3 border-t border-hairline-soft first:border-t-0">
+                <div key={t.courseTopicId} className="flex items-center gap-3.5 px-2 py-2 border-t border-hairline-soft first:border-t-0">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-ink-900 truncate">{t.topicTitle}</p>
                     {/* "Quiz-passed" is load-bearing copy: a module only counts
