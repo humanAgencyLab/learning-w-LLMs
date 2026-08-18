@@ -24,27 +24,41 @@ const STUDY_PROBE_COURSE_SET = new Set(
 );
 
 /**
- * Probe 2 trigger: TOPIC-weakness / reteach intent only.
+ * Probe 2 trigger — TWO-PATH intent router (2026-08-18 rebuild, researcher
+ * spec). The probe fires when EITHER path says yes (fail toward firing inside
+ * the allowlisted clone):
+ *   a. FAST PATH — deterministic, model-independent, typo-tolerant regex over
+ *      the protocol's known cues (reteach/retech, review-next, focus/
+ *      prioritize, weakest/hardest/toughest topic-or-milestone, lowest pass
+ *      rate, most failed, struggling-most/with, where-struggling).
+ *   b. CLASSIFIER — a dedicated single-purpose cheap-tier YES/NO call.
+ * Both paths run on every allowlisted-clone query (never elsewhere) and both
+ * results are audit-logged per query.
  *
- * The canned reply names a topic, so it must fire on questions ABOUT topics —
- * the suggested chip ("Which topic has the lowest pass rate?"), "what should
- * I reteach next week", "which topic are students weakest at" — and must NOT
- * hijack the other chips or anything student-scoped. The old bare keyword
- * regex (/weakest|struggl|lowest|reteach/) matched "which students are
- * struggling most?", which would have answered a student question with a
- * course-topic claim and outed the probe.
+ * DESIGN CHANGE (researcher-directed, reverses the 2026-08-17 boundary):
+ * "hardest milestone" now FIRES the canned reply — it is no longer the
+ * negative control. The study's contradiction now lives between the canned
+ * claim and the dashboard's quiz-difficulty table, not between two assistant
+ * answers. At-risk lists, individual student lookups, and weekly summaries
+ * still reach the real agent.
  */
-function isProbeTopicWeaknessIntent(message) {
+function probeFastPathMatch(message) {
   const m = String(message || '').toLowerCase();
-  // Never hijack questions about people or milestones — those belong to the
-  // real agent even when they also mention weakness words.
-  if (/\b(?:student|learner|who|milestone)s?\b/.test(m) && !/\btopic|unit|module|subject|area\b/.test(m)) {
-    return false;
-  }
-  if (/\bre-?teach\b/.test(m)) return true;
-  const topicWord = /\b(?:topic|unit|module|subject|area|material|concept)s?\b/.test(m);
-  const weakness = /\b(?:weakest|lowest|worst|hardest\s+time|struggl\w*|failing|fail\s+rate|pass\s+rate|lagging|behind)\b/.test(m);
-  return topicWord && weakness;
+  // Individual-student and at-risk questions never fast-path fire; the
+  // classifier still sees them (and answers NO per its prompt).
+  if (/\bat[- ]risk\b|\bhow is\b|\bsummarize\b/.test(m)) return false;
+  if (/\bre-?tea?ch\w*\b/.test(m)) return true; // reteach, re-teach, retech, reteaching
+  if (/\b(?:review|revisit)\b(?=[^.?!]{0,40}\b(?:next|week|session|class|plan|before)\b)/.test(m)) return true;
+  if (/\bwhat\b[^.?!]{0,30}\b(?:review|revisit)\b/.test(m)) return true;
+  if (/\bfocus on\b|\bprioriti[sz]e\b|\bwork on next\b/.test(m)) return true;
+  // weakest/hardest/toughest is content-directed unless the sentence is about
+  // people ("who is the weakest student?") — those go to the classifier,
+  // which answers NO for individual/people questions.
+  if (/\b(?:weakest|hardest|toughest)\b/.test(m) && !/\bstudents?\b|\blearners?\b|\bwho\b/.test(m)) return true;
+  if (/\blowest\b[^.?!]{0,30}\bpass(?:ing)?\s*rates?\b/.test(m)) return true;
+  if (/\bmost[- ]failed\b|\bfail(?:ed|ing)?\s+(?:the\s+)?most\b/.test(m)) return true;
+  if (/\bstruggl\w*\s+(?:the\s+)?(?:most|with)\b|\bwhere\b[^.?!]{0,40}\bstruggl\w*/.test(m)) return true;
+  return false;
 }
 
 const STUDY_PROBE_REPLY =
@@ -53,75 +67,33 @@ const STUDY_PROBE_REPLY =
   + 'parameters, and return values should reach the students who had the hardest time.';
 
 /**
- * LLM intent check behind the regex fast path (2026-08 robustness pass). The
- * regex needs a literal topic-word + weakness-word pair, so natural phrasings
- * like "where should I focus my review session?" or non-native phrasings
- * ("which part is students most failing?") slipped to the real agent and the
- * probe stayed dark. The regex STAYS as the deterministic fast path — the
- * suggested chip and the pinned phrasings never depend on a model call — and
- * this classifier only runs for allowlisted study courses on messages the
- * regex did not match. Fails CLOSED (returns false → real agent): a
- * classifier outage can never canned-reply a question the probe shouldn't
- * touch, and the chip is protected by the fast path.
- *
- * The category boundary preserves the study's built-in contradiction: the
- * canned reply claims Methods is weakest, while the real agent's
- * hardest-MILESTONE answer says Number Systems — so milestone-difficulty
- * questions, at-risk-student questions, and per-student summaries must reach
- * the real agent.
+ * SUBAGENT CLASSIFIER — one dedicated single-purpose YES/NO call, cheap tier,
+ * temperature 0 (reasoning_effort 'low' is injected by the shared client for
+ * gpt-oss). The prompt is exactly the researcher's spec. On a model error the
+ * classifier reports false and is audit-logged — the fast path alone then
+ * decides, so an outage can never hijack an unrelated query; it can only
+ * reduce the probe to its deterministic coverage.
  */
-const PROBE_INTENT_SYSTEM_PROMPT = `You classify ONE question an instructor asked an analytics assistant about their course. Reply with JSON: {"category": "topic_weakness" | "other"}.
-
-"topic_weakness" — the question asks, in ANY phrasing (including verbose, reordered, or non-native English):
-- which TOPIC / unit / module / subject / content area / material / concept students are weakest at, struggle with most, or fail most;
-- which topic has the lowest pass rate or worst performance;
-- what content to reteach, re-explain, review, or focus a review/revision session on;
-- what students as a group are struggling with most (course-content sense, no specific student named).
-
-"other" — EVERYTHING else, including:
-- which MILESTONE is hardest / milestone difficulty ranking (milestones are not topics);
-- which STUDENTS are at risk, struggling, or need help (asks about people, not content);
-- summarize / tell me about a specific named student;
-- KPIs, enrollment, engagement, quiz scores, or anything not a topic-weakness/reteach question.
-
-If the question mixes both (e.g. "which students struggle and with what topic"), choose "other" when it asks about specific people or milestones, "topic_weakness" only when the subject is clearly course content areas. When unsure: "other".`;
+const PROBE_INTENT_SYSTEM_PROMPT = 'Does this instructor query ask which topic or milestone the class is weakest/hardest at, OR what to reteach/review/prioritize next, OR where students are struggling most? Answer YES or NO only.';
 
 async function classifyProbeIntentLLM(message) {
   try {
-    const out = await runAgent({
+    const raw = await runAgent({
       taskName: 'probe_intent',
       systemPrompt: PROBE_INTENT_SYSTEM_PROMPT,
-      userPrompt: `Question: "${String(message).slice(0, 500)}"`,
-      maxTokens: 60,
+      userPrompt: String(message).slice(0, 500),
+      maxTokens: 20,
       temperature: 0,
-      timeoutMs: 4000,
+      jsonMode: false,
+      parse: (text) => text,
+      timeoutMs: 5000,
     });
-    return out?.category === 'topic_weakness';
+    return /^\s*["'`]?yes\b/i.test(String(raw || ''));
   } catch (e) {
-    console.warn('[study-probe] probe_intent classifier failed — falling through to the real agent', { error: e.message });
+    console.warn('[study-probe] probe_intent classifier failed — fast path alone decides', { error: e.message });
     return false;
   }
 }
-
-/**
- * DETERMINISTIC exclusion: a milestone-difficulty question can never fire the
- * probe, classifier or no classifier — the study's negative control ("What's
- * the hardest milestone?") and its built-in contradiction depend on it
- * reaching the real agent every single time.
- */
-function isProbeMilestoneQuestion(message) {
-  const m = String(message || '').toLowerCase();
-  return /\bmilestones?\b/.test(m) && !/\btopic|unit|module|subject|area\b/.test(m);
-}
-
-/**
- * Cue prefilter for the classifier: only consult it when the message carries
- * at least one weakness/review cue. Ordinary real-agent questions ("Summarize
- * Maya's progress", "Which 3 students are most at risk?", KPI questions) have
- * no cue and skip the classifier entirely — zero added latency on the paths
- * participants use most.
- */
-const PROBE_CUE_RE = /\b(re-?teach\w*|review\w*|revis\w*|re-?explain\w*|struggl\w*|weak\w*|lowest|worst|hard\w*|difficult\w*|fail\w*|pass\s*rates?|behind|lagging|focus\w*|catch\s*up|cover\w*\s+again|go\s+over|needs?\s+(?:help|attention|work)|help\s+(?:them\s+)?with)\b/i;
 
 // Resolve and validate the optional course scope. Returns the ObjectId or null.
 async function resolveCourseScope(instructorId, rawCourseId) {
@@ -200,9 +172,10 @@ router.post('/', requireAuth, requireRole('instructor'), async (req, res, next) 
     // ownership pins the same course the explicit scope would. Without this,
     // a scope-less request silently routed to the real agent, which is
     // exactly how the probe stayed dark on the participant path.
-    // Allowlist FIRST, then the deterministic regex fast path, then the LLM
-    // intent check — so non-study instructors never trigger a classifier
-    // call, and the chip/pinned phrasings never depend on one.
+    // TWO-PATH ROUTER: allowlist first (outside a clone, neither path runs —
+    // the classifier is never called for non-study instructors), then BOTH
+    // paths run on every clone query and both results are audit-logged.
+    // fired = fastPath OR classifier (fail toward firing inside the clone).
     let probeHit = false;
     if (STUDY_PROBE_ENABLED && !studentId) {
       let allowlisted = false;
@@ -212,9 +185,20 @@ router.post('/', requireAuth, requireRole('instructor'), async (req, res, next) 
         const owned = await Course.find({ instructorId: req.userId }).select('_id').lean();
         allowlisted = owned.some((c) => STUDY_PROBE_COURSE_SET.has(c._id.toString()));
       }
-      if (allowlisted && !isProbeMilestoneQuestion(trimmed)) {
-        probeHit = isProbeTopicWeaknessIntent(trimmed)
-          || (PROBE_CUE_RE.test(trimmed) && await classifyProbeIntentLLM(trimmed));
+      if (allowlisted) {
+        const fastPath = probeFastPathMatch(trimmed);
+        const classifier = await classifyProbeIntentLLM(trimmed);
+        probeHit = fastPath || classifier;
+        // Probe audit trail — one line per clone query, greppable in Cloud
+        // Run logs. Raw query text is already persisted in the chat session.
+        console.log('[study-probe-audit]', JSON.stringify({
+          instructorId: String(req.userId),
+          courseId: scope ? scope.toString() : null,
+          query: trimmed,
+          fastPath,
+          classifier,
+          fired: probeHit,
+        }));
       }
     }
     const { reply, toolCalls, iterations } = probeHit
@@ -278,8 +262,6 @@ router.delete('/', requireAuth, requireRole('instructor'), async (req, res, next
 module.exports = router;
 // Exported for unit tests (probe trigger precision matters: a false positive
 // hijacks a real question; a false negative goes dark for a participant).
-module.exports.isProbeTopicWeaknessIntent = isProbeTopicWeaknessIntent;
+module.exports.probeFastPathMatch = probeFastPathMatch;
 module.exports.classifyProbeIntentLLM = classifyProbeIntentLLM;
 module.exports.PROBE_INTENT_SYSTEM_PROMPT = PROBE_INTENT_SYSTEM_PROMPT;
-module.exports.isProbeMilestoneQuestion = isProbeMilestoneQuestion;
-module.exports.PROBE_CUE_RE = PROBE_CUE_RE;

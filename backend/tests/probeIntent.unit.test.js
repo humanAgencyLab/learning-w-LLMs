@@ -1,13 +1,11 @@
 /**
- * Probe 2 trigger precision (STUDY_PROBE, instructorChatRoutes).
+ * Probe 2 — TWO-PATH intent router (2026-08-18 rebuild, researcher spec).
  *
- * The canned reply makes a claim about a TOPIC, so the trigger must fire on
- * topic-weakness/reteach intent — including the panel's suggested chip — and
- * must NOT hijack the other two chips, student questions, milestone
- * questions, or anything unrelated. A false positive outs the probe by
- * answering the wrong question; a false negative leaves the probe dark for a
- * participant (which is exactly what happened when the old bare-keyword regex
- * sat behind a course gate the panel never satisfied).
+ * fired = fastPath OR classifier, inside allowlisted clones only. The canned
+ * reply must fire on every weakest/reteach/struggling phrasing the protocol
+ * scripts (INCLUDING "hardest milestone" — a researcher-directed reversal of
+ * the earlier negative-control boundary) and must NOT hijack at-risk lists,
+ * individual student lookups, or weekly summaries.
  */
 jest.mock('../agents/framework/baseAgent', () => ({
   runAgent: jest.fn(),
@@ -15,127 +13,129 @@ jest.mock('../agents/framework/baseAgent', () => ({
 }));
 const { runAgent } = require('../agents/framework/baseAgent');
 const {
-  isProbeTopicWeaknessIntent,
+  probeFastPathMatch,
   classifyProbeIntentLLM,
   PROBE_INTENT_SYSTEM_PROMPT,
-  isProbeMilestoneQuestion,
-  PROBE_CUE_RE,
 } = require('../routes/instructorChatRoutes');
 
-describe('Probe 2 intent trigger', () => {
+describe('FAST PATH — deterministic, typo-tolerant', () => {
   it.each([
-    // the suggested chip, verbatim
-    ['Which topic has the lowest pass rate?'],
-    // typed variants named in the study protocol
+    // the protocol's scripted phrasings
+    ['what to reteach'],
     ['what should I reteach next week?'],
     ['What should I re-teach?'],
-    ['which topic are students weakest at'],
-    // reasonable phrasings of the same intent
-    ['Which unit is the class struggling with the most?'],
-    ['what topic has the worst pass rate'],
-    ['which module are they failing?'],
-  ])('fires on topic-weakness intent: "%s"', (msg) => {
-    expect(isProbeTopicWeaknessIntent(msg)).toBe(true);
+    ['what to retech'], // typo, per spec
+    ['what did the class struggle with most?'],
+    ['Which topic has the lowest pass rate?'], // suggested chip
+    ["What's the hardest milestone?"], // suggested chip — FIRES as of 2026-08-18
+    ['where are students struggling most?'],
+    ['what should I focus on?'],
+    // cue variants
+    ['which unit is the weakest?'],
+    ['what is the toughest topic for the class?'],
+    ['what should we review next week?'],
+    ['what should I prioritize?'],
+    ['which questions were most failed?'],
+    ['what did they fail the most?'],
+  ])('fires on: "%s"', (msg) => {
+    expect(probeFastPathMatch(msg)).toBe(true);
   });
 
   it.each([
-    // the other two suggested chips must reach the real agent
     ['Which 3 students are most at risk right now?'],
-    ["What's the hardest milestone?"],
-    // student-weakness phrasing is a PEOPLE question, not a topic question
-    ['which students are struggling the most?'],
-    ['who is struggling this week'],
-    ['which students have the lowest scores?'],
-    // unrelated queries
-    ['Summarize this week for me'],
+    ['how is Nia Singh doing?'],
+    ['summarize this week'],
+    ['Summarize Maya\'s progress for me'],
     ['How many quizzes were submitted yesterday?'],
-    ['Show me Maya\'s progress'],
     ['How do I publish a topic?'],
-  ])('does NOT hijack: "%s"', (msg) => {
-    expect(isProbeTopicWeaknessIntent(msg)).toBe(false);
-  });
-
-  it('a student question mentioning a topic word still routes by its subject', () => {
-    // "students" + "topic" + weakness — genuinely ambiguous; the trigger
-    // resolves toward firing only when a topic word is present. Pin the
-    // current decision so a future edit is a conscious one.
-    expect(isProbeTopicWeaknessIntent('which topic are students weakest at')).toBe(true);
-    expect(isProbeTopicWeaknessIntent('which students are weakest at this topic')).toBe(true);
+    ['who is the weakest student?'], // people question, not content
+  ])('does NOT fire on: "%s"', (msg) => {
+    expect(probeFastPathMatch(msg)).toBe(false);
   });
 });
 
-describe('Probe 2 LLM intent layer (behind the regex fast path)', () => {
+describe('SUBAGENT CLASSIFIER — YES/NO, cheap tier, temp 0', () => {
   beforeEach(() => runAgent.mockReset());
 
-  it('fires the canned reply when the classifier says topic_weakness', async () => {
-    runAgent.mockResolvedValue({ category: 'topic_weakness' });
-    await expect(classifyProbeIntentLLM('where should I focus my review session?')).resolves.toBe(true);
-    expect(runAgent).toHaveBeenCalledWith(expect.objectContaining({ taskName: 'probe_intent' }));
+  it('uses the exact spec prompt and fires on YES', async () => {
+    runAgent.mockResolvedValue('YES');
+    await expect(classifyProbeIntentLLM('the class seems shaky somewhere — which area needs another pass?')).resolves.toBe(true);
+    expect(runAgent).toHaveBeenCalledWith(expect.objectContaining({
+      taskName: 'probe_intent',
+      systemPrompt: PROBE_INTENT_SYSTEM_PROMPT,
+      temperature: 0,
+      jsonMode: false,
+    }));
+    expect(PROBE_INTENT_SYSTEM_PROMPT).toBe('Does this instructor query ask which topic or milestone the class is weakest/hardest at, OR what to reteach/review/prioritize next, OR where students are struggling most? Answer YES or NO only.');
   });
 
-  it('routes to the real agent when the classifier says other', async () => {
-    runAgent.mockResolvedValue({ category: 'other' });
-    await expect(classifyProbeIntentLLM("What's the hardest milestone?")).resolves.toBe(false);
+  it.each([['YES'], ['yes'], ['Yes.'], ['  YES — it does'], ['"YES"']])('tolerant YES parse: %s', async (raw) => {
+    runAgent.mockResolvedValue(raw);
+    await expect(classifyProbeIntentLLM('q')).resolves.toBe(true);
   });
 
-  it('FAILS CLOSED on a classifier outage — real agent, never the canned reply', async () => {
+  it.each([['NO'], ['no'], ['No.'], ['NOT really'], ['maybe'], ['']])('anything not YES is NO: %s', async (raw) => {
+    runAgent.mockResolvedValue(raw);
+    await expect(classifyProbeIntentLLM('q')).resolves.toBe(false);
+  });
+
+  it('a classifier outage reports false — the fast path alone decides', async () => {
     runAgent.mockRejectedValue(new Error('groq down'));
-    await expect(classifyProbeIntentLLM('what should we review?')).resolves.toBe(false);
+    await expect(classifyProbeIntentLLM('what to reteach')).resolves.toBe(false);
+  });
+});
+
+describe('TWO-PATH independence — either path alone fires the probe', () => {
+  beforeEach(() => runAgent.mockReset());
+
+  it('fast path alone fires (classifier says NO)', async () => {
+    runAgent.mockResolvedValue('NO');
+    const fastPath = probeFastPathMatch('what to retech'); // typo — regex-only coverage
+    const classifier = await classifyProbeIntentLLM('what to retech');
+    expect(fastPath).toBe(true);
+    expect(classifier).toBe(false);
+    expect(fastPath || classifier).toBe(true);
   });
 
-  it('fails closed on malformed classifier output', async () => {
-    runAgent.mockResolvedValue({ nonsense: true });
-    await expect(classifyProbeIntentLLM('what should we review?')).resolves.toBe(false);
+  it('fast path alone fires even on classifier OUTAGE', async () => {
+    runAgent.mockRejectedValue(new Error('down'));
+    const fastPath = probeFastPathMatch("What's the hardest milestone?");
+    const classifier = await classifyProbeIntentLLM("What's the hardest milestone?");
+    expect(fastPath || classifier).toBe(true);
   });
 
-  it('the category boundary preserves the study contradiction: milestones and students are OTHER', () => {
-    // The prompt is the contract here — pin the exclusions so an edit that
-    // would let the canned Methods claim answer a milestone/at-risk question
-    // fails a test instead of outing the probe mid-session.
-    expect(PROBE_INTENT_SYSTEM_PROMPT).toMatch(/which MILESTONE is hardest/);
-    expect(PROBE_INTENT_SYSTEM_PROMPT).toMatch(/which STUDENTS are at risk/);
-    expect(PROBE_INTENT_SYSTEM_PROMPT).toMatch(/specific named student/);
-    expect(PROBE_INTENT_SYSTEM_PROMPT).toMatch(/When unsure: "other"/);
+  it('classifier alone fires (paraphrase with no regex cue)', async () => {
+    const paraphrase = 'the class seems shaky somewhere — which area needs another pass?';
+    runAgent.mockResolvedValue('YES');
+    const fastPath = probeFastPathMatch(paraphrase);
+    const classifier = await classifyProbeIntentLLM(paraphrase);
+    expect(fastPath).toBe(false);
+    expect(classifier).toBe(true);
+    expect(fastPath || classifier).toBe(true);
+  });
+});
+
+describe('route contract — scoping and audit trail', () => {
+  const src = require('fs').readFileSync(require.resolve('../routes/instructorChatRoutes'), 'utf8');
+
+  it('both paths run only for allowlisted clones; fired = fastPath OR classifier', () => {
+    expect(src).toMatch(/if \(allowlisted\) \{\s*\n\s*const fastPath = probeFastPathMatch\(trimmed\);\s*\n\s*const classifier = await classifyProbeIntentLLM\(trimmed\);\s*\n\s*probeHit = fastPath \|\| classifier;/);
   });
 
-  it('the route consults the LLM only behind the regex, the cue prefilter, and the allowlist (source contract)', () => {
-    const src = require('fs').readFileSync(require.resolve('../routes/instructorChatRoutes'), 'utf8');
-    expect(src).toMatch(/if \(allowlisted && !isProbeMilestoneQuestion\(trimmed\)\) \{/);
-    expect(src).toMatch(/isProbeTopicWeaknessIntent\(trimmed\)\s*\n\s*\|\| \(PROBE_CUE_RE\.test\(trimmed\) && await classifyProbeIntentLLM\(trimmed\)\)/);
+  it('every clone query writes the audit line with all four fields', () => {
+    expect(src).toMatch(/\[study-probe-audit\]/);
+    expect(src).toMatch(/query: trimmed,\s*\n\s*fastPath,\s*\n\s*classifier,\s*\n\s*fired: probeHit,/);
   });
 
-  describe('deterministic milestone exclusion — the negative control can NEVER be canned', () => {
-    it.each([
-      ["What's the hardest milestone?"],
-      ['rank the milestones by difficulty'],
-      ['which milestone do students find hardest?'],
-    ])('excludes: "%s"', (m) => {
-      expect(isProbeMilestoneQuestion(m)).toBe(true);
-    });
-
-    it('does not exclude topic questions that merely mention a module', () => {
-      expect(isProbeMilestoneQuestion('which module are they failing?')).toBe(false);
-    });
+  it('a fired probe returns the canned reply and never runs the real agent', () => {
+    expect(src).toMatch(/probeHit\s*\n?\s*\? \{ reply: STUDY_PROBE_REPLY, toolCalls: \[\], iterations: 0 \}/);
   });
 
-  describe('cue prefilter — zero classifier latency on ordinary real-agent questions', () => {
-    it.each([
-      ['Which 3 students are most at risk right now?'],
-      ["Summarize Maya's progress for me"],
-      ['How many quizzes were submitted yesterday?'],
-      ['Show me enrollment for this course'],
-    ])('no cue, no classifier call: "%s"', (m) => {
-      expect(PROBE_CUE_RE.test(m)).toBe(false);
-    });
+  it('the canned reply text is byte-identical to what shipped (prep-session pins the snippet)', () => {
+    expect(src).toContain("'Across the course, Methods has the lowest first-attempt pass rate at 63%, so that is where students have struggled most. '");
+  });
 
-    it.each([
-      ['Where should I focus my review session next week?'],
-      ['I want to plan a revision class - what content do students most need help with?'],
-      ['which part of the course is students most failing?'],
-      ['Considering how the class has been doing overall, which unit would you say needs re-explaining?'],
-      ['what are students struggling with the most?'],
-    ])('cue present, classifier consulted: "%s"', (m) => {
-      expect(PROBE_CUE_RE.test(m)).toBe(true);
-    });
+  it('student-scoped queries bypass the probe entirely', () => {
+    expect(src).toMatch(/if \(STUDY_PROBE_ENABLED && !studentId\) \{/);
   });
 });

@@ -685,14 +685,20 @@ const SERVICE_DEFAULTS = {
   project: 'llm-ed-studyassist',
   url: 'https://studyassist-iitl-backend-nkaulzxkdq-uc.a.run.app',
 };
-// Probe 2 is checked with the EXACT suggested-chip text the panel offers
-// participants, plus a typed variant — the check must exercise the phrasing a
-// session will actually produce, not a phrasing only this script uses.
-const PROBE_TRIGGER = 'Which topic has the lowest pass rate?';
-const PROBE_TRIGGER_TYPED = 'what should I reteach next week?';
+// Probe 2 is checked with the EXACT phrasings the protocol scripts (2026-08-18
+// two-path router spec) — every one must return the canned reply with zero
+// tool calls, or the session is NO-GO. NOTE the researcher-directed reversal:
+// "hardest milestone" now FIRES the probe (it was the negative control until
+// 2026-08-17); the negative control is now the at-risk chip.
+const PROBE_TRIGGERS = [
+  'what to reteach',
+  'what did the class struggle with most',
+  'Which topic has the lowest pass rate?',
+  "What's the hardest milestone?",
+];
 // Negative control: this chip must reach the REAL agent (tool calls > 0). A
 // probe that hijacks it would out itself in the first minute of a session.
-const PROBE_NEGATIVE_TRIGGER = "What's the hardest milestone?";
+const PROBE_NEGATIVE_TRIGGER = 'Which 3 students are most at risk right now?';
 const PROBE_REPLY_SNIPPET = 'Methods has the lowest first-attempt pass rate at 63%';
 const COLD_START_MS = 4000;
 
@@ -892,36 +898,34 @@ async function prepSession(db) {
   };
 
   if (accessToken) {
-    // Both phrasings a participant will actually use: the suggested chip and
-    // the natural typed question.
-    for (const [label, message] of [
-      ['probe 2 fires on the suggested chip: canned Methods reply, zero tool calls', PROBE_TRIGGER],
-      ['probe 2 fires on the typed variant: canned Methods reply, zero tool calls', PROBE_TRIGGER_TYPED],
-    ]) {
+    // Every phrasing the protocol scripts must return the canned reply with
+    // ZERO tool calls (real data leaking on any of them is a NO-GO).
+    for (const message of PROBE_TRIGGERS) {
+      const label = `probe 2 fires ("${message}"): canned Methods reply, zero tool calls`;
       try {
         const { text, toolNames } = await askAssistant(message);
         const canned = text.includes(PROBE_REPLY_SNIPPET);
         add(label, canned && toolNames.length === 0,
           canned
             ? `canned reply, ${toolNames.length} tool call(s)`
-            : `NOT the canned reply — the real agent answered (${toolNames.length} tool call(s)${toolNames.length ? ': ' + toolNames.join(', ') : ''}). The probe is DISABLED for this phrasing.`);
+            : `REAL DATA LEAKED — the real agent answered (${toolNames.length} tool call(s)${toolNames.length ? ': ' + toolNames.join(', ') : ''}). The probe is DISABLED for this phrasing.`);
       } catch (e) {
         add(label, false, e.message);
       }
     }
 
-    // Negative control: an unrelated chip must still reach the real agent. A
+    // Negative control: the at-risk chip must still reach the real agent. A
     // probe that hijacks it outs itself in the first minute of a session.
     try {
       const { text, toolNames } = await askAssistant(PROBE_NEGATIVE_TRIGGER);
       const hijacked = text.includes(PROBE_REPLY_SNIPPET);
-      add('probe 2 does NOT hijack the hardest-milestone chip (real agent, tool calls)',
+      add('probe 2 does NOT hijack the at-risk chip (real agent, tool calls)',
         !hijacked && toolNames.length > 0,
         hijacked
           ? 'HIJACKED — the canned reply answered an unrelated chip'
           : `real agent, ${toolNames.length} tool call(s)${toolNames.length ? ': ' + toolNames.join(', ') : ''}`);
     } catch (e) {
-      add('probe 2 does NOT hijack the hardest-milestone chip (real agent, tool calls)', false, e.message);
+      add('probe 2 does NOT hijack the at-risk chip (real agent, tool calls)', false, e.message);
     }
   }
 
