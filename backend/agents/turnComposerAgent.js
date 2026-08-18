@@ -32,6 +32,11 @@ const TEACH_BODY_CAP = 400;
 const TEACH_BODY_TARGET = 250;
 const RETRY_BODY_CAP = 160;
 const CLARIFY_BODY_CAP = 140;
+// When the instructor gives STRUCTURAL directives (hook-first, no-examples,
+// question-first, ...), the teaching body tightens to hook + focused
+// explanation rather than the default developed lecture.
+const DIRECTIVE_BODY_CAP = 220;
+const DIRECTIVE_BODY_TARGET = 150;
 
 /**
  * Label over existing decisions — NOT new flow logic. Every input is a value
@@ -92,6 +97,59 @@ function extractWordCap(globalInstructions) {
   const n = parseInt(m[1], 10);
   return Number.isFinite(n) && n >= 20 && n <= 2000 ? n : null;
 }
+
+/**
+ * Pedagogical STRUCTURE directives from the instructor's free-text teaching
+ * instructions (RQ-A). The instructions must shape HOW a teaching turn is
+ * built — opening style, example use, code use, concision — not just its
+ * tone. Nothing here hardcodes a style: every field is null/absent unless
+ * the instructor asked for it, and the default prompt is unchanged when no
+ * directive is found.
+ */
+function extractTeachingDirectives(globalInstructions) {
+  const t = String(globalInstructions || '').toLowerCase();
+  if (!t.trim()) return { openingStyle: null, examples: null, code: null, concise: false, any: false };
+
+  let openingStyle = null;
+  // example/hook first: "hook the student with an example", "start with an
+  // example/scenario/analogy/story", "example first", "open with a real-world case"
+  if (/\bhook\b/.test(t)
+    || /\b(?:start|begin|open|lead|first)\w*\b[^.!?]{0,60}\b(?:example|scenario|analog\w*|story|real[- ]world|concrete case)/.test(t)
+    || /\b(?:example|scenario)s?\b[^.!?]{0,20}\bfirst\b/.test(t)) {
+    openingStyle = 'example_first';
+  }
+  // question first / Socratic
+  if (/\bsocratic\b/.test(t)
+    || /\b(?:start|begin|open|lead)\w*\b[^.!?]{0,40}\bquestions?\b/.test(t)
+    || /\bquestion[- ]first\b/.test(t)) {
+    openingStyle = 'question_first';
+  }
+  // definition first (checked last so an explicit "definition-first" wins over
+  // a stray example mention elsewhere in the text)
+  if (/\bdefinition[- ]first\b/.test(t)
+    || /\b(?:start|begin|open|lead)\w*\b[^.!?]{0,40}\bdefinitions?\b/.test(t)) {
+    openingStyle = 'definition_first';
+  }
+
+  let examples = null;
+  if (/\bno examples?\b|without examples?\b|skip (?:the )?examples?\b|avoid examples?\b/.test(t)) examples = 'banned';
+  else if (/\b(?:use|include|with|give|show|work(?:ed)?)\b[^.!?]{0,30}\bexamples?\b|\bworked examples?\b/.test(t) || openingStyle === 'example_first') examples = 'required';
+
+  let code = null;
+  if (/\bno code\b|without code\b|avoid code\b/.test(t)) code = 'banned';
+  else if (/\bcode (?:snippets?|examples?|samples?)\b|\bshow code\b|\binclude code\b/.test(t)) code = 'preferred';
+
+  const concise = /\bconcise\b|\bbrief\b|\bshort\b|\bto the point\b|\btight\b/.test(t);
+
+  return { openingStyle, examples, code, concise, any: !!(openingStyle || examples || code || concise) };
+}
+
+// High-precision detector for a definitional copula opener ("A loop is a
+// construct that...", "Loops are blocks that...") — used ONLY as the retry
+// trigger when the instructor asked for example-first and the model led with
+// a definition anyway. Deliberately narrow: "Imagine you are baking..." or
+// "Picture a chef..." must not match.
+const DEFINITIONAL_OPENER_RE = /^(?:in\s+[\w+#.]+\s*,?\s+)?(?:(?:a|an|the)\s+[\w-]+(?:\s+[\w-]+){0,3}|[\w-]*s)\s+(?:is|are|refers? to|means)\b/i;
 
 /**
  * Student-quality signals for adaptation, from data already on the session:
@@ -535,7 +593,17 @@ async function composeTutorTurn({
   const adaptation = computeAdaptation({ session, assessment, retryCount, userMessage });
   const structured = STRUCTURED_FLOWS.includes(flowAction);
   const light = LIGHT_FLOWS.includes(flowAction);
-  const bodyCap = structured ? bodyCapFor(flowAction, wordCap) : null;
+  // RQ-A: the instructor's structural directives shape teaching turns. When
+  // any structural directive exists, the teaching body tightens: a hook plus
+  // a focused explanation, not the default developed-lecture size (the
+  // instructor's own word cap still wins when stricter).
+  const directives = extractTeachingDirectives(globalInstructions);
+  let bodyCap = structured ? bodyCapFor(flowAction, wordCap) : null;
+  let bodyTarget = TEACH_BODY_TARGET;
+  if (directives.any && !light && flowAction !== 'complete_module') {
+    bodyCap = Math.min(bodyCap || DIRECTIVE_BODY_CAP, DIRECTIVE_BODY_CAP);
+    bodyTarget = DIRECTIVE_BODY_TARGET;
+  }
 
   // ANCHOR RECOVERY (2026-08 loop hardening): a light turn must always have a
   // question to anchor to. If meta.outstandingCheck is gone, recover it from a
@@ -571,11 +639,12 @@ async function composeTutorTurn({
     alreadyShownSummaries: alreadyShownSummaries(session),
     structured,
     light,
-    bodyWordTarget: structured && !light ? Math.min(TEACH_BODY_TARGET, bodyCap) : undefined,
+    bodyWordTarget: structured && !light ? Math.min(bodyTarget, bodyCap) : undefined,
     bodyWordCap: bodyCap || undefined,
     clarifyStreak,
     repeatedClarification,
     outstandingIsObjective,
+    directives,
   });
   let raw;
   try {
@@ -623,6 +692,7 @@ async function composeTutorTurn({
           clarifyStreak,
           repeatedClarification,
           outstandingIsObjective,
+          directives,
         });
         raw = await callTeacherAPI(prosePrompt, 1400, session, null, globalInstructions || '');
       } catch (regenErr) {
@@ -646,6 +716,32 @@ async function composeTutorTurn({
         body = hardCapLightBody(body, bodyCap);
         if ((clarifyStreak >= 4 && repeatedClarification) || clarifyStreak >= 6) {
           body = collapseToTwoSentences(body);
+        }
+      }
+      // EXAMPLE-FIRST RETRY (RQ-A): the instructor asked to open with a hook,
+      // but the body leads with a definitional copula anyway ("A loop is a
+      // construct that..."). One corrective regeneration with explicit
+      // feedback; if the retry still leads with a definition, keep it and log
+      // — never loop.
+      if (!light && directives.openingStyle === 'example_first'
+        && ['first_teach', 'continue', 'advance_milestone'].includes(flowAction)
+        && DEFINITIONAL_OPENER_RE.test(String(body).trim())) {
+        console.warn('[turnComposer] example-first directive violated (definitional opener) — one corrective retry', { flowAction, opener: String(body).trim().slice(0, 80) });
+        try {
+          const retryRaw = await callTeacherAPI(
+            `${prompt}\n\n⚠️ YOUR PREVIOUS ATTEMPT OPENED THE BODY WITH AN ABSTRACT DEFINITION ("${String(body).trim().slice(0, 90)}..."). The instructor requires the body to OPEN with a concrete, specific example or scenario. Regenerate the SAME JSON with the body's first sentence being the example — the definition comes after it.`,
+            1400, session, null, globalInstructions || '', { jsonMode: true },
+          );
+          const retryParsed = parseParts(retryRaw);
+          if (retryParsed) {
+            const retryBody = enforceWordCap(dedup(retryParsed.body, [...priorParas, normalize(intro)]), bodyCap);
+            if (retryBody && !DEFINITIONAL_OPENER_RE.test(String(retryBody).trim())) {
+              body = retryBody;
+              if (typeof retryParsed.question === 'string' && retryParsed.question.trim()) parsed.question = retryParsed.question;
+            }
+          }
+        } catch (retryErr) {
+          console.warn('[turnComposer] example-first retry failed — keeping original body', { error: retryErr.message });
         }
       }
       let question = parsed.question;
@@ -732,4 +828,6 @@ module.exports = {
   _synthesizeProseParts: synthesizeProseParts,
   _collapseToTwoSentences: collapseToTwoSentences,
   _ANCHOR_LINE: ANCHOR_LINE,
+  extractTeachingDirectives,
+  _DEFINITIONAL_OPENER_RE: DEFINITIONAL_OPENER_RE,
 };

@@ -86,6 +86,10 @@ function buildTurnPrompt({
   // or the clarify turn is forbidden from explaining the content it exists
   // to clarify.
   outstandingIsObjective = false,
+  // Pedagogical STRUCTURE directives parsed from the instructor's teaching
+  // instructions (RQ-A): { openingStyle, examples, code, concise, any }.
+  // Shapes HOW teaching turns are built; absent → default shape unchanged.
+  directives = null,
 }) {
   const guidance = (light && flowAction === 'correct_retry')
     ? FLOW_GUIDANCE.correct_retry_light
@@ -101,6 +105,37 @@ function buildTurnPrompt({
 
   const guardBlock = (flowAction === 'clarify' || flowAction === 'correct_retry') && outstandingCheck && !outstandingIsObjective
     ? `\n⚠️⚠️⚠️ ACTIVE ASSESSMENT QUESTION (do NOT state its answer anywhere in your message):\n"${outstandingCheck}"\n`
+    : '';
+
+  // TURN-STRUCTURE block (RQ-A): the instructor's parsed directives, stated
+  // as hard rules on how the BODY of a teaching turn is built. Only teaching
+  // flows — clarify/correct_retry are answers, not lessons, and keep their
+  // light shape.
+  const teachingFlow = ['first_teach', 'continue', 'advance_milestone'].includes(flowAction);
+  const d = directives || {};
+  const structureRules = [];
+  if (teachingFlow && d.openingStyle === 'example_first') {
+    structureRules.push('OPEN WITH THE EXAMPLE: the VERY FIRST sentence of the body is a concrete, specific example or scenario (a real situation, real values, a mini narrative) that hooks the student — BEFORE any definition or abstract explanation. NEVER open the body with "A/An/The <term> is ..." or any definition-shaped sentence. Definition and explanation come AFTER the example and refer back to it.');
+  } else if (teachingFlow && d.openingStyle === 'question_first') {
+    structureRules.push('OPEN WITH A THOUGHT QUESTION: the body starts with one short, thought-provoking question or scenario prompt that makes the student think before you explain (Socratic opening). This is NOT the assessment question — that still comes at the end. Explanation follows the opening question.');
+  } else if (teachingFlow && d.openingStyle === 'definition_first') {
+    structureRules.push('OPEN WITH THE DEFINITION: the body starts with a crisp, precise definition of the concept, then builds on it. Do not open with a story or example.');
+  }
+  if (teachingFlow && d.examples === 'banned') {
+    structureRules.push('NO EXAMPLES: the instructor asked for no examples — explain conceptually and concisely, without worked examples, analogies, or story scenarios.');
+  } else if (teachingFlow && d.examples === 'required' && d.openingStyle !== 'example_first') {
+    structureRules.push('INCLUDE A WORKED EXAMPLE: at least one concrete, specific example in the body.');
+  }
+  if (teachingFlow && d.code === 'preferred') {
+    structureRules.push('SHOW CODE where the milestone involves code: include one short fenced code snippet (a few lines) that the explanation walks through. Skip it only if the milestone is genuinely non-code.');
+  } else if (teachingFlow && d.code === 'banned') {
+    structureRules.push('NO CODE SNIPPETS: explain without code blocks.');
+  }
+  if (teachingFlow && d.concise) {
+    structureRules.push('BE TIGHT: short focused paragraphs, no filler, no restating.');
+  }
+  const structureBlock = structureRules.length
+    ? `\n⚠️⚠️⚠️ INSTRUCTOR'S TURN STRUCTURE (authoritative — these rules define HOW the body is BUILT, not just its tone; they outrank the default body guidance below):\n${structureRules.map((r) => `- ${r}`).join('\n')}\n`
     : '';
 
   const streakBlock = (flowAction === 'clarify' || flowAction === 'correct_retry') && (clarifyStreak >= 2 || repeatedClarification)
@@ -131,7 +166,7 @@ Turn verdict (already decided upstream — your message must agree with it): ${v
 
 ${guidance}
 ${studentBlock}
-${guardBlock}${streakBlock}${hybridBlock}${shownBlock}${capRule}${gamRule}
+${structureBlock}${guardBlock}${streakBlock}${hybridBlock}${shownBlock}${capRule}${gamRule}
 
 The student just said:
 "${studentMessage}"
