@@ -90,6 +90,10 @@ function buildTurnPrompt({
   // instructions (RQ-A): { openingStyle, examples, code, concise, any }.
   // Shapes HOW teaching turns are built; absent → default shape unchanged.
   directives = null,
+  // The grader's specific finding on a wrong answer (2026-08 grading fix) —
+  // the correct_retry turn must NAME this defect and point to the exact
+  // clause, without handing over the corrected solution.
+  defect = null,
 }) {
   const guidance = (light && flowAction === 'correct_retry')
     ? FLOW_GUIDANCE.correct_retry_light
@@ -138,6 +142,10 @@ function buildTurnPrompt({
     ? `\n⚠️⚠️⚠️ INSTRUCTOR'S TURN STRUCTURE (authoritative — these rules define HOW the body is BUILT, not just its tone; they outrank the default body guidance below):\n${structureRules.map((r) => `- ${r}`).join('\n')}\n`
     : '';
 
+  const defectBlock = flowAction === 'correct_retry' && defect
+    ? `\n⚠️⚠️⚠️ GRADER'S FINDING (your correction MUST name THIS specific defect and point to the exact clause/line it describes — do NOT hand over the corrected code or the full solution):\n"${defect}"\n`
+    : '';
+
   const streakBlock = (flowAction === 'clarify' || flowAction === 'correct_retry') && (clarifyStreak >= 2 || repeatedClarification)
     ? `\n⚠️⚠️⚠️ REPEATED CLARIFICATIONS (${clarifyStreak} non-advancing turn${clarifyStreak === 1 ? '' : 's'} in a row${repeatedClarification ? '; their latest message is nearly identical to their previous one' : ''}): your earlier answers did not land. Do NOT re-explain the concept in general terms and do NOT repeat your previous wording. Give the MOST CONCRETE possible answer to their exact question — name the specific thing they should do or include, a tiny worked example is ideal — in at most 3 sentences. Then warmly and explicitly invite them to attempt the assessment question as their next message. If they are asking what their answer should include, list plainly and literally what to include.`
     : '';
@@ -166,7 +174,7 @@ Turn verdict (already decided upstream — your message must agree with it): ${v
 
 ${guidance}
 ${studentBlock}
-${structureBlock}${guardBlock}${streakBlock}${hybridBlock}${shownBlock}${capRule}${gamRule}
+${structureBlock}${guardBlock}${defectBlock}${streakBlock}${hybridBlock}${shownBlock}${capRule}${gamRule}
 
 The student just said:
 "${studentMessage}"

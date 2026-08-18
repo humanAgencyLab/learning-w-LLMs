@@ -72,6 +72,11 @@ async function runAgent({
   jsonMode = true,
   parse,
   timeoutMs = DEFAULT_AGENT_TIMEOUT_MS,
+  // Optional per-call reasoning-effort override for gpt-oss models. Unset ->
+  // the shared client injects 'low' (lib/llmClient). The code-correctness
+  // checker uses 'medium': tracing loop behavior is the hardest judgment in
+  // the pipeline.
+  reasoningEffort,
 }) {
   const client = getGroqClient();
   const model = getModelForTask(taskName);
@@ -88,6 +93,9 @@ async function runAgent({
 
   if (jsonMode) {
     requestOpts.response_format = { type: 'json_object' };
+  }
+  if (reasoningEffort) {
+    requestOpts.reasoning_effort = reasoningEffort;
   }
 
   const response = await createChatCompletionWithTimeout(client, requestOpts, timeoutMs);

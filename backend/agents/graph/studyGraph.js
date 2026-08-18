@@ -3,7 +3,7 @@ const { runIntentAgent } = require('../intentAgent');
 const { runPlanAgent } = require('../planAgent');
 const { runPlanModifyAgent } = require('../planModifyAgent');
 const { runConversationManagerAgent } = require('../conversationManagerAgent');
-const { runAssessmentAgent } = require('../assessmentAgent');
+const { runAssessmentAgent, runCodeCheck, looksLikeCode, unbalancedCode } = require('../assessmentAgent');
 const { runTeachingAgent, mapAssessmentForTeacher } = require('../teachingAgent');
 const { runQuizAgent } = require('../quizAgent');
 const CourseTopic = require('../../models/CourseTopic');
@@ -174,6 +174,46 @@ async function assessmentNode(state) {
     // instruction-blind for the study window (see the AgentState comment).
     topicTitle: session?.topic || '',
   });
+
+  /**
+   * DEMOTION-ONLY correctness gate (2026-08 grading fix). The main grader
+   * pattern-matched plausible-looking code ("Well done" on an infinite loop
+   * with an empty for-condition). When it is about to PASS an answer that
+   * contains code, a dedicated checker traces the code; if broken/incomplete,
+   * the pass demotes to wrong_answer with the specific defect attached (the
+   * composer names it in the retry turn). The gate can only demote — a
+   * checker outage keeps the original grade, so grades can never be inflated
+   * by a failure. Payload shape unchanged; `defect` is additive.
+   */
+  const p = result?.payload;
+  if (p && p.understood && p.recommendation !== 'clarify_again') {
+    let demoteDefect = null;
+    if (unbalancedCode(state.userMessage)) {
+      demoteDefect = 'the code looks unfinished — braces/parentheses are unbalanced; complete the missing part and resend the whole answer';
+    } else if (looksLikeCode(state.userMessage)) {
+      const chk = await runCodeCheck({
+        question: outstanding,
+        answer: state.userMessage,
+        milestone,
+        topicTitle: session?.topic || '',
+      });
+      if (!chk.sound) {
+        demoteDefect = chk.defect || 'the code does not do what the question asked — trace it and fix the failing part';
+      }
+    }
+    if (demoteDefect) {
+      console.warn('[codeCheck] demoting a passing grade — defect found', { defect: demoteDefect.slice(0, 140) });
+      result.payload = {
+        ...p,
+        responseType: 'wrong_answer',
+        understood: false,
+        confidence: 'high',
+        recommendation: 'clarify_again',
+        defect: demoteDefect,
+        reasoning: `Code check failed: ${demoteDefect}`,
+      };
+    }
+  }
   return { assessmentResult: result };
 }
 

@@ -645,6 +645,7 @@ async function composeTutorTurn({
     repeatedClarification,
     outstandingIsObjective,
     directives,
+    defect: (assessment && typeof assessment.defect === 'string' && assessment.defect.trim()) ? assessment.defect.trim() : null,
   });
   let raw;
   try {
@@ -693,6 +694,7 @@ async function composeTutorTurn({
           repeatedClarification,
           outstandingIsObjective,
           directives,
+          defect: (assessment && typeof assessment.defect === 'string' && assessment.defect.trim()) ? assessment.defect.trim() : null,
         });
         raw = await callTeacherAPI(prosePrompt, 1400, session, null, globalInstructions || '');
       } catch (regenErr) {
