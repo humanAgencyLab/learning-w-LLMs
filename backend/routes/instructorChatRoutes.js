@@ -82,7 +82,11 @@ async function classifyProbeIntentLLM(message) {
       taskName: 'probe_intent',
       systemPrompt: PROBE_INTENT_SYSTEM_PROMPT,
       userPrompt: String(message).slice(0, 500),
-      maxTokens: 20,
+      // gpt-oss REASONING eats completion tokens before any content: at 20
+      // tokens the content came back EMPTY on every query (audit trail showed
+      // classifier=false across the board) and even 80 truncated. 300 leaves
+      // ~60-90 for reasoning plus the one-word answer; measured 240-600ms.
+      maxTokens: 300,
       temperature: 0,
       jsonMode: false,
       parse: (text) => text,
