@@ -914,6 +914,22 @@ async function prepSession(db) {
       }
     }
 
+    // B3 page shape: the clone's Insights page must NOT render the
+    // "What should I cover in lecture?" section — the two-step contrast
+    // (What stands out → assistant probe) was designed without a third
+    // reteach recommendation between the steps. The section is feature-gated
+    // off via the heatmap payload; assert the gate is live.
+    try {
+      const hm = await api('GET', `/instructor/courses/${courseId}/heatmap`, null, accessToken);
+      add('Insights "What should I cover in lecture?" is OFF on the clone (B3 contrast preserved)',
+        hm?.features?.lectureCover === false,
+        hm?.features?.lectureCover === false
+          ? 'features.lectureCover=false — section hidden'
+          : `GATE MISSING — features=${JSON.stringify(hm?.features ?? null)}; the section WILL render`);
+    } catch (e) {
+      add('Insights "What should I cover in lecture?" is OFF on the clone (B3 contrast preserved)', false, e.message);
+    }
+
     // Negative control: the at-risk chip must still reach the real agent. A
     // probe that hijacks it outs itself in the first minute of a session.
     try {

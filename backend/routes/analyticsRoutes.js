@@ -49,6 +49,9 @@ const STUDY_PROBE_ENABLED = ['1', 'true'].includes(String(process.env.STUDY_PROB
 const STUDY_PROBE_USER_SET = new Set(
   String(process.env.STUDY_PROBE_USERS || '').split(',').map((s) => s.trim()).filter(Boolean)
 );
+const STUDY_PROBE_COURSE_SET = new Set(
+  String(process.env.STUDY_PROBE_COURSES || '').split(',').map((s) => s.trim()).filter(Boolean)
+);
 // A DIRECTLY CHECKABLE falsehood: the briefing and the KPI tile both show the
 // real pass rate (~80%), so "around 45%" contradicts on-screen ground truth a
 // participant can verify without leaving the page. The previous sentence
@@ -697,6 +700,14 @@ router.get('/courses/:courseId/risk-distribution', requireAuth, requireRole('ins
 router.get('/courses/:courseId/heatmap', requireAuth, requireRole('instructor'), requireCourseOwner, async (req, res, next) => {
   try {
     const data = await getTopicStudentHeatmap(req.params.courseId, parseSyntheticFlag(req));
+    // Feature gate (neutral name, study window): the Insights page's
+    // "What should I cover in lecture?" section is OFF for study clone
+    // courses — B3's two-step contrast (What stands out → assistant probe)
+    // was designed against a page without a third reteach recommendation
+    // between those steps. All other courses are unaffected.
+    if (STUDY_PROBE_ENABLED && STUDY_PROBE_COURSE_SET.has(String(req.params.courseId))) {
+      return res.json({ success: true, data: { ...data, features: { lectureCover: false } } });
+    }
     res.json({ success: true, data });
   } catch (e) {
     next(e);

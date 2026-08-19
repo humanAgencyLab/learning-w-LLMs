@@ -264,16 +264,20 @@ export default function InstructorInsightsPage() {
         <div className="text-sm text-ink-400">Loading insights…</div>
       ) : (
         <>
-          {/* ===== What should I cover in lecture? (kept from the IA redesign) ===== */}
-          <section className="space-y-3 animate-riseIn">
-            <h2 className="text-base font-bold text-ink-900">What should I cover in lecture?</h2>
-            <TopHardestTopics
-              heatmap={heatmap}
-              moduleDifficulty={performance?.moduleDifficulty || []}
-              enrolledCount={enrolledCount}
-              onViewAllTopicData={openHeatmapDeepLink}
-            />
-          </section>
+          {/* ===== What should I cover in lecture? (kept from the IA redesign) =====
+              Feature-gated: the heatmap payload can carry features.lectureCover
+              = false (server-controlled), which hides this whole section. */}
+          {heatmap?.features?.lectureCover !== false && (
+            <section className="space-y-3 animate-riseIn">
+              <h2 className="text-base font-bold text-ink-900">What should I cover in lecture?</h2>
+              <TopHardestTopics
+                heatmap={heatmap}
+                moduleDifficulty={performance?.moduleDifficulty || []}
+                enrolledCount={enrolledCount}
+                onViewAllTopicData={openHeatmapDeepLink}
+              />
+            </section>
+          )}
 
           {/* ===== Who should I reach? ===== */}
           <section className="scroll-mt-6 animate-riseIn" ref={whoToReachRef}>
