@@ -62,15 +62,21 @@ async function generateStudentReply({ persona, tutorMessage, history, hint }) {
         model: STUDENT_MODEL,
         messages,
         temperature: 0.85,
-        max_tokens: 180,
+        // 180 tokens was sized for the Llama models, which burn zero
+        // reasoning tokens. gpt-oss spends 60-90 of the budget on reasoning
+        // BEFORE any content, so multi-step answers hit finish_reason=length
+        // and cut mid-word ("...that shows the distribu"). 600 leaves the
+        // full persona char budget available after reasoning; the char trim
+        // below still bounds the visible reply.
+        max_tokens: 600,
+        reasoning_effort: 'low',
       });
       const text = res.choices?.[0]?.message?.content?.trim();
       if (text) {
-        return text
-          .replace(/^"|"$/g, '')
-          .replace(/^(Student|Me):\s*/i, '')
-          .trim()
-          .slice(0, persona.maxReplyChars);
+        return trimToCharBudget(
+          text.replace(/^"|"$/g, '').replace(/^(Student|Me):\s*/i, '').trim(),
+          persona.maxReplyChars,
+        );
       }
     } catch (e) {
       if (attempt === 3) break;
@@ -78,6 +84,22 @@ async function generateStudentReply({ persona, tutorMessage, history, hint }) {
     }
   }
   return "I think I follow, let me try. Is it about the main idea you mentioned?";
+}
+
+/**
+ * Bound a reply to the persona's char budget WITHOUT cutting mid-word: a hard
+ * .slice() produced the same mid-word truncation the token cap did. Prefer
+ * the last sentence end within budget; fall back to the last word boundary.
+ * Persona verbosity is unchanged — the prompt still asks for the same length.
+ */
+function trimToCharBudget(text, maxChars) {
+  if (!maxChars || text.length <= maxChars) return text;
+  const window = text.slice(0, maxChars);
+  const lastSentence = Math.max(window.lastIndexOf('. '), window.lastIndexOf('! '), window.lastIndexOf('? '));
+  if (lastSentence > maxChars * 0.5) return window.slice(0, lastSentence + 1).trim();
+  if (/[.!?]$/.test(window)) return window.trim();
+  const lastSpace = window.lastIndexOf(' ');
+  return (lastSpace > 0 ? window.slice(0, lastSpace) : window).trim();
 }
 
 /** Stamp simProbe metadata onto the student message we just sent. */
@@ -661,6 +683,7 @@ module.exports = {
   runOneStudent,
   generateStudentReply,
   classifyProbeOutcome,
+  trimToCharBudget,
   MAX_TURNS_PER_STUDENT,
   WALL_CLOCK_MS_PER_STUDENT,
 };

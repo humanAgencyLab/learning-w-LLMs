@@ -100,7 +100,10 @@ class SyntheticStudent {
           model: GROQ_MODEL,
           messages: msgs,
           temperature: 0.85,
-          max_tokens: 180,
+          // Sized for gpt-oss: reasoning eats 60-90 tokens before content
+          // (180 was a Llama-era budget and truncated replies mid-word).
+          max_tokens: 600,
+          reasoning_effort: 'low',
         });
         const text = res.choices?.[0]?.message?.content?.trim();
         if (text) return this._cleanReply(text);
@@ -114,12 +117,18 @@ class SyntheticStudent {
   }
 
   _cleanReply(text) {
-    return text
+    const t = text
       .replace(/^"|"$/g, '')
       .replace(/^Student:\s*/i, '')
       .replace(/^Me:\s*/i, '')
-      .trim()
-      .slice(0, 500);
+      .trim();
+    if (t.length <= 500) return t;
+    // Never cut mid-word: last sentence end within budget, else word boundary.
+    const window = t.slice(0, 500);
+    const lastSentence = Math.max(window.lastIndexOf('. '), window.lastIndexOf('! '), window.lastIndexOf('? '));
+    if (lastSentence > 250) return window.slice(0, lastSentence + 1).trim();
+    const lastSpace = window.lastIndexOf(' ');
+    return (lastSpace > 0 ? window.slice(0, lastSpace) : window).trim();
   }
 
   _fallbackReply() {
