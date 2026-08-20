@@ -833,7 +833,7 @@ router.get(
       // their order/numbers; the model only words them. Non-study courses keep
       // the free-form generation below.
       const pinnedFacts = (STUDY_PROBE_ENABLED && STUDY_PROBE_COURSE_SET.has(String(courseId)))
-        ? computePinnedInsightFacts({ tree, atRisk })
+        ? computePinnedInsightFacts({ performance: await getCoursePerformanceSummary(courseId), atRisk })
         : null;
       try {
         const { insightCards } = await runInsightCards({

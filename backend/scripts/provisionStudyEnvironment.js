@@ -937,14 +937,14 @@ async function prepSession(db) {
     // so this asserts end-to-end agreement, not a copy of the formula.
     try {
       const { computePinnedInsightFacts } = require('../agents/instructorBriefingAgent');
-      const { getTreeAnalytics, getAtRiskStudents } = require('../services/milestoneAnalyticsService');
-      // Match the participant's UI default: "Include synthetic cohort" ON.
-      const flag = { excludeSynthetic: false };
-      const [treeA, atRiskA] = await Promise.all([
-        getTreeAnalytics(courseId, flag),
-        getAtRiskStudents(courseId, { ...flag, passRateThreshold: 60 }),
+      const { getAtRiskStudents } = require('../services/milestoneAnalyticsService');
+      // Same inputs the route uses: performance summary (the topic table's
+      // first-attempt metric) + at-risk rows with the UI-default cohort.
+      const [perfA, atRiskA] = await Promise.all([
+        getCoursePerformanceSummary(courseId),
+        getAtRiskStudents(courseId, { excludeSynthetic: false, passRateThreshold: 60 }),
       ]);
-      const expected = computePinnedInsightFacts({ tree: treeA, atRisk: atRiskA });
+      const expected = computePinnedInsightFacts({ performance: perfA, atRisk: atRiskA });
       const lead = expected[0];
       const fetchCards = async () => (await api('GET', `/instructor/courses/${courseId}/insight-cards?includeSynthetic=true`, null, accessToken)).insightCards || [];
       const first = await fetchCards();

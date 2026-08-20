@@ -179,16 +179,16 @@ async function runHotSignal({ milestones = [], atRisk = [], courseTitle = '' } =
  * (2) the standout at-risk student (highest risk score); (3) the second-
  * weakest topic; (4) the strongest topic (positive close).
  */
-function computePinnedInsightFacts({ tree, atRisk = [] } = {}) {
-  // getTreeAnalytics topics carry their rollup under `totals`
-  // ({ attempts, passes, passRate }); tolerate a flat shape defensively.
-  const ranked = (tree?.topics || [])
-    .map((t) => ({
-      title: t.title,
-      attempts: t?.totals?.attempts ?? t?.attempts ?? 0,
-      passRate: t?.totals?.passRate ?? t?.passRate,
-    }))
-    .filter((t) => t.attempts > 0 && typeof t.passRate === 'number')
+function computePinnedInsightFacts({ performance, atRisk = [] } = {}) {
+  // Metric: per-user FIRST-ATTEMPT pass rate by topic, from
+  // getCoursePerformanceSummary().quizByTopic — the SAME numbers the
+  // dashboard's topic-difficulty table shows (Methods 63.2% at rank 4,
+  // Variables and Data Types 57.9% weakest on the seeded clone). Using any
+  // other aggregate (e.g. all-attempts pass rate) would put the cards in
+  // conflict with the table on the same page.
+  const ranked = (performance?.quizByTopic || [])
+    .map((t) => ({ title: t.title, passRate: t.firstAttemptPassRate, attempts: t.studentsWithAttempts || 0 }))
+    .filter((t) => typeof t.passRate === 'number')
     .sort((a, b) => (a.passRate - b.passRate) || (b.attempts - a.attempts) || String(a.title).localeCompare(String(b.title)));
 
   const facts = [];
