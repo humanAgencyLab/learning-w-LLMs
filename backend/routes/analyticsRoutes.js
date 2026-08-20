@@ -28,6 +28,7 @@ const {
   runBriefing,
   runHotSignal,
   runInsightCards,
+  computePinnedInsightFacts,
 } = require('../agents/instructorBriefingAgent');
 
 // `?includeSynthetic=1` flips the excludeSynthetic default to false. The
@@ -828,6 +829,12 @@ router.get(
         getCourseAnalytics(courseId).catch(() => null),
       ]);
       const courseTitle = analytics?.courseTitle || analytics?.title || '';
+      // Study clones: pin the facts (B3 anchor) — code decides WHICH facts and
+      // their order/numbers; the model only words them. Non-study courses keep
+      // the free-form generation below.
+      const pinnedFacts = (STUDY_PROBE_ENABLED && STUDY_PROBE_COURSE_SET.has(String(courseId)))
+        ? computePinnedInsightFacts({ tree, atRisk })
+        : null;
       try {
         const { insightCards } = await runInsightCards({
           tree,
@@ -835,6 +842,7 @@ router.get(
           heatmap,
           atRisk,
           courseTitle,
+          pinnedFacts,
         });
         return res.json({ success: true, data: { insightCards } });
       } catch (agentErr) {

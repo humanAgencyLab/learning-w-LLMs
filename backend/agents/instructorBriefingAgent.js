@@ -164,6 +164,115 @@ async function runHotSignal({ milestones = [], atRisk = [], courseTitle = '' } =
 
 // ---------- insight cards (insights page top section) ----------------------
 
+// ---------- pinned insight facts (study clones, B3 anchor) ------------------
+
+/**
+ * Deterministically compute the ORDERED fact set the "What stands out" cards
+ * must convey on a study clone (B3 ground-truth anchor). The model gets zero
+ * say in WHICH facts appear or their order/numbers — only the wording varies
+ * (temperature stays 0.35). All clones share one seed, so every participant
+ * reads the same conclusions.
+ *
+ * Order: (1) LEAD — the true weakest topic by milestone-level first-attempt
+ * pass rate (the topic table's metric; this is the anchor that must contradict
+ * the Insights Assistant's planted "Methods has the lowest pass rate at 63%");
+ * (2) the standout at-risk student (highest risk score); (3) the second-
+ * weakest topic; (4) the strongest topic (positive close).
+ */
+function computePinnedInsightFacts({ tree, atRisk = [] } = {}) {
+  const ranked = (tree?.topics || [])
+    .filter((t) => (t.attempts || 0) > 0 && typeof t.passRate === 'number')
+    .slice()
+    .sort((a, b) => (a.passRate - b.passRate) || (b.attempts - a.attempts) || String(a.title).localeCompare(String(b.title)));
+
+  const facts = [];
+  const lead = ranked[0];
+  if (lead) {
+    facts.push({
+      id: 'weakest-topic',
+      claim: 'this topic has the LOWEST first-attempt pass rate in the course — students struggled with it most',
+      name: lead.title,
+      number: `${lead.passRate}%`,
+      chartRef: 'tree',
+    });
+  }
+  const risky = (atRisk || [])
+    .filter((r) => r.atRisk)
+    .slice()
+    .sort((a, b) => ((b.riskScore ?? 0) - (a.riskScore ?? 0)) || String(a.name || a.username).localeCompare(String(b.name || b.username)));
+  const star = risky[0];
+  if (star) {
+    const quizN = star.quizAttemptCount || 0;
+    facts.push({
+      id: 'standout-at-risk',
+      claim: quizN > 0
+        ? 'this student is the most at-risk in the course, yet is highly active through quizzes — cite the quiz average, never say they have no attempts'
+        : 'this student is the most at-risk in the course',
+      name: star.name || star.username,
+      number: quizN > 0 ? `${star.quizScore}` : `${star.attempts || 0}`,
+      numberContext: quizN > 0 ? `quiz average across ${quizN} quiz attempts` : 'milestone attempts',
+      chartRef: 'atRisk',
+    });
+  }
+  const second = ranked[1];
+  if (second) {
+    facts.push({
+      id: 'second-weakest-topic',
+      claim: 'this topic has the second-lowest first-attempt pass rate',
+      name: second.title,
+      number: `${second.passRate}%`,
+      chartRef: 'tree',
+    });
+  }
+  const strongest = ranked[ranked.length - 1];
+  if (strongest && ranked.length > 2) {
+    facts.push({
+      id: 'strongest-topic',
+      claim: 'this topic has the HIGHEST first-attempt pass rate — the class is doing well here',
+      name: strongest.title,
+      number: `${strongest.passRate}%`,
+      chartRef: 'tree',
+    });
+  }
+
+  // B3 guardrail: the lead must contradict the planted "Methods 63%" answer.
+  // Never throw mid-session — prep-session NO-GOes on this before a session.
+  if (facts[0] && /\bmethods\b/i.test(facts[0].name)) {
+    console.error('[study-probe] B3 ANCHOR CONFLICT: pinned lead weakest topic IS Methods — the anchor no longer contradicts the planted probe answer', { lead: facts[0] });
+  }
+  return facts;
+}
+
+const PINNED_CARDS_SYSTEM_PROMPT = `You are a teaching-analytics assistant writing narrative insight cards for an instructor's course Insights page.
+
+You receive an ORDERED list of FACTS. The facts are fixed — your ONLY freedom is the wording.
+- Write EXACTLY one card per fact, in the SAME order.
+- Each card's body MUST contain the fact's "name" EXACTLY as given and the fact's "number" EXACTLY as given (verbatim substring: same digits, same decimal, same % sign if present). Never round, convert, or restate the number differently. Where a "numberContext" is given, the body must make clear that is what the number measures.
+- Convey the fact's "claim" faithfully. Do not add facts, drop facts, merge facts, or mention any other numbers, topics, or students.
+- "title": a 3-6 word headline for that fact. "body": 1-2 sentences.
+Return strict JSON:
+{ "insightCards": [ { "id": "<the fact's id>", "title": "...", "body": "...", "chartRef": "<the fact's chartRef>" } ] }`;
+
+// Deterministic wording used when the model's card fails validation — the
+// conclusions are guaranteed by construction, not by model compliance.
+function fallbackCardFor(fact) {
+  const bodies = {
+    'weakest-topic': `${fact.name} has the lowest first-attempt pass rate in the course at ${fact.number} — this is where students have struggled most.`,
+    'standout-at-risk': fact.numberContext && fact.numberContext.startsWith('quiz')
+      ? `${fact.name} is the most at-risk student right now, despite staying active — a ${fact.number} ${fact.numberContext}.`
+      : `${fact.name} is the most at-risk student right now, with ${fact.number} ${fact.numberContext || 'attempts'}.`,
+    'second-weakest-topic': `${fact.name} follows close behind with a ${fact.number} first-attempt pass rate.`,
+    'strongest-topic': `On the bright side, ${fact.name} leads the course with a ${fact.number} first-attempt pass rate.`,
+  };
+  const titles = {
+    'weakest-topic': 'Weakest topic by pass rate',
+    'standout-at-risk': 'Student needing attention',
+    'second-weakest-topic': 'Second-weakest topic',
+    'strongest-topic': 'Strongest topic so far',
+  };
+  return { id: fact.id, title: titles[fact.id] || 'Insight', body: bodies[fact.id] || `${fact.name}: ${fact.number}.`, chartRef: fact.chartRef };
+}
+
 const INSIGHT_CARDS_SYSTEM_PROMPT = `You are a teaching-analytics assistant generating 3–5 narrative insight cards for an instructor's course Insights page.
 
 You receive a JSON blob with: tree rollups, hardest milestones, topic × student heatmap cells, and at-risk students. Produce 3–5 cards. Each card:
@@ -184,7 +293,52 @@ rate unless totalAttempts is 0; when quizAttempts > 0 cite quizAvgScore.
 Return strict JSON:
 { "insightCards": [ { "id": "<slug>", "title": "...", "body": "...", "chartRef": "tree|milestones|heatmap|atRisk|none" } ] }`;
 
-async function runInsightCards({ tree, milestones = [], heatmap = {}, atRisk = [], courseTitle = '' } = {}) {
+async function runInsightCards({ tree, milestones = [], heatmap = {}, atRisk = [], courseTitle = '', pinnedFacts = null } = {}) {
+  // PINNED MODE (study clones): the code has already decided the facts and
+  // their order; the model only words them. Validation enforces name + exact
+  // number verbatim per card; a failing card gets deterministic fallback
+  // wording. Conclusions are therefore identical for every participant and
+  // every reload — and invariant under model swaps — while phrasing varies
+  // (temperature 0.35).
+  if (Array.isArray(pinnedFacts) && pinnedFacts.length) {
+    const userPrompt = `Course: "${courseTitle}"\n\nFACTS (ordered):\n${JSON.stringify(pinnedFacts, null, 2)}\n\nWrite the cards.`;
+    safeLog('insightCards.pinned.in', { courseTitle, factIds: pinnedFacts.map((f) => f.id) });
+    let raw = [];
+    try {
+      const out = await runAgent({
+        taskName: 'struggle_summary',
+        systemPrompt: PINNED_CARDS_SYSTEM_PROMPT,
+        userPrompt,
+        maxTokens: 900,
+        temperature: 0.35,
+        jsonMode: true,
+        timeoutMs: 15000,
+      });
+      raw = Array.isArray(out?.insightCards) ? out.insightCards : [];
+    } catch (e) {
+      safeLog('insightCards.pinned.modelError', { error: e.message });
+    }
+    const byId = new Map(raw.map((c) => [String(c?.id || ''), c]));
+    const insightCards = pinnedFacts.map((fact, i) => {
+      const candidate = byId.get(fact.id) || raw[i];
+      const body = String(candidate?.body || '');
+      const ok = candidate
+        && body.toLowerCase().includes(String(fact.name).toLowerCase())
+        && body.includes(String(fact.number));
+      if (!ok) {
+        safeLog('insightCards.pinned.fallback', { factId: fact.id, reason: candidate ? 'name/number missing from body' : 'card missing' });
+        return fallbackCardFor(fact);
+      }
+      return {
+        id: fact.id, // identity comes from the fact, never the model
+        title: truncate(String(candidate.title || 'Insight').trim(), 80),
+        body: truncate(body.trim(), 400),
+        chartRef: fact.chartRef, // chart mapping is part of the pinned contract
+      };
+    });
+    safeLog('insightCards.pinned.out', { count: insightCards.length, ids: insightCards.map((c) => c.id) });
+    return { insightCards };
+  }
   // Compact tree: just topic-level attempts + pass rates.
   const topicSummary = (tree?.topics || []).slice(0, 10).map((t) => ({
     title: t.title,
@@ -262,4 +416,4 @@ async function runInsightCards({ tree, milestones = [], heatmap = {}, atRisk = [
   return { insightCards };
 }
 
-module.exports = { runBriefing, runHotSignal, runInsightCards };
+module.exports = { runBriefing, runHotSignal, runInsightCards, computePinnedInsightFacts, fallbackCardFor };

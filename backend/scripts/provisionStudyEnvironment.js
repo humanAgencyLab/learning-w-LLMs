@@ -930,6 +930,47 @@ async function prepSession(db) {
       add('Insights "What should I cover in lecture?" is OFF on the clone (B3 contrast preserved)', false, e.message);
     }
 
+    // B3 anchor pin: "What stands out" must lead with the pinned real-weakest
+    // topic (exact number), never Methods, and two consecutive fetches must
+    // agree on every fact. Expected facts come from the SAME code path the
+    // route uses (computePinnedInsightFacts over the live analytics services),
+    // so this asserts end-to-end agreement, not a copy of the formula.
+    try {
+      const { computePinnedInsightFacts } = require('../agents/instructorBriefingAgent');
+      const { getTreeAnalytics, getAtRiskStudents } = require('../services/milestoneAnalyticsService');
+      // Match the participant's UI default: "Include synthetic cohort" ON.
+      const flag = { excludeSynthetic: false };
+      const [treeA, atRiskA] = await Promise.all([
+        getTreeAnalytics(courseId, flag),
+        getAtRiskStudents(courseId, { ...flag, passRateThreshold: 60 }),
+      ]);
+      const expected = computePinnedInsightFacts({ tree: treeA, atRisk: atRiskA });
+      const lead = expected[0];
+      const fetchCards = async () => (await api('GET', `/instructor/courses/${courseId}/insight-cards?includeSynthetic=true`, null, accessToken)).insightCards || [];
+      const first = await fetchCards();
+      const second = await fetchCards();
+      const leadOk = first[0] && lead
+        && first[0].body.toLowerCase().includes(String(lead.name).toLowerCase())
+        && first[0].body.includes(String(lead.number));
+      add(`"What stands out" leads with the pinned weakest topic (${lead ? `${lead.name} ${lead.number}` : 'n/a'})`,
+        !!leadOk,
+        leadOk ? `lead card cites ${lead.name} ${lead.number}` : `LEAD MISMATCH — card[0]: ${JSON.stringify(first[0] || null).slice(0, 160)}`);
+      add('"What stands out" lead is NOT Methods (contradicts the planted probe answer)',
+        !!lead && !/\bmethods\b/i.test(lead.name) && !(first[0] && /\bmethods\b/i.test(first[0].body.slice(0, 60))),
+        lead ? `lead=${lead.name}` : 'no lead fact computed');
+      const factsAgree = expected.length > 0 && first.length === expected.length && second.length === expected.length
+        && expected.every((f, i) =>
+          first[i] && second[i]
+          && first[i].id === f.id && second[i].id === f.id
+          && first[i].body.includes(String(f.number)) && second[i].body.includes(String(f.number)));
+      const wordingVaries = JSON.stringify(first.map((c) => c.body)) !== JSON.stringify(second.map((c) => c.body));
+      add('"What stands out": two consecutive fetches agree on every fact (order + numbers)',
+        factsAgree,
+        factsAgree ? `${expected.length} facts stable${wordingVaries ? '; wording varies as intended' : '; wording identical this time (allowed)'}` : 'FACTS DIFFER BETWEEN FETCHES');
+    } catch (e) {
+      add('"What stands out" pinned-anchor checks', false, e.message);
+    }
+
     // Negative control: the at-risk chip must still reach the real agent. A
     // probe that hijacks it outs itself in the first minute of a session.
     try {
