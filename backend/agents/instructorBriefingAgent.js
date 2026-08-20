@@ -180,9 +180,15 @@ async function runHotSignal({ milestones = [], atRisk = [], courseTitle = '' } =
  * weakest topic; (4) the strongest topic (positive close).
  */
 function computePinnedInsightFacts({ tree, atRisk = [] } = {}) {
+  // getTreeAnalytics topics carry their rollup under `totals`
+  // ({ attempts, passes, passRate }); tolerate a flat shape defensively.
   const ranked = (tree?.topics || [])
-    .filter((t) => (t.attempts || 0) > 0 && typeof t.passRate === 'number')
-    .slice()
+    .map((t) => ({
+      title: t.title,
+      attempts: t?.totals?.attempts ?? t?.attempts ?? 0,
+      passRate: t?.totals?.passRate ?? t?.passRate,
+    }))
+    .filter((t) => t.attempts > 0 && typeof t.passRate === 'number')
     .sort((a, b) => (a.passRate - b.passRate) || (b.attempts - a.attempts) || String(a.title).localeCompare(String(b.title)));
 
   const facts = [];

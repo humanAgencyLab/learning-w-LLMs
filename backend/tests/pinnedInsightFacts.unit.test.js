@@ -14,15 +14,17 @@ const {
   fallbackCardFor,
 } = require('../agents/instructorBriefingAgent');
 
+// Real getTreeAnalytics shape: topic rollups live under `totals`.
 const TREE = {
   topics: [
-    { title: 'Methods', attempts: 60, passRate: 63.2 },
-    { title: 'Variables and Data Types', attempts: 55, passRate: 57.9 },
-    { title: 'Logical Operators', attempts: 62, passRate: 67.1 },
-    { title: 'Number Systems', attempts: 50, passRate: 71.4 },
-    { title: 'Drafts Only', attempts: 0, passRate: null },
+    { title: 'Methods', totals: { attempts: 60, passRate: 63.2 } },
+    { title: 'Variables and Data Types', totals: { attempts: 55, passRate: 57.9 } },
+    { title: 'Logical Operators', totals: { attempts: 62, passRate: 67.1 } },
+    { title: 'Number Systems', totals: { attempts: 50, passRate: 71.4 } },
+    { title: 'Drafts Only', totals: { attempts: 0, passRate: 0 } },
   ],
 };
+const FLAT_TREE = { topics: [{ title: 'Flat Topic', attempts: 5, passRate: 50 }, { title: 'Flat Two', attempts: 5, passRate: 80 }] };
 const AT_RISK = [
   { atRisk: true, name: 'Maya R.', riskScore: 75, quizAttemptCount: 8, quizScore: 90.4, attempts: 0 },
   { atRisk: true, name: 'Noah Yamamoto', riskScore: 44, quizAttemptCount: 3, quizScore: 61, attempts: 38 },
@@ -54,9 +56,14 @@ describe('computePinnedInsightFacts — deterministic ordered facts', () => {
     expect(facts.every((f) => f.name !== 'Drafts Only')).toBe(true);
   });
 
+  it('tolerates a flat topic shape defensively', () => {
+    const facts = computePinnedInsightFacts({ tree: FLAT_TREE, atRisk: [] });
+    expect(facts[0]).toMatchObject({ id: 'weakest-topic', name: 'Flat Topic', number: '50%' });
+  });
+
   it('B3 guardrail: logs loudly if the lead ever IS Methods', () => {
     const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    computePinnedInsightFacts({ tree: { topics: [{ title: 'Methods', attempts: 10, passRate: 40 }, { title: 'Loops', attempts: 10, passRate: 90 }] }, atRisk: [] });
+    computePinnedInsightFacts({ tree: { topics: [{ title: 'Methods', totals: { attempts: 10, passRate: 40 } }, { title: 'Loops', totals: { attempts: 10, passRate: 90 } }] }, atRisk: [] });
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('B3 ANCHOR CONFLICT'), expect.anything());
     spy.mockRestore();
   });
