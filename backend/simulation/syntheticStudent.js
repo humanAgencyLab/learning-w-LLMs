@@ -123,7 +123,14 @@ class SyntheticStudent {
       .replace(/^Me:\s*/i, '')
       .trim();
     if (t.length <= 500) return t;
-    // Never cut mid-word: last sentence end within budget, else word boundary.
+    // Never cut mid-word or mid-code: finish an open ``` block, else the last
+    // sentence end within budget, else a word boundary.
+    if (((t.slice(0, 500).match(/```/g) || []).length % 2) === 1) {
+      const lastOpen = t.slice(0, 500).lastIndexOf('```');
+      const close = t.indexOf('```', lastOpen + 3);
+      if (close !== -1) return t.slice(0, close + 3).trim();
+      return `${t.trim()}\n\`\`\``;
+    }
     const window = t.slice(0, 500);
     const lastSentence = Math.max(window.lastIndexOf('. '), window.lastIndexOf('! '), window.lastIndexOf('? '));
     if (lastSentence > 250) return window.slice(0, lastSentence + 1).trim();

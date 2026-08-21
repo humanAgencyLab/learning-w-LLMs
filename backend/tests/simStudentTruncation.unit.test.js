@@ -29,6 +29,23 @@ describe('trimToCharBudget — never cuts mid-word', () => {
   it('no budget → passthrough', () => {
     expect(trimToCharBudget('anything at all', 0)).toBe('anything at all');
   });
+
+  it('finishes an open code block instead of chopping it mid-line', () => {
+    const text =
+      'sure, here it is: ```java System.out.println("You are an adult."); ``` ' +
+      'and then some trailing explanation that runs on. '.repeat(20);
+    const out = trimToCharBudget(text, 60); // budget lands inside the fence
+    expect((out.match(/```/g) || []).length % 2).toBe(0); // fences balanced
+    expect(out.trim().endsWith('```')).toBe(true);
+    expect(out).toContain('You are an adult.'); // code not chopped mid-line
+  });
+
+  it('closes a fence the model left open', () => {
+    const text = 'here: ```java int age = 5; if (age < 18) { print("child"); } ' + 'x'.repeat(500);
+    const out = trimToCharBudget(text, 40); // opens a fence, no closing ``` present
+    expect((out.match(/```/g) || []).length % 2).toBe(0);
+    expect(out.trim().endsWith('```')).toBe(true);
+  });
 });
 
 describe('source contracts — token budgets sized for gpt-oss reasoning', () => {

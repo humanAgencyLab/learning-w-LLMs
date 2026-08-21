@@ -87,13 +87,26 @@ async function generateStudentReply({ persona, tutorMessage, history, hint }) {
 }
 
 /**
- * Bound a reply to the persona's char budget WITHOUT cutting mid-word: a hard
- * .slice() produced the same mid-word truncation the token cap did. Prefer
- * the last sentence end within budget; fall back to the last word boundary.
- * Persona verbosity is unchanged — the prompt still asks for the same length.
+ * Bound a reply to the persona's char budget WITHOUT cutting mid-word or
+ * mid-code. A hard .slice() produced the same mid-word truncation the token cap
+ * did, and it also chopped pasted code mid-line ("...println(\"You are an").
+ * Order of preference: finish an open ``` code block, then the last sentence
+ * end within budget, then the last word boundary. Persona verbosity is
+ * unchanged; the prompt still asks for the same length.
  */
 function trimToCharBudget(text, maxChars) {
   if (!maxChars || text.length <= maxChars) return text;
+
+  // Never cut inside a fenced code block. If the budget lands where a ``` fence
+  // is still open, finish the block instead of leaving unclosed, mid-line code;
+  // if the model itself left the fence open, close it ourselves.
+  if (((text.slice(0, maxChars).match(/```/g) || []).length % 2) === 1) {
+    const lastOpen = text.slice(0, maxChars).lastIndexOf('```');
+    const close = text.indexOf('```', lastOpen + 3);
+    if (close !== -1) return text.slice(0, close + 3).trim();
+    return `${text.trim()}\n\`\`\``;
+  }
+
   const window = text.slice(0, maxChars);
   const lastSentence = Math.max(window.lastIndexOf('. '), window.lastIndexOf('! '), window.lastIndexOf('? '));
   if (lastSentence > maxChars * 0.5) return window.slice(0, lastSentence + 1).trim();
