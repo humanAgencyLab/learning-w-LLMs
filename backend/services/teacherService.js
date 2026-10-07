@@ -1,4 +1,5 @@
 const { getGroqClient } = require('../lib/llmClient');
+const { EXPENSIVE_MODEL } = require('../agents/framework/modelRouter');
 const { retryWithBackoff } = require('../utils/apiRetry');
 const { validateScenarioA, validateScenarioC } = require('../utils/responseValidator');
 
@@ -138,7 +139,7 @@ const callTeacherAPI = async (prompt, maxTokens = 1500, session = null, validati
       }
 
       const response = await groqClient.chat.completions.create({
-        model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+        model: EXPENSIVE_MODEL(),
         messages,
         temperature: 0.7,
         top_p: 0.9,
@@ -315,7 +316,7 @@ const callTeacherAPIStream = async (prompt, maxTokens = 1500, session = null, op
   const effectiveMaxTokens = Math.max(maxTokens || 1500, 1500);
 
   const stream = await groqClient.chat.completions.create({
-    model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+    model: EXPENSIVE_MODEL(),
     messages,
     temperature: 0.7,
     top_p: 0.9,

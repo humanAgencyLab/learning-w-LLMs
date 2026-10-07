@@ -1,4 +1,5 @@
 const { getGroqClient } = require('../lib/llmClient');
+const { EXPENSIVE_MODEL } = require('../agents/framework/modelRouter');
 
 const generateQuiz = async (topic, stage, sessionHistory = []) => {
   const stageDescriptions = {
@@ -37,7 +38,7 @@ Return as JSON in this exact format:
     const groq = getGroqClient();
 
     const response = await groq.chat.completions.create({
-      model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+      model: EXPENSIVE_MODEL(),
       messages: [
         {
           role: 'system',

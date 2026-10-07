@@ -20,6 +20,7 @@ const { runPlanAgent } = require('../agents/planAgent');
 const { runPlanModifyAgent } = require('../agents/planModifyAgent');
 const { runStudyGraph } = require('../agents/graph/runGraph');
 const { runEngagementAgent } = require('../agents/engagementAgent');
+const { EXPENSIVE_MODEL } = require('../agents/framework/modelRouter');
 
 // Initialize Pino logger (no transport in production - pino-pretty is dev-only)
 const logger = pino({
@@ -92,7 +93,7 @@ const callAssessmentAPI = async (prompt, isRetry = false) => {
   try {
     const groqClient = getGroqClient();
     const response = await groqClient.chat.completions.create({
-      model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+      model: EXPENSIVE_MODEL(),
       messages: [
         {
           role: 'system',

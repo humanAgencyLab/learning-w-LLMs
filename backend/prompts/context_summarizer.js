@@ -1,6 +1,8 @@
 // Context Summarizer - Maintains structured learning context summary
 // Similar to Cursor IDE's context summarization style
 
+const { EXPENSIVE_MODEL } = require('../agents/framework/modelRouter');
+
 /**
  * Build a prompt to summarize learning context
  */
@@ -97,7 +99,7 @@ const updateContextSummary = async (session, userMessage, assistantResponse, gro
     
     // Call LLM to generate/update summary
     const summaryResponse = await groqClient.chat.completions.create({
-      model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+      model: EXPENSIVE_MODEL(),
       messages: [
         {
           role: 'system',

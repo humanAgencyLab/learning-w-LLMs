@@ -1,6 +1,7 @@
 const Session = require('../models/Session');
 const logger = require('../utils/logger');
 const { getGroqClient } = require('../lib/llmClient');
+const { CHEAP_MODEL } = require('../agents/framework/modelRouter');
 
 // Environment-driven thresholds with sane defaults
 const SUMMARIZE_EVERY_N_TURNS = parseInt(process.env.SUMMARIZE_EVERY_N_TURNS) || 40;
@@ -195,7 +196,7 @@ async function summarizeConversation(session, messages, requestId) {
           content: summarizationPrompt
         }
       ],
-      model: process.env.GROQ_MODEL_CHEAP || 'openai/gpt-oss-120b',
+      model: CHEAP_MODEL(),
       temperature: 0.3,
       max_tokens: SUMMARY_MAX_TOKENS,
       top_p: 0.9

@@ -21,6 +21,7 @@ const Session = require('../../models/Session');
 const User = require('../../models/User');
 const { useMultiAgent } = require('../../agents/framework/featureFlag');
 const { getGroqClient } = require('../../lib/llmClient');
+const { CHEAP_MODEL } = require('../../agents/framework/modelRouter');
 const { SimStudentClient, sleep } = require('./simStudentClient');
 const {
   PERSONAS, intentForTurn, hintForIntent, nextProbe, PROBE_SEQUENCE, PROBE_MIN_TURN, isProbeReady,
@@ -30,7 +31,7 @@ const logger = require('../../utils/logger');
 const MAX_TURNS_PER_STUDENT = 18;
 const WALL_CLOCK_MS_PER_STUDENT = 8 * 60 * 1000;
 const MAX_CONSECUTIVE_FAILURES = 3;
-const STUDENT_MODEL = process.env.SIM_GROQ_MODEL || 'openai/gpt-oss-120b';
+const STUDENT_MODEL = process.env.SIM_GROQ_MODEL || CHEAP_MODEL();
 const SIM_PASSWORD = process.env.SIM_PASSWORD || 'SimStudent!2025';
 
 // Shared client: injects reasoning_effort:'low' for gpt-oss models so the

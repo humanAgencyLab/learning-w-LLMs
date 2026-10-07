@@ -10,6 +10,7 @@ const { requireAuth, requireOwnership } = require('../middleware/auth');
 const { userProfileToSessionProfile } = require('../utils/userProfileToSessionProfile');
 const Course = require('../models/Course');
 const CourseTopic = require('../models/CourseTopic');
+const { EXPENSIVE_MODEL } = require('../agents/framework/modelRouter');
 
 // Initialize Pino logger (no transport in production - pino-pretty is dev-only)
 const logger = pino({
@@ -522,7 +523,7 @@ Module 2: Python Fundamentals
     });
     
     let summaryResponse;
-    const model = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+    const model = EXPENSIVE_MODEL();
     
     try {
       req.logger.info('Calling Groq API', {
