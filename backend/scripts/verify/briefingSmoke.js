@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const BASE = process.env.VERIFY_BASE_URL || 'https://studyassist-iitl-backend-nkaulzxkdq-uc.a.run.app';
-const SCRIPTS = path.join(__dirname, '..');
+const SCRIPTS = process.env.MANIFEST_DIR || path.join(__dirname, '..');
 
 (async () => {
   const manifests = fs.readdirSync(SCRIPTS).filter((f) => /^study-manifest-\d+\.json$/.test(f)).sort().reverse();

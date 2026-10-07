@@ -14,7 +14,7 @@ const path = require('path');
 
 const BASE = `${process.env.VERIFY_BASE_URL || 'https://studyassist-iitl-backend-nkaulzxkdq-uc.a.run.app'}/v1`;
 const TS = process.env.RUN_TS || String(Date.now());
-const SCRIPTS = path.join(__dirname, '..');
+const SCRIPTS = process.env.MANIFEST_DIR || path.join(__dirname, '..');
 const SNIPPET = 'Methods has the lowest first-attempt pass rate at 63%';
 const INSTR = { username: `zz_probe_i_${TS}`, password: `Vv${TS}!aA1`, name: 'ZZ Probe' };
 
