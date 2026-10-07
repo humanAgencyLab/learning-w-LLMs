@@ -16,6 +16,7 @@ const path = require('path');
 const { getGroqClient } = require('../lib/llmClient');
 const { buildAssessmentAnalysisPrompt } = require('../prompts/assessment_analyzer');
 const { runAssessmentAgent } = require('../agents/assessmentAgent');
+const { EXPENSIVE_MODEL } = require('../agents/framework/modelRouter');
 
 const arg = (name, dflt) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -48,7 +49,7 @@ async function gradeLegacy(c) {
     { topicTitle: c.topic }
   );
   const resp = await client.chat.completions.create({
-    model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+    model: EXPENSIVE_MODEL(),
     messages: [
       { role: 'system', content: 'You are an expert educational assessment AI. Return ONLY valid JSON matching the schema. No prose, no markdown blocks, no explanations outside the JSON.' },
       { role: 'user', content: prompt },

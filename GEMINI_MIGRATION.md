@@ -71,6 +71,36 @@ cap 120 s — Gemini latency profile differs; re-time a 15-topic generation).
 
 ## 2. Phases
 
+> **STATUS 2026-10-07:** Phases 0–2 COMPLETE. The study's data collection is
+> finished, so the stimulus-change constraints below (cutover between
+> participants, study-log entry) no longer apply — the bar is product
+> regression only.
+>
+> **Phase-0 results (live key, measured):** gemini-2.5 family is RETIRED for
+> new API users; use **`gemini-3.8-flash`** (both tiers). Thinking-token trap
+> confirmed on 3.8: at max_tokens 20, default thinking / 'low' /
+> thinking_budget:0 all returned EMPTY content; `reasoning_effort:'none'`
+> answers in 1 token, and unconstrained thinking truncated a 400-token
+> json_object reply — so the adapter defaults gemini calls to **'none'**
+> (all existing budgets stay valid; explicit callers keep their value).
+> Verified working: json_object, the exact runAgentWithTools tool loop,
+> multiple system messages natively (no merge shim), streaming (coarse
+> chunks), zero 429s on a 10-call burst; latency ~1.3 s tiny / ~4.7 s for a
+> 361-token teaching turn. Key = Cloud API key "API key 1", retargeted from
+> aiplatform to generativelanguage (fixed via gcloud; no AI Studio needed).
+>
+> **Phase 1–2 shipped** (3 commits + review pass): provider factory +
+> `wrapForGemini` ('none' default), neutral LLM_MODEL* env with Groq
+> fallback, 18-site hardcoded-fallback sweep through modelRouter, 44 new
+> tests — suite 821 passed / 6 skipped. **Deploy trap found and closed:** the
+> live service carried stale `LLM_MODEL=llama3.1` from legacy deploy configs,
+> which would outrank GROQ_MODEL under the new precedence; removed from the
+> live service (revision 00068) and from the three legacy configs.
+> Remaining: Phase 3 (anything live harnesses surface), Phase 4 (tagged
+> no-traffic revision: set LLM_PROVIDER=gemini + LLM_MODEL* + GEMINI_API_KEY
+> secret — GROQ_MODEL* on the service would otherwise win), Phase 5
+> (battery vs tagged URL), Phase 6 (traffic flip; no timing constraint).
+
 **Phase 0 — feasibility probe (BLOCKED ON: professor's API key).** Fable runs
 a scratchpad probe script against the prof key: model availability, RPM/TPM
 ceiling (429 behavior — the two-student sim is call-heavy), thinking-token

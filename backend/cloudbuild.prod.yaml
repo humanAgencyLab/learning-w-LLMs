@@ -70,7 +70,7 @@ steps:
       - '--min-instances'
       - '0'
       - '--set-env-vars'
-      - 'NODE_ENV=production,LLM_PROVIDER=groq,LLM_MODEL=llama3.1,TRUST_PROXY=1,DEPLOY_ENV=prod'
+      - 'NODE_ENV=production,LLM_PROVIDER=groq,TRUST_PROXY=1,DEPLOY_ENV=prod'
       - '--set-secrets'
       - 'GROQ_API_KEY=groq-api-key:latest,MONGODB_URI=mongodb-uri-prod:latest,JWT_SECRET=jwt-secret-prod:latest,CORS_ORIGINS=cors-origins-prod:latest'
 

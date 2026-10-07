@@ -37,7 +37,7 @@ gcloud run deploy $SERVICE_NAME \
     --platform managed \
     --region $REGION \
     --allow-unauthenticated \
-    --set-env-vars="NODE_ENV=production,LLM_PROVIDER=groq,LLM_MODEL=llama3.1,TRUST_PROXY=1" \
+    --set-env-vars="NODE_ENV=production,LLM_PROVIDER=groq,TRUST_PROXY=1" \
     --set-secrets="GROQ_API_KEY=groq-api-key:latest,MONGODB_URI=mongodb-uri:latest,JWT_SECRET=jwt-secret:latest,CORS_ORIGINS=cors-origins:latest" \
     --memory 2Gi \
     --cpu 2 \

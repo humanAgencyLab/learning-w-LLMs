@@ -34,8 +34,9 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 const STUDENT_MODEL = process.env.SIM_GROQ_MODEL || CHEAP_MODEL();
 const SIM_PASSWORD = process.env.SIM_PASSWORD || 'SimStudent!2025';
 
-// Shared client: injects reasoning_effort:'low' for gpt-oss models so the
-// 180-token student-reply budget below isn't eaten by reasoning tokens.
+// Shared client (provider-aware): injects the provider's reasoning default
+// (gpt-oss 'low', gemini 'none') so the student-reply budget below isn't
+// eaten by thinking tokens; generateStudentReply sets 'low' explicitly.
 function getGroq() {
   return getGroqClient();
 }
