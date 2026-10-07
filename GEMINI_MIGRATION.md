@@ -71,7 +71,19 @@ cap 120 s — Gemini latency profile differs; re-time a 15-topic generation).
 
 ## 2. Phases
 
-> **STATUS 2026-10-07:** Phases 0–2 COMPLETE. The study's data collection is
+> **CUTOVER COMPLETE 2026-10-07:** 100% of traffic serves revision 00074
+> (`LLM_PROVIDER=gemini`, `gemini-3.8-flash` both tiers, professor's key).
+> Battery: grading 11/11, directives 9/9, probe router 17/17, briefing,
+> large-syllabus 4/4, sim clean (0 hard truncations, both students to quiz).
+> Rollback: `gcloud run services update-traffic studyassist-iitl-backend
+> --region us-central1 --to-revisions studyassist-iitl-backend-00068-jz7=100`
+> (the Groq revision + key stay in place until decommissioned).
+> Incidents during Phase 5, all resolved: stored key had a trailing newline
+> (keys now .trim()ed at client construction); an interim diagnostic logged
+> the Authorization header once — logger now redacts to error codes, the key
+> was rotated, the old key deleted and the tainted secret version destroyed.
+>
+> **STATUS 2026-10-07 (pre-cutover):** Phases 0–2 COMPLETE. The study's data collection is
 > finished, so the stimulus-change constraints below (cutover between
 > participants, study-log entry) no longer apply — the bar is product
 > regression only.
