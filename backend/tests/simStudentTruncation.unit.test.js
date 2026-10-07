@@ -49,9 +49,13 @@ describe('trimToCharBudget — never cuts mid-word', () => {
 });
 
 describe('source contracts — token budgets sized for gpt-oss reasoning', () => {
-  it('run-service student generation: 600 tokens + explicit low reasoning + boundary trim', () => {
+  it('run-service student generation: 600 tokens, provider-default reasoning, boundary trim', () => {
     const src = require('fs').readFileSync(require.resolve('../services/simulation/simulationRunService'), 'utf8');
-    expect(src).toMatch(/max_tokens: 600,\s*\n\s*reasoning_effort: 'low',/);
+    expect(src).toMatch(/max_tokens: 600,/);
+    // NO explicit reasoning_effort: the provider wrapper injects the right
+    // default ('low' gpt-oss / 'none' gemini); hardcoding either breaks the
+    // other provider (gemini-low thinking ate this budget mid-sentence).
+    expect(src).not.toMatch(/^\s*reasoning_effort:/m); // active param line, not the comment
     expect(src).toMatch(/trimToCharBudget\(/);
     expect(src).not.toMatch(/\.slice\(0, persona\.maxReplyChars\)/);
     expect(src).not.toMatch(/max_tokens: 180/);
@@ -59,7 +63,8 @@ describe('source contracts — token budgets sized for gpt-oss reasoning', () =>
 
   it('CLI harness twin gets the same fix', () => {
     const src = require('fs').readFileSync(require.resolve('../../backend/simulation/syntheticStudent'), 'utf8');
-    expect(src).toMatch(/max_tokens: 600,\s*\n\s*reasoning_effort: 'low',/);
+    expect(src).toMatch(/max_tokens: 600,/);
+    expect(src).not.toMatch(/^\s*reasoning_effort:/m);
     expect(src).not.toMatch(/max_tokens: 180/);
     // the OLD hard-truncate chain is gone; boundary trim replaced it
     expect(src).not.toMatch(/\.trim\(\)\s*\n\s*\.slice\(0, 500\);/);

@@ -36,7 +36,11 @@ const endsComplete = (s) => {
 const truncationSignature = (s) => {
   const t = String(s || '').trim();
   if (/^(start quiz|ready|ok|yes|no)$/i.test(t)) return false; // commands, not answers
-  return /[,;:=\-+(]$/.test(t) || (/[a-z]$/.test(t) && !endsComplete(t));
+  // Mid-sentence cuts end on punctuation debris or a dangling function word
+  // ("...since temperature is"). Casual unpunctuated closers ("can we move
+  // on now") are a persona style, not truncation.
+  const DANGLING = /\b(is|are|was|were|the|a|an|to|of|and|or|with|for|in|on|that|its|it's|since|because|so|but|when|while|if|by|as|at|into|from)$/i;
+  return /[,;:=\-+(]$/.test(t) || (DANGLING.test(t) && !endsComplete(t));
 };
 
 const TOPIC = {

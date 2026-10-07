@@ -103,7 +103,11 @@ class SyntheticStudent {
           // Sized for gpt-oss: reasoning eats 60-90 tokens before content
           // (180 was a Llama-era budget and truncated replies mid-word).
           max_tokens: 600,
-          reasoning_effort: 'low',
+          // No explicit reasoning_effort: the provider wrapper injects the
+          // right default ('low' for gpt-oss, which cannot disable reasoning;
+          // 'none' for Gemini, whose dynamic 'low' thinking ate this budget
+          // and cut a reply mid-sentence). Hardcoding either value here would
+          // break the other provider.
         });
         const text = res.choices?.[0]?.message?.content?.trim();
         if (text) return this._cleanReply(text);

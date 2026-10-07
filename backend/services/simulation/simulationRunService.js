@@ -71,7 +71,11 @@ async function generateStudentReply({ persona, tutorMessage, history, hint }) {
         // full persona char budget available after reasoning; the char trim
         // below still bounds the visible reply.
         max_tokens: 600,
-        reasoning_effort: 'low',
+          // No explicit reasoning_effort: the provider wrapper injects the
+          // right default ('low' for gpt-oss, which cannot disable reasoning;
+          // 'none' for Gemini, whose dynamic 'low' thinking ate this budget
+          // and cut a reply mid-sentence). Hardcoding either value here would
+          // break the other provider.
       });
       const text = res.choices?.[0]?.message?.content?.trim();
       if (text) {
