@@ -88,7 +88,10 @@ function wrapForGemini(client) {
 function createGroqClient() {
   const GroqSdk = require('groq-sdk');
   const Groq = GroqSdk.Groq || GroqSdk;
-  const apiKey = process.env.GROQ_API_KEY;
+  // .trim(): Cloud Run injects secret bytes verbatim — a trailing newline
+  // from a pasted secret version makes an invalid Authorization header and
+  // every call fails as a bare "Connection error".
+  const apiKey = (process.env.GROQ_API_KEY || '').trim();
   if (!apiKey) {
     throw new Error('GROQ_API_KEY is not configured');
   }
@@ -108,7 +111,7 @@ function createGroqClient() {
 function createGeminiClient() {
   const OpenAISdk = require('openai');
   const OpenAI = OpenAISdk.OpenAI || OpenAISdk;
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = (process.env.GEMINI_API_KEY || '').trim(); // see Groq note
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not configured');
   }

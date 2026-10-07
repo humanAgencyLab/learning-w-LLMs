@@ -55,11 +55,12 @@ async function createChatCompletionWithTimeout(client, requestOpts, timeoutMs) {
   try {
     return await client.chat.completions.create(requestOpts, { signal: controller.signal });
   } catch (err) {
-    // Surface the real network cause: the SDK wraps fetch failures as a bare
-    // "Connection error." (node:18-alpine hid an address-family failure this
-    // way for a whole deploy cycle).
+    // Surface the network-level cause CODE only. NEVER log cause.message:
+    // for header-validation failures it embeds the Authorization header,
+    // i.e. the API key (that exact leak happened once; code/name is enough
+    // to diagnose DNS/TLS/header classes without touching credentials).
     if (err && err.cause) {
-      console.error('[baseAgent] connection-level cause:', err.cause.code || '', String(err.cause.message || err.cause).slice(0, 200));
+      console.error('[baseAgent] connection-level cause code:', err.cause.code || err.cause.name || 'unknown');
     }
     if (controller.signal.aborted) {
       throw makeAgentTimeoutError(`Groq call exceeded ${timeoutMs}ms`);
