@@ -3,7 +3,7 @@
  * Automatically refreshes tokens on 401 errors and shows appropriate toasts
  */
 
-import { getAuthHeaders, refreshToken as refreshAccessToken, removeAccessToken } from './authApi';
+import { getAuthHeaders, refreshToken as refreshAccessToken, removeAccessToken, getAuthGeneration } from './authApi';
 import { toastBus } from '../components/ui/toast';
 
 let isRefreshing = false;
@@ -16,11 +16,12 @@ let refreshPromise = null;
  * @returns {Promise<Response>} - Fetch response
  */
 export async function interceptedFetch(url, options = {}) {
+  const generation = getAuthGeneration();
   // Make initial request
   let response = await fetch(url, options);
 
   // If we get a 401, try to refresh the token
-  if (response.status === 401) {
+  if (response.status === 401 && generation === getAuthGeneration()) {
     // Clone response to read body without consuming it
     // Check content-type first - only try to parse JSON if it's actually JSON
     const contentType = response.headers.get('content-type') || '';
@@ -53,17 +54,12 @@ export async function interceptedFetch(url, options = {}) {
       if (!isRefreshing) {
         isRefreshing = true;
         refreshPromise = refreshAccessToken()
-          .then(({ accessToken }) => {
-            // Update token in localStorage
-            if (accessToken) {
-              localStorage.setItem('accessToken', accessToken);
-            }
-            return accessToken;
-          })
-          .catch((error) => {
+          .then(({ accessToken }) => accessToken)
+          .catch(async (error) => {
+            if (generation !== getAuthGeneration()) throw error;
             // Refresh failed - logout user
             console.error('Token refresh failed:', error);
-            removeAccessToken();
+            if (!await removeAccessToken(generation)) throw error;
             toastBus.publish({
               message: 'Session expired. Please log in again.',
               type: 'warning',
@@ -85,6 +81,7 @@ export async function interceptedFetch(url, options = {}) {
 
       // Wait for token refresh (error handling is done in the promise catch above)
       await refreshPromise;
+      if (generation !== getAuthGeneration()) throw new Error('Authentication request cancelled');
       
       // Retry original request with new token
       const newHeaders = {
@@ -98,8 +95,8 @@ export async function interceptedFetch(url, options = {}) {
       });
 
       // If retry still fails with 401, logout
-      if (response.status === 401) {
-        removeAccessToken();
+      if (response.status === 401 && generation === getAuthGeneration()) {
+        if (!await removeAccessToken(generation)) return response;
         toastBus.publish({
           message: 'Session expired. Please log in again.',
           type: 'warning',

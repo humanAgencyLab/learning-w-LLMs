@@ -1,3 +1,5 @@
+const { versionOf, versionFilter } = require('../utils/authVersion');
+const { clearRefreshCookie } = require('../utils/authCookies');
 const express = require('express');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
@@ -564,7 +566,7 @@ router.patch('/password', requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     
-    if (!currentPassword || !newPassword) {
+    if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || !currentPassword || !newPassword) {
       return res.status(400).json({
         success: false,
         error: 'Current password and new password are required',
@@ -583,7 +585,7 @@ router.patch('/password', requireAuth, async (req, res) => {
       });
     }
     
-    const user = await User.findById(req.userId).select('+passwordHash');
+    const user = await User.findById(req.userId).select('+passwordHash +authVersion');
     
     if (!user) {
       return res.status(404).json({
@@ -606,8 +608,14 @@ router.patch('/password', requireAuth, async (req, res) => {
     }
     
     // Update password
-    user.passwordHash = await hashPassword(newPassword);
-    await user.save();
+    const passwordHash = await hashPassword(newPassword);
+    const result = await User.updateOne({
+      ...versionFilter(req.userId, versionOf(req.user)), passwordHash: user.passwordHash,
+    }, { $set: { passwordHash, passwordResetToken: null, passwordResetTokenHash: null, passwordResetExpires: null }, $inc: { authVersion: 1 } });
+    if (!result.modifiedCount) {
+      return res.status(401).json({ success: false, error: 'Invalid or expired token', code: 'INVALID_TOKEN' });
+    }
+    clearRefreshCookie(res);
     
     logger.info({
       requestId: req.requestId,

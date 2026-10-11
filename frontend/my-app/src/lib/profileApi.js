@@ -3,7 +3,7 @@
  */
 
 import { API_BASE } from '../config';
-import { getAuthHeaders } from './authApi';
+import { getAuthHeaders, removeAccessToken } from './authApi';
 import { safeReadResponse, extractErrorMessage } from './responseUtils';
 
 const API_PREFIX = `${API_BASE}/v1/profile`;
@@ -129,6 +129,7 @@ export async function changePassword(currentPassword, newPassword) {
     throw new Error(errorMessage);
   }
 
+  removeAccessToken();
   return data;
 }
 

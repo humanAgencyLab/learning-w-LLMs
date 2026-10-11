@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as authApi from '../lib/authApi';
 import * as profileApi from '../lib/profileApi';
+import { toastBus } from '../components/ui/toast';
 
 const initial = {
   user: null,
@@ -20,6 +21,8 @@ const useAuthStore = create(
        * Sign up a new user
        */
       signup: async ({ password, name, username, autoGenerateUsername, role, instructorSignupSecret }) => {
+        await authApi.waitForLogout();
+        const generation = authApi.getAuthGeneration();
         set({ isLoading: true, error: null });
         try {
           const { user, accessToken } = await authApi.signup({
@@ -30,6 +33,7 @@ const useAuthStore = create(
             role,
             instructorSignupSecret,
           });
+          if (authApi.getAccessToken() !== accessToken) throw new Error('Authentication request cancelled');
           set({
             user,
             accessToken,
@@ -39,6 +43,7 @@ const useAuthStore = create(
           });
           return { user, accessToken };
         } catch (error) {
+          if (generation !== authApi.getAuthGeneration()) throw error;
           set({
             isLoading: false,
             error: error.message || 'Signup failed',
@@ -51,9 +56,12 @@ const useAuthStore = create(
        * Log in a user
        */
       login: async ({ username, password }) => {
+        await authApi.waitForLogout();
+        const generation = authApi.getAuthGeneration();
         set({ isLoading: true, error: null });
         try {
           const { user, accessToken } = await authApi.login({ username, password });
+          if (authApi.getAccessToken() !== accessToken) throw new Error('Authentication request cancelled');
           set({
             user,
             accessToken,
@@ -63,6 +71,7 @@ const useAuthStore = create(
           });
           return { user, accessToken };
         } catch (error) {
+          if (generation !== authApi.getAuthGeneration()) throw error;
           set({
             isLoading: false,
             error: error.message || 'Login failed',
@@ -76,15 +85,18 @@ const useAuthStore = create(
        */
       logout: async () => {
         set({ isLoading: true });
-        try {
-          await authApi.logout();
-        } catch (error) {
-          console.error('Logout error:', error);
+        let logoutError = null;
+        const pendingLogout = authApi.logout();
+        try { await pendingLogout; }
+        catch (error) {
+          logoutError = error.message;
+          toastBus.publish({ message: logoutError, type: 'warning', duration: 7000 });
         } finally {
-          set({
-            ...initial,
-            isLoading: false,
-          });
+          // API serialization completes server revocation before a new login.
+          // Its completion must not clear tokens/user state accepted afterward.
+          if (!authApi.getAccessToken()) {
+            set({ ...initial, error: logoutError });
+          }
         }
       },
 
@@ -92,13 +104,16 @@ const useAuthStore = create(
        * Refresh access token
        */
       refreshToken: async () => {
+        const generation = authApi.getAuthGeneration();
         try {
           const { accessToken } = await authApi.refreshToken();
+          if (generation !== authApi.getAuthGeneration()) throw new Error('Authentication request cancelled');
           set({ accessToken });
           return accessToken;
         } catch (error) {
-          // If refresh fails, logout user
-          get().logout();
+          if (generation !== authApi.getAuthGeneration()) throw error;
+          // Cancellation must not start another logout or affect a newer login.
+          if (error.message !== 'Authentication request cancelled') await authApi.removeAccessToken(generation);
           throw error;
         }
       },
@@ -107,9 +122,11 @@ const useAuthStore = create(
        * Get current user info
        */
       fetchUser: async () => {
+        const generation = authApi.getAuthGeneration();
         set({ isLoading: true, error: null });
         try {
           const user = await authApi.getCurrentUser();
+          if (generation !== authApi.getAuthGeneration()) throw new Error('Authentication request cancelled');
           set({
             user,
             isAuthenticated: true,
@@ -118,6 +135,7 @@ const useAuthStore = create(
           });
           return user;
         } catch (error) {
+          if (generation !== authApi.getAuthGeneration()) throw error;
           // Don't treat rate limit errors as auth failures
           const isRateLimit = error.message?.includes('rate limit') || 
                              error.message?.includes('RATE_LIMITED') ||
@@ -146,6 +164,7 @@ const useAuthStore = create(
        * Initialize auth state from stored token
        */
       initialize: async () => {
+        const generation = authApi.getAuthGeneration();
         const storedToken = authApi.getAccessToken();
         if (!storedToken) {
           set({ isAuthenticated: false, user: null });
@@ -155,6 +174,7 @@ const useAuthStore = create(
         set({ isLoading: true });
         try {
           const user = await authApi.getCurrentUser();
+          if (generation !== authApi.getAuthGeneration()) return;
           set({
             user,
             accessToken: storedToken,
@@ -163,6 +183,7 @@ const useAuthStore = create(
             error: null,
           });
         } catch (error) {
+          if (generation !== authApi.getAuthGeneration()) return;
           // Don't treat rate limit errors as auth failures
           const isRateLimit = error.message?.includes('rate limit') || 
                              error.message?.includes('RATE_LIMITED') ||
@@ -181,6 +202,7 @@ const useAuthStore = create(
           try {
             await get().refreshToken();
             const user = await authApi.getCurrentUser();
+            if (generation !== authApi.getAuthGeneration()) return;
             set({
               user,
               isAuthenticated: true,
@@ -188,6 +210,7 @@ const useAuthStore = create(
               error: null,
             });
           } catch (refreshError) {
+            if (generation !== authApi.getAuthGeneration()) return;
             // Check if refresh error is also rate limit
             const isRefreshRateLimit = refreshError.message?.includes('rate limit') || 
                                       refreshError.message?.includes('RATE_LIMITED') ||
@@ -302,6 +325,11 @@ const useAuthStore = create(
     }
   )
 );
+
+authApi.subscribeAuth((token, user) => {
+  if (token) useAuthStore.setState({ accessToken: token, ...(user ? { user, isAuthenticated: true, isLoading: false, error: null } : {}) });
+  else useAuthStore.setState({ ...initial });
+});
 
 export default useAuthStore;
 

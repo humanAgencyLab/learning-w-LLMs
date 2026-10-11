@@ -3,9 +3,11 @@ const cookieParser = require('cookie-parser');
 const User = require('../models/User');
 const { hashPassword, comparePassword, validatePasswordStrength } = require('../utils/password');
 const { generateAccessToken, generateRefreshToken, verifyToken } = require('../utils/jwt');
-const { requireAuth, optionalAuth } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
 const logger = require('../utils/logger');
 const crypto = require('crypto');
+const { versionOf, versionFilter } = require('../utils/authVersion');
+const { setRefreshCookie, clearRefreshCookie } = require('../utils/authCookies');
 
 const router = express.Router();
 router.use(cookieParser());
@@ -44,7 +46,7 @@ router.post('/check-username', async (req, res) => {
   try {
     const { username } = req.body;
     
-    if (!username) {
+    if (typeof username !== 'string' || !username) {
       return res.status(400).json({
         success: false,
         error: 'Username is required',
@@ -125,7 +127,7 @@ router.post('/signup', async (req, res) => {
     }, 'Signup request received');
     
     // Validation
-    if (!password || !name) {
+    if (typeof password !== 'string' || typeof name !== 'string' || !password || !name) {
       logger.warn({
         requestId: req.requestId,
         hasPassword: !!password,
@@ -163,7 +165,7 @@ router.post('/signup', async (req, res) => {
       // Auto-generate username based on name
       finalUsername = await generateUniqueUsername(name);
     } else {
-      if (!username) {
+      if (typeof username !== 'string' || !username) {
         return res.status(400).json({
           success: false,
           error: 'Username is required or enable auto-generate',
@@ -244,6 +246,8 @@ router.post('/signup', async (req, res) => {
       const userDoc = {
         username: normalizedUsername,
         passwordHash: passwordHash,
+        authVersion: 0,
+        passwordResetTokenHash: null,
         name: name.trim(),
         role,
         // Legacy DBs may still have a unique index on `email`; use a synthetic unique value per user.
@@ -310,7 +314,7 @@ router.post('/signup', async (req, res) => {
       }, 'User inserted successfully via direct MongoDB insert');
       
       // Create a Mongoose user instance from the inserted document for token generation
-      const savedUser = await User.findById(result.insertedId);
+      const savedUser = await User.findById(result.insertedId).select('+authVersion');
       if (!savedUser) {
         throw new Error('Failed to retrieve inserted user');
       }
@@ -379,18 +383,12 @@ router.post('/signup', async (req, res) => {
     }
     
     // Generate tokens (convert ObjectId to string)
-    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username });
-    const refreshToken = generateRefreshToken({ userId: user._id.toString(), username: user.username });
+    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username, authVersion: versionOf(user) });
+    const refreshToken = generateRefreshToken({ userId: user._id.toString(), username: user.username, authVersion: versionOf(user) });
     
     // Set refresh token in httpOnly cookie
     // For cross-origin requests, sameSite must be 'none' with secure=true
-    const isProduction = process.env.NODE_ENV === 'production';
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
+    setRefreshCookie(res, refreshToken);
     
     logger.info({
       requestId: req.requestId || 'unknown',
@@ -485,7 +483,7 @@ router.post('/login', async (req, res) => {
     const { username, password } = req.body;
     
     // Validation
-    if (!username || !password) {
+    if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) {
       return res.status(400).json({
         success: false,
         error: 'Username and password are required',
@@ -495,7 +493,7 @@ router.post('/login', async (req, res) => {
     
     // Find user with password hash by username (case-insensitive)
     const normalizedUsername = username.toLowerCase();
-    const user = await User.findOne({ username: normalizedUsername }).select('+passwordHash');
+    const user = await User.findOne({ username: normalizedUsername }).select('+passwordHash +authVersion');
     
     if (!user) {
       // Don't reveal if username exists (security best practice)
@@ -517,22 +515,27 @@ router.post('/login', async (req, res) => {
       });
     }
     
-    // Update last login
-    await user.updateLastLogin();
+    // Never save a hydrated legacy document: defaults could overwrite a
+    // concurrent revocation. Bookkeeping only changes timestamps, and must
+    // still match the credentials/version observed before password comparison.
+    const observedVersion = versionOf(user);
+    const lastLoginAt = new Date();
+    const loginUpdate = await User.updateOne({
+      ...versionFilter(user._id, observedVersion), passwordHash: user.passwordHash,
+    }, { $set: { lastLoginAt, updatedAt: lastLoginAt } });
+    if (!loginUpdate.matchedCount) {
+      return res.status(401).json({ success: false, error: 'Invalid username or password', code: 'INVALID_CREDENTIALS' });
+    }
+    user.lastLoginAt = lastLoginAt;
+    user.updatedAt = lastLoginAt;
     
     // Generate tokens (convert ObjectId to string)
-    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username });
-    const refreshToken = generateRefreshToken({ userId: user._id.toString(), username: user.username });
+    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username, authVersion: versionOf(user) });
+    const refreshToken = generateRefreshToken({ userId: user._id.toString(), username: user.username, authVersion: versionOf(user) });
     
     // Set refresh token in httpOnly cookie
     // For cross-origin requests, sameSite must be 'none' with secure=true
-    const isProduction = process.env.NODE_ENV === 'production';
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
+    setRefreshCookie(res, refreshToken);
     
     logger.info({
       requestId: req.requestId,
@@ -598,7 +601,7 @@ router.post('/refresh', async (req, res) => {
     }
     
     // Verify user still exists
-    const user = await User.findById(decoded.userId);
+    const user = await User.findById(decoded.userId).select('+authVersion');
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -607,8 +610,12 @@ router.post('/refresh', async (req, res) => {
       });
     }
     
+    if (decoded.authVersion !== versionOf(user)) {
+      return res.status(401).json({ success: false, error: 'Invalid or expired refresh token', code: 'INVALID_REFRESH_TOKEN' });
+    }
+
     // Generate new access token (convert ObjectId to string)
-    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username });
+    const accessToken = generateAccessToken({ userId: user._id.toString(), username: user.username, authVersion: decoded.authVersion });
     
     res.json({
       success: true,
@@ -635,36 +642,43 @@ router.post('/refresh', async (req, res) => {
  * POST /v1/auth/logout
  * Logout user (clear refresh token cookie)
  */
-router.post('/logout', requireAuth, async (req, res) => {
+router.post('/logout', async (req, res) => {
+  // Cookie-authorized mutations require an allowed browser origin. Non-browser
+  // clients may omit Origin; Sec-Fetch-Site rejects cross-site requests without it.
+  const origin = req.get('Origin');
+  const allowed = (process.env.CORS_ORIGINS || 'http://localhost:3000').split(',').map(value => value.trim());
+  if (req.cookies.refreshToken && ((origin && !allowed.includes(origin)) || (!origin && req.get('Sec-Fetch-Site') === 'cross-site'))) {
+    return res.status(403).json({ success: false, error: 'Untrusted logout origin', code: 'FORBIDDEN' });
+  }
+  clearRefreshCookie(res);
   try {
-    // Clear refresh token cookie
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict'
-    });
-    
-    logger.info({
-      requestId: req.requestId,
-      userId: req.userId
-    }, 'User logged out');
-    
-    res.json({
-      success: true,
-      message: 'Logged out successfully'
+    const bearer = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null;
+    const decode = (token, type) => {
+      if (!token) return null;
+      try { return verifyToken(token, type); } catch (_) { return null; }
+    };
+    const refresh = decode(req.cookies.refreshToken, 'refresh');
+    const access = decode(bearer, 'access');
+    if (refresh && access && refresh.userId !== access.userId) {
+      return res.status(400).json({ success: false, error: 'Conflicting logout credentials', code: 'VALIDATION_ERROR' });
+    }
+    // A stale cookie must not prevent revocation of a newer Bearer credential
+    // for the same account. Replayed old credentials still cannot revoke a new version.
+    const credential = refresh && access
+      ? (refresh.authVersion >= access.authVersion ? refresh : access)
+      : refresh || access;
+    if (credential) {
+      // Once the version advances, replaying an old logout cannot revoke a later login.
+      await User.updateOne(versionFilter(credential.userId, credential.authVersion), { $inc: { authVersion: 1 } });
+    }
+    return res.json({ success: true, message: 'Logged out successfully',
+      // An interrupted client's retry must distinguish an authenticated,
+      // version-conditional revocation from the anonymous/idempotent 200.
+      ...(req.body?.confirmRevocation === true ? { data: { revocationConfirmed: Boolean(access) } } : {}),
     });
   } catch (error) {
-    logger.error({
-      requestId: req.requestId,
-      error: error.message,
-      stack: error.stack
-    }, 'Logout error');
-    
-    res.status(500).json({
-      success: false,
-      error: 'Logout failed',
-      code: 'SERVER_ERROR'
-    });
+    logger.error({ requestId: req.requestId, error: error.message }, 'Logout revocation failed');
+    return res.status(500).json({ success: false, error: 'Logout failed', code: 'SERVER_ERROR' });
   }
 });
 
@@ -699,104 +713,15 @@ router.get('/me', requireAuth, async (req, res) => {
 
 /**
  * POST /v1/auth/forgot-password
- * Request password reset (MVP: just generate token, no email sending)
+ * Public recovery is disabled until a verified recovery channel exists
  */
-router.post('/forgot-password', async (req, res) => {
-  try {
-    const { username } = req.body;
-    
-    if (!username) {
-      return res.status(400).json({
-        success: false,
-        error: 'Username is required',
-        code: 'VALIDATION_ERROR'
-      });
-    }
-    
-    // Find user by username (case-insensitive — matches legacy mixed-case usernames)
-    const trimmed = String(username).trim();
-    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const user = await User.findOne({
-      username: { $regex: new RegExp(`^${escaped}$`, 'i') }
-    }).select('+passwordResetToken +passwordResetExpires');
-    
-    // Always return success (don't reveal if username exists)
-    if (user) {
-      // Generate reset token
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      const resetExpires = new Date();
-      resetExpires.setHours(resetExpires.getHours() + 1); // 1 hour expiry
-      
-      user.passwordResetToken = resetToken;
-      user.passwordResetExpires = resetExpires;
-      await user.save();
-      
-      // TODO: Send reset link via notification (not implemented for MVP)
-      // For MVP, return token in response (REMOVE IN PRODUCTION!)
-      logger.info({
-        requestId: req.requestId,
-        userId: user._id,
-        resetToken // REMOVE IN PRODUCTION - only for MVP testing
-      }, 'Password reset token generated');
-      
-      // Determine frontend URL based on environment
-      let frontendUrl;
-      if (process.env.NODE_ENV === 'production') {
-        // In production, use CORS_ORIGINS (first origin) or default Firebase hosting URL
-        if (process.env.CORS_ORIGINS) {
-          const corsOrigins = process.env.CORS_ORIGINS.split(',').map(origin => origin.trim());
-          frontendUrl = corsOrigins[0] || 'https://study-assist-prod.web.app';
-        } else {
-          // Fallback to default production URL
-          const projectId = process.env.GOOGLE_CLOUD_PROJECT || 'study-assist-prod';
-          frontendUrl = `https://${projectId}.web.app`;
-        }
-      } else {
-        frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-        const origin = req.get('Origin');
-        if (origin && /^https?:\/\/[^/]+/i.test(origin)) {
-          try {
-            const u = new URL(origin);
-            frontendUrl = `${u.protocol}//${u.host}`;
-          } catch (_) { /* keep FRONTEND_URL */ }
-        }
-      }
-
-      const resetLink = `${frontendUrl.replace(/\/$/, '')}/resetpassword?token=${encodeURIComponent(resetToken)}`;
-      // Return the reset link directly in the response. No email provider is wired
-      // up, so this mirrors the student (release/first-study) app's behavior and lets
-      // instructors self-serve a reset link on the page.
-      // SECURITY NOTE: this exposes the reset token to anyone who submits a valid
-      // username (i.e. self-service account takeover). Acceptable for the controlled
-      // study deployment with a small known participant set; MUST be replaced with
-      // emailed reset links before any public launch.
-      return res.json({
-        success: true,
-        message: 'Password reset token generated',
-        data: {
-          resetToken,
-          resetLink
-        }
-      });
-    }
-    
-    res.json({
-      success: true,
-      message: 'If username exists, password reset link has been sent'
-    });
-  } catch (error) {
-    logger.error({
-      requestId: req.requestId,
-      error: error.message,
-      stack: error.stack
-    }, 'Forgot password error');
-    
-    res.status(500).json({
-      success: false,
-      error: 'Password reset request failed',
-      code: 'SERVER_ERROR'
-    });
+router.post('/forgot-password', (req, res) => {
+  const { username } = req.body;
+  if (typeof username !== 'string' || !/^[a-zA-Z0-9_]{3,30}$/.test(username.trim())) {
+    return res.status(400).json({ success: false, error: 'A valid username is required', code: 'VALIDATION_ERROR' });
   }
+  // No verified recovery channel exists. Never issue or disclose recovery credentials.
+  return res.json({ success: true, message: 'Self-service password recovery is unavailable. Contact the study administrator for assistance.' });
 });
 
 /**
@@ -807,7 +732,7 @@ router.post('/reset-password', async (req, res) => {
   try {
     const { token, password } = req.body;
     
-    if (!token || !password) {
+    if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token) || typeof password !== 'string' || !password) {
       return res.status(400).json({
         success: false,
         error: 'Token and password are required',
@@ -825,26 +750,21 @@ router.post('/reset-password', async (req, res) => {
       });
     }
     
-    // Find user with valid reset token
-    const user = await User.findOne({
-      passwordResetToken: token,
+    const passwordHash = await hashPassword(password);
+    // Only hashed credentials from a future trusted issuer qualify. Legacy raw
+    // tokens exposed by the old public endpoint are deliberately not accepted.
+    const user = await User.findOneAndUpdate({
+      passwordResetTokenHash: crypto.createHash('sha256').update(token).digest('hex'),
       passwordResetExpires: { $gt: new Date() }
-    }).select('+passwordHash');
-    
+    }, {
+      $set: { passwordHash, passwordResetTokenHash: null, passwordResetToken: null, passwordResetExpires: null },
+      $inc: { authVersion: 1 }
+    }, { new: true });
     if (!user) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid or expired reset token',
-        code: 'INVALID_TOKEN'
-      });
+      return res.status(400).json({ success: false, error: 'Invalid or expired reset token', code: 'INVALID_TOKEN' });
     }
-    
-    // Hash new password
-    user.passwordHash = await hashPassword(password);
-    user.passwordResetToken = null;
-    user.passwordResetExpires = null;
-    await user.save();
-    
+    clearRefreshCookie(res);
+
     logger.info({
       requestId: req.requestId,
       userId: user._id

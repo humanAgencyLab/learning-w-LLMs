@@ -1,106 +1,44 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const JWT_ACCESS_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRES_IN || '7d'; // Access tokens last 7 days for new logins
-const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
-
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your-secret-key-change-in-production') {
-  console.warn('⚠️  WARNING: Using default JWT_SECRET. Set JWT_SECRET in .env for production!');
+const JWT_SECRET = process.env.JWT_SECRET;
+if (typeof JWT_SECRET !== 'string' || !JWT_SECRET.trim() ||
+    Buffer.byteLength(JWT_SECRET) < 32 || /your[-_ ]|change[-_ ]?in[-_ ]?production/i.test(JWT_SECRET)) {
+  throw new Error('JWT_SECRET must be explicitly configured with at least 32 bytes and must not be a placeholder');
 }
 
-/**
- * Generate an access token (short-lived)
- * @param {Object} payload - Token payload (typically { userId, username })
- * @returns {string} JWT access token
- */
-function generateAccessToken(payload) {
-  return jwt.sign(
-    {
-      userId: payload.userId,
-      username: payload.username,
-      type: 'access'
-    },
-    JWT_SECRET,
-    {
-      expiresIn: JWT_ACCESS_EXPIRES_IN,
-      issuer: 'learning-w-llms',
-      audience: 'learning-w-llms-client'
-    }
-  );
+function expirationSeconds(value, label) {
+  const match = /^(\d+)(s|m|h|d)$/.exec(value);
+  const seconds = match && Number(match[1]) * ({ s: 1, m: 60, h: 3600, d: 86400 })[match[2]];
+  if (!Number.isSafeInteger(seconds) || seconds <= 0) throw new Error(`${label} must be a positive duration with s, m, h, or d units`);
+  return seconds;
 }
+const accessSeconds = expirationSeconds(process.env.JWT_ACCESS_EXPIRES_IN || '15m', 'JWT_ACCESS_EXPIRES_IN');
+const refreshSeconds = expirationSeconds(process.env.JWT_REFRESH_EXPIRES_IN || '7d', 'JWT_REFRESH_EXPIRES_IN');
+const REFRESH_COOKIE_MAX_AGE = refreshSeconds * 1000;
 
-/**
- * Generate a refresh token (long-lived)
- * @param {Object} payload - Token payload (typically { userId, username })
- * @returns {string} JWT refresh token
- */
-function generateRefreshToken(payload) {
-  return jwt.sign(
-    {
-      userId: payload.userId,
-      username: payload.username,
-      type: 'refresh'
-    },
-    JWT_SECRET,
-    {
-      expiresIn: JWT_REFRESH_EXPIRES_IN,
-      issuer: 'learning-w-llms',
-      audience: 'learning-w-llms-client'
-    }
-  );
+function generateToken(payload, type, expiresIn) {
+  if (!Number.isSafeInteger(payload.authVersion) || payload.authVersion < 0) throw new Error('Authentication version is required');
+  return jwt.sign({ userId: payload.userId, username: payload.username, authVersion: payload.authVersion, type }, JWT_SECRET, {
+    algorithm: 'HS256', expiresIn, issuer: 'learning-w-llms', audience: 'learning-w-llms-client',
+  });
 }
-
-/**
- * Verify a JWT token
- * @param {string} token - JWT token to verify
- * @param {string} expectedType - Expected token type ('access' or 'refresh')
- * @returns {Object} Decoded token payload
- * @throws {Error} If token is invalid or expired
- */
+const generateAccessToken = payload => generateToken(payload, 'access', accessSeconds);
+const generateRefreshToken = payload => generateToken(payload, 'refresh', refreshSeconds);
 function verifyToken(token, expectedType = 'access') {
   try {
     const decoded = jwt.verify(token, JWT_SECRET, {
-      issuer: 'learning-w-llms',
-      audience: 'learning-w-llms-client'
+      algorithms: ['HS256'], issuer: 'learning-w-llms', audience: 'learning-w-llms-client',
     });
-    
-    if (decoded.type !== expectedType) {
-      throw new Error(`Invalid token type. Expected ${expectedType}, got ${decoded.type}`);
+    if (decoded.type !== expectedType || !Number.isSafeInteger(decoded.authVersion) || decoded.authVersion < 0 ||
+        typeof decoded.userId !== 'string' || !/^[a-f0-9]{24}$/i.test(decoded.userId)) {
+      throw new Error('Invalid token');
     }
-    
     return decoded;
   } catch (error) {
-    if (error.name === 'TokenExpiredError') {
-      throw new Error('Token has expired');
-    } else if (error.name === 'JsonWebTokenError') {
-      throw new Error('Invalid token');
-    } else {
-      throw error;
-    }
+    if (error.name === 'TokenExpiredError') throw new Error('Token has expired');
+    if (error.name === 'JsonWebTokenError') throw new Error('Invalid token');
+    throw error;
   }
 }
-
-/**
- * Decode a JWT token without verification (for debugging)
- * @param {string} token - JWT token to decode
- * @returns {Object} Decoded token payload (not verified)
- */
-function decodeToken(token) {
-  return jwt.decode(token);
-}
-
-module.exports = {
-  generateAccessToken,
-  generateRefreshToken,
-  verifyToken,
-  decodeToken
-};
-
-
-
-
-
-
-
-
-
+const decodeToken = token => jwt.decode(token);
+module.exports = { generateAccessToken, generateRefreshToken, verifyToken, decodeToken, REFRESH_COOKIE_MAX_AGE };

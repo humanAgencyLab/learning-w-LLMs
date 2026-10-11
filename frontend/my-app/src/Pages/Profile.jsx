@@ -463,6 +463,8 @@ function Profile() {
           setNewPassword('');
           setConfirmPassword('');
           setShowPasswordSection(false);
+          navigate('/signin', { replace: true });
+          return;
         } catch (passwordErr) {
           setError(passwordErr.message || 'Failed to change password');
           setIsSaving(false);

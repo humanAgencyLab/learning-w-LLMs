@@ -1,31 +1,45 @@
 const request = require('supertest');
 const mongoose = require('mongoose');
-const app = require('../app');
+const { assertAuthTarget, verifyAuthConnection } = require('./authIsolation');
+const target = assertAuthTarget(process.env);
+const express = require('express');
+const app = express();
+app.use(express.json());
+app.use('/v1/auth', require('../routes/authRoutes'));
 const User = require('../models/User');
-const Session = require('../models/Session');
 
 describe('Authentication Routes', () => {
-  let testUser;
+  let insertSpy;
+  const ownedUserIds = [];
   let accessToken;
   let refreshTokenCookie;
 
   beforeAll(async () => {
     // Connect to test database
     if (mongoose.connection.readyState === 0) {
-      await mongoose.connect(process.env.MONGODB_TEST_URI || 'mongodb://localhost:27017/ai_edu_app_test');
+      await mongoose.connect(target.uri, { autoIndex: false, autoCreate: false });
     }
+    await verifyAuthConnection(mongoose.connection, target);
+    const insert = User.collection.insertOne.bind(User.collection);
+    insertSpy = jest.spyOn(User.collection, 'insertOne').mockImplementation(async (...args) => {
+      const result = await insert(...args);
+      ownedUserIds.push(result.insertedId);
+      return result;
+    });
   });
 
   afterAll(async () => {
-    // Cleanup
-    await User.deleteMany({ username: /^testuser/i });
-    await Session.deleteMany({});
-    // Don't close the shared mongoose connection here; other Jest suites may still be running.
+    await verifyAuthConnection(mongoose.connection, target);
+    // Only this suite's fixtures in the verified disposable database.
+    await User.deleteMany({ _id: { $in: ownedUserIds.splice(0) } });
+    insertSpy?.mockRestore();
+    // The isolated test setup owns connection teardown.
   });
 
   beforeEach(async () => {
-    // Clean up test users before each test
-    await User.deleteMany({ username: /^testuser/i });
+    await verifyAuthConnection(mongoose.connection, target);
+    // Clean up this suite's test users before each test
+    await User.deleteMany({ _id: { $in: ownedUserIds.splice(0) } });
   });
 
   describe('POST /v1/auth/signup', () => {
@@ -239,13 +253,12 @@ describe('Authentication Routes', () => {
       expect(response.body.success).toBe(true);
     });
 
-    it('should reject logout without token', async () => {
+    it('should allow idempotent logout without token', async () => {
       const response = await request(app)
         .post('/v1/auth/logout')
-        .expect(401);
+        .expect(200);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.code).toBe('AUTH_REQUIRED');
+      expect(response.body.success).toBe(true);
     });
   });
 

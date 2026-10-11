@@ -1,5 +1,6 @@
 const { verifyToken } = require('../utils/jwt');
 const User = require('../models/User');
+const { versionOf } = require('../utils/authVersion');
 const logger = require('../utils/logger');
 
 /**
@@ -43,17 +44,17 @@ const authenticate = (optional = false) => {
       }
       
       // Fetch user from database
-      const user = await User.findById(decoded.userId).select('-passwordHash');
+      const user = await User.findById(decoded.userId).select('+authVersion -passwordHash');
       
-      if (!user) {
+      if (!user || decoded.authVersion !== versionOf(user)) {
         if (optional) {
           req.user = null;
           return next();
         }
         return res.status(401).json({
           success: false,
-          error: 'User not found',
-          code: 'USER_NOT_FOUND'
+          error: user ? 'Invalid or expired token' : 'User not found',
+          code: user ? 'INVALID_TOKEN' : 'USER_NOT_FOUND'
         });
       }
       

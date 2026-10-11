@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import '../styles/ResetPassword.css';
 import UserIcon from '../components/Icons-Avatars/UserIcon';
@@ -16,8 +16,7 @@ function ResetPassword() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [resetToken, setResetToken] = useState('');
-  const [resetLink, setResetLink] = useState('');
+  const [recoveryMessage, setRecoveryMessage] = useState('');
 
   // If token exists, we're in reset mode; otherwise, forgot password mode
   const isResetMode = !!token;
@@ -36,32 +35,10 @@ function ResetPassword() {
 
     try {
       const response = await authApi.forgotPassword(username);
-      const d = response?.data ?? response?.result ?? response;
-      const token =
-        (d && d.resetToken) ||
-        (typeof response?.resetToken === 'string' ? response.resetToken : null);
-      const linkFromApi =
-        (d && d.resetLink) ||
-        (typeof response?.resetLink === 'string' ? response.resetLink : null);
-      if (token) {
-        const origin = window.location.origin;
-        const link =
-          linkFromApi ||
-          `${origin}/resetpassword?token=${encodeURIComponent(token)}`;
-        setResetToken(token);
-        setResetLink(link);
-        setSuccess(true);
-        setError('');
-      } else {
-        setSuccess(true);
-        setError('');
-        setResetToken('');
-        setResetLink('');
-      }
+      setRecoveryMessage(response.message);
+      setSuccess(true);
     } catch (err) {
       setError(err.message || 'Failed to request password reset. Please try again.');
-      setResetToken('');
-      setResetLink('');
     } finally {
       setIsLoading(false);
     }
@@ -216,7 +193,7 @@ function ResetPassword() {
           ) : (
             <>
               <p className="resetpassword-description">
-                Enter your username to receive a password reset link
+                Self-service recovery is unavailable. Contact the study administrator for assistance.
               </p>
 
               {error && (
@@ -225,44 +202,7 @@ function ResetPassword() {
                 </div>
               )}
 
-              {success && resetToken && (
-                <div className="reset-token-section">
-                  <div className="success-message">
-                    Password reset token generated!
-                  </div>
-                  <div className="token-display">
-                    <label className="token-label">Reset Link:</label>
-                    <div className="token-input-group">
-                      <input
-                        type="text"
-                        readOnly
-                        value={resetLink}
-                        className="token-input"
-                        onClick={(e) => e.target.select()}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(resetLink);
-                          alert('Link copied to clipboard!');
-                        }}
-                        className="copy-button"
-                      >
-                        Copy
-                      </button>
-                    </div>
-                    <p className="token-instruction">
-                      Click the link above or copy it to reset your password
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {success && !resetToken && (
-                <div className="success-message">
-                  No account found with that username. Check the spelling and try again — when it&apos;s correct, the reset link will appear above.
-                </div>
-              )}
+              {success && <div className="success-message">{recoveryMessage}</div>}
 
               <form className="resetpassword-form" onSubmit={handleForgotPassword}>
                 {/* Username */}

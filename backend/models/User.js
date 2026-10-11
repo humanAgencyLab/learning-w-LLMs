@@ -10,6 +10,8 @@ const UserSchema = new mongoose.Schema({
     maxlength: 30,
     match: [/^[a-zA-Z0-9_]+$/, 'Username must contain only letters, numbers, and underscores']
   },
+  authVersion: { type: Number, default: 0, min: 0, select: false },
+  passwordResetTokenHash: { type: String, default: null, select: false },
   passwordHash: {
     type: String,
     required: true,
@@ -292,6 +294,8 @@ UserSchema.index({ 'profile.personaTag': 1 }, { sparse: true });
 // Method to get user without sensitive fields
 UserSchema.methods.toJSON = function() {
   const userObject = this.toObject();
+  delete userObject.authVersion;
+  delete userObject.passwordResetTokenHash;
   delete userObject.passwordHash;
   delete userObject.email;
   delete userObject.emailVerificationToken;
